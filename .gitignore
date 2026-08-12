@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Scraper artefacts — regenerable, and large
+data/.cache/
+data/raw/
+data/out/
+
+# macOS
+.DS_Store
