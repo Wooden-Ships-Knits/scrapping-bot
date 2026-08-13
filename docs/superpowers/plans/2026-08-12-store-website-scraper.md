@@ -269,27 +269,51 @@ Create `src/scrapebot/resolve.py`:
 ```python
 """Turn raw CSV rows into a deduplicated list of scrape targets."""
 import csv
+import re
 from urllib.parse import urlparse
 
 from .models import Target
 
 SOCIAL_HOSTS = ("instagram.com", "facebook.com", "twitter.com", "x.com", "tiktok.com")
 
+_SCHEME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*://")
+
 
 def normalize_url(raw: str) -> str:
-    """Add a scheme if missing, strip whitespace and any trailing slash."""
+    """Add a scheme if missing, strip whitespace and any trailing slash.
+
+    An existing scheme is detected case-insensitively and left alone (so
+    "HTTP://..." and "ftp://..." are not mistaken for scheme-less input).
+    A protocol-relative value ("//host/path") gets an "https:" prefix rather
+    than a full "https://" prepended in front of its own leading slashes.
+    """
     u = (raw or "").strip()
     if not u:
         return ""
-    if not u.startswith(("http://", "https://")):
+    if u.startswith("//"):
+        u = "https:" + u
+    elif not _SCHEME_RE.match(u):
         u = "https://" + u
     return u.rstrip("/")
 
 
+def _host(raw: str) -> str:
+    """Lowercase host with userinfo, port, and any leading 'www.' removed.
+
+    Returns "" when the value has no parseable host (e.g. a bare path).
+    Uses .hostname rather than .netloc so credentials and ports never leak
+    into the value, which is used downstream as a filename.
+    """
+    normalized = normalize_url(raw)
+    if not normalized:
+        return ""
+    host = (urlparse(normalized).hostname or "").lower()
+    return host[4:] if host.startswith("www.") else host
+
+
 def canonical_domain(raw: str) -> str:
     """Lowercase host with any leading 'www.' removed."""
-    host = urlparse(normalize_url(raw)).netloc.lower()
-    return host[4:] if host.startswith("www.") else host
+    return _host(raw)
 
 
 def classify_row(row: dict) -> str:
@@ -297,8 +321,10 @@ def classify_row(row: dict) -> str:
     website = (row.get("website") or "").strip()
     if not website:
         return "no_website"
-    host = urlparse(normalize_url(website)).netloc.lower()
-    if any(host.endswith(s) for s in SOCIAL_HOSTS):
+    host = _host(website)
+    if not host:
+        return "no_website"
+    if host in SOCIAL_HOSTS or any(host.endswith("." + s) for s in SOCIAL_HOSTS):
         return "social_only"
     return "ok"
 
@@ -333,7 +359,14 @@ def load_targets(csv_path: str) -> tuple[list[Target], list[tuple[dict, str]]]:
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_resolve.py -v`
-Expected: 4 passed
+Expected: 11 passed
+
+The 4 tests above plus 7 hardening tests added during review, covering: lookalike
+domains that must NOT be treated as social (`apex.com`, `onyx.com`, `fedex.com` —
+`"x.com"` suffix-matches all of them without a dot boundary), genuine social
+subdomains (`m.facebook.com`), case-insensitive scheme detection, protocol-relative
+URLs, host-less values, userinfo/port stripping, and the row-conservation invariant
+that `load_targets`'s docstring promises.
 
 - [ ] **Step 5: Verify against the real input file**
 
@@ -1196,7 +1229,7 @@ Expected: 8 passed
 - [ ] **Step 5: Run the whole extract suite**
 
 Run: `.venv/bin/pytest tests/ -v`
-Expected: all tests pass, 48 total (4 models + 4 resolve + 7 knit + 5 price + 7 contacts
+Expected: all tests pass, 55 total (4 models + 11 resolve + 7 knit + 5 price + 7 contacts
 + 7 platform + 6 products + 8 pages).
 
 - [ ] **Step 6: Commit**
@@ -2192,7 +2225,7 @@ Expected: 2 passed
 - [ ] **Step 5: Run the full suite**
 
 Run: `.venv/bin/pytest`
-Expected: all tests pass, 74 total (48 from Task 8, plus 7 fetch + 10 sources
+Expected: all tests pass, 81 total (55 from Task 8, plus 7 fetch + 10 sources
 + 7 aggregate + 2 cli). No network was used by any test.
 
 - [ ] **Step 6: Commit**
