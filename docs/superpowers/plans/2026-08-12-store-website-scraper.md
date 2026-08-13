@@ -479,7 +479,12 @@ KNIT_TERMS = (
     "cashmere", "merino", "wool", "crewneck", "turtleneck", "sweatshirt",
     "poncho", "shawl",
 )
-KNIT_RE = re.compile(r"\b(" + "|".join(KNIT_TERMS) + r")\b", re.I)
+# Trailing "s" is optional because Shopify stores categorise knitwear in the plural
+# ("Sweaters", "Sweaters & Sweatshirts", "Clothing/Sweaters" are all real product_type
+# values observed on the prospect list). The capture group stays on the BASE term so
+# knit_terms_in("Sweaters") returns ["sweater"] and plurals dedupe with singulars.
+# The leading \b must stay: it is what stops "wool" firing on "Woolworths".
+KNIT_RE = re.compile(r"\b(" + "|".join(KNIT_TERMS) + r")s?\b", re.I)
 
 
 def knit_terms_in(text: str | None) -> list[str]:
@@ -514,7 +519,12 @@ def knit_products(products: list[Product]) -> list[Product]:
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_extract_knit.py -v`
-Expected: 7 passed
+Expected: 10 passed
+
+The 7 tests above plus 3 plural-handling tests added during review: plural product
+categories resolve to the singular base term (`"Sweaters"` -> `["sweater"]`), a real
+observed `product_type` string (`"Shop All;Clothing/Tops; Clothing/Sweaters"`) matches,
+and substring rejection still holds after the change.
 
 - [ ] **Step 5: Commit**
 
@@ -1229,7 +1239,7 @@ Expected: 8 passed
 - [ ] **Step 5: Run the whole extract suite**
 
 Run: `.venv/bin/pytest tests/ -v`
-Expected: all tests pass, 55 total (4 models + 11 resolve + 7 knit + 5 price + 7 contacts
+Expected: all tests pass, 58 total (4 models + 11 resolve + 10 knit + 5 price + 7 contacts
 + 7 platform + 6 products + 8 pages).
 
 - [ ] **Step 6: Commit**
@@ -2225,7 +2235,7 @@ Expected: 2 passed
 - [ ] **Step 5: Run the full suite**
 
 Run: `.venv/bin/pytest`
-Expected: all tests pass, 81 total (55 from Task 8, plus 7 fetch + 10 sources
+Expected: all tests pass, 84 total (58 from Task 8, plus 7 fetch + 10 sources
 + 7 aggregate + 2 cli). No network was used by any test.
 
 - [ ] **Step 6: Commit**
