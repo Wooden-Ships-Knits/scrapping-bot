@@ -14,6 +14,20 @@ USER_AGENT = (
 )
 SSL_MARKERS = ("SSL", "CERTIFICATE_VERIFY_FAILED", "HANDSHAKE")
 
+# Deliberately NO Accept-Language header.
+#
+# Sending one makes Shopify Markets localise prices to the *requester's* geo.
+# Measured against a real prospect (shoploveceline.com), the same product came
+# back as:
+#     Accept-Language: en-US,en;q=0.9  ->  "2757000.00"   (Indonesian Rupiah)
+#     no Accept-Language               ->  "98.00"        (store base currency)
+# Reproduced 5/5. Four stores in the prospect list were affected.
+#
+# Prices are compared against the operator's own price point, so they must
+# arrive in the store's base currency. A store localising to a *near* currency
+# (CAD, EUR) would corrupt the price columns invisibly rather than obviously.
+REQUEST_HEADERS = {"User-Agent": USER_AGENT}
+
 
 def _requests_transport(url, headers, verify, timeout):
     import requests
@@ -99,7 +113,7 @@ class Fetcher:
             return FetchResult(url=url, status_code=None, body="",
                                final_url=url, error="robots_disallowed")
 
-        headers = {"User-Agent": USER_AGENT, "Accept-Language": "en-US,en;q=0.9"}
+        headers = dict(REQUEST_HEADERS)
         last_error = ""
         for attempt in range(self.retries + 1):
             self._throttle(url)

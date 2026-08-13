@@ -86,3 +86,25 @@ def test_robots_allows_when_file_is_missing(tmp_path):
     f = Fetcher(cache_dir=tmp_path, delay=0,
                 transport=make_transport({"https://x.com/page": (200, "fine")}))
     assert f.get("https://x.com/page").ok is True
+
+
+def test_no_accept_language_header_is_sent(tmp_path):
+    """Accept-Language makes Shopify Markets localise prices to the requester's geo.
+
+    Measured on a real prospect site: with the header the feed returned
+    "2757000.00" (Indonesian Rupiah); without it, "98.00" (store base currency).
+    Prices must arrive in the store's own currency to be comparable.
+    """
+    seen = {}
+
+    def transport(url, headers, verify, timeout):
+        seen.update(headers)
+        return (200, "ok", url)
+
+    f = Fetcher(cache_dir=tmp_path, delay=0, transport=transport)
+    f.get("https://x.com/products.json")
+
+    assert "User-Agent" in seen
+    assert not any(k.lower() == "accept-language" for k in seen), (
+        "Accept-Language must not be sent: it triggers currency localisation"
+    )
