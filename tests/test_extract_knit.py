@@ -146,3 +146,76 @@ def test_knit_products_keeps_weak_term_when_title_is_not_woven():
     items = [Product(title="Wool Wrap", price=None)]
     hits = knit_products(items)
     assert [p.title for p in hits] == ["Wool Wrap"]
+
+
+# --- Fix A (round 2): "hat", "glove(s)", "sock(s)" were over-suppressing knit accessories ---
+
+def test_knit_products_keeps_wool_gloves():
+    items = [Product(title="Wool Gloves", price=None)]
+    hits = knit_products(items)
+    assert [p.title for p in hits] == ["Wool Gloves"]
+
+
+def test_knit_products_keeps_wool_hat():
+    items = [Product(title="Wool Hat", price=None)]
+    hits = knit_products(items)
+    assert [p.title for p in hits] == ["Wool Hat"]
+
+
+def test_knit_products_keeps_wool_socks():
+    items = [Product(title="Wool Socks", price=None)]
+    hits = knit_products(items)
+    assert [p.title for p in hits] == ["Wool Socks"]
+
+
+def test_knit_products_still_rejects_genuinely_woven_titles():
+    # Regression: removing hat/glove/sock must not weaken the rest of the guard.
+    assert knit_products([Product(title="Wool Blend Plaid Reversible Coat", price=None)]) == []
+    assert knit_products([Product(title="Avenue Pant - Hazelnut", price=None)]) == []
+    # "vest" is deliberately KEPT in the woven list.
+    assert knit_products([Product(title="Quilted Nylon Shawl-Neck Boxy Vest", price=None)]) == []
+
+
+def test_knit_products_still_keeps_genuine_knitwear_regression():
+    for title in ("Shawl Collar Cardigan", "Merino Wool Sweater", "Wool Wrap"):
+        hits = knit_products([Product(title=title, price=None)])
+        assert [p.title for p in hits] == [title]
+
+
+# --- Fix B: <script>/<style> CONTENT must not leak into the searchable blob ---
+
+def test_product_blob_excludes_script_content():
+    p = Product(
+        title="Plain Cotton Tee",
+        price=None,
+        description='<script>dataLayer.push({item_name:"Wool Peacoat"});</script><p>Soft cotton tee.</p>',
+    )
+    assert knit_terms_in(product_blob(p)) == []
+
+
+def test_product_blob_excludes_style_content():
+    p = Product(
+        title="Plain Cotton Tee",
+        price=None,
+        description="<style>.sweater-badge{color:red}</style><p>Plain tee</p>",
+    )
+    assert knit_terms_in(product_blob(p)) == []
+
+
+def test_product_blob_multiple_script_blocks_dont_swallow_real_text():
+    p = Product(
+        title="Tee",
+        price=None,
+        description="<script>a</script><p>Merino wool jumper</p><script>b</script>",
+    )
+    terms = knit_terms_in(product_blob(p))
+    assert "merino" in terms
+    assert "wool" in terms
+    assert "jumper" in terms
+
+
+def test_product_blob_still_cleans_genuine_description_text():
+    p = Product(title="Tee", price=None, description="<p>A soft <b>merino</b> blend &amp; more.</p>")
+    blob = product_blob(p)
+    assert "merino" in knit_terms_in(blob)
+    assert "&" in blob

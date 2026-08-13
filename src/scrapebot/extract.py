@@ -22,17 +22,20 @@ WEAK_KNIT_TERMS = frozenset({"wool", "shawl"})
 
 WOVEN_GARMENT_TERMS = (
     "coat", "jacket", "blazer", "trouser", "trousers", "pant", "pants",
-    "vest", "hat", "glove", "gloves", "sock", "socks", "bag", "blanket",
-    "rug", "skirt", "short", "shorts", "jean", "jeans", "denim",
+    "bag", "blanket", "rug", "skirt", "short", "shorts", "jean", "jeans",
+    "denim", "vest",
 )
 WOVEN_GARMENT_RE = re.compile(r"\b(" + "|".join(WOVEN_GARMENT_TERMS) + r")\b", re.I)
 
+_SCRIPT_STYLE_RE = re.compile(r"<(script|style)\b[^>]*>.*?</\1>", re.I | re.S)
 _TAG_RE = re.compile(r"<[^>]+>")
 _WHITESPACE_RE = re.compile(r"\s+")
 
 
 def _clean_html(text: str) -> str:
-    """Plain text from raw HTML: strip tags, unescape entities, collapse whitespace."""
+    """Plain text from raw HTML: drop script/style blocks (incl. contents), strip
+    remaining tags, unescape entities, collapse whitespace."""
+    text = _SCRIPT_STYLE_RE.sub(" ", text)
     text = _TAG_RE.sub(" ", text)
     text = html.unescape(text)
     return _WHITESPACE_RE.sub(" ", text).strip()
