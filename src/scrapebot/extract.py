@@ -1,5 +1,6 @@
 """Pure extraction functions. No network, no file I/O, no global state."""
 import html
+import json
 import re
 import statistics
 
@@ -210,3 +211,59 @@ def is_chain(store_name: str, html: str) -> bool:
     if _STORE_LOCATOR_RE.search(html or "") and (html or "").lower().count("<li") > 30:
         return True
     return False
+
+
+def products_from_shopify_feed(data: dict) -> list[Product]:
+    """Parse a Shopify /products.json payload. Tolerates null fields throughout."""
+    out = []
+    for raw in (data or {}).get("products") or []:
+        variant_prices = [
+            parse_price(v.get("price")) for v in (raw.get("variants") or [])
+        ]
+        prices = [p for p in variant_prices if p]
+        tags = raw.get("tags")
+        out.append(Product(
+            title=raw.get("title") or "",
+            price=min(prices) if prices else None,
+            product_type=raw.get("product_type") or "",
+            tags=tags if isinstance(tags, list) else [],
+            description=raw.get("body_html") or "",
+        ))
+    return out
+
+
+def _jsonld_blocks(html: str) -> list:
+    """Every parseable JSON-LD block in the page, flattened out of @graph wrappers."""
+    blocks = []
+    for raw in re.findall(
+        r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+        html or "", re.S | re.I,
+    ):
+        try:
+            parsed = json.loads(raw.strip())
+        except (ValueError, TypeError):
+            continue
+        items = parsed if isinstance(parsed, list) else [parsed]
+        for item in items:
+            if isinstance(item, dict):
+                blocks.extend(item.get("@graph", [item]))
+    return [b for b in blocks if isinstance(b, dict)]
+
+
+def products_from_jsonld(html: str) -> list[Product]:
+    """Products declared via schema.org JSON-LD."""
+    out = []
+    for block in _jsonld_blocks(html):
+        types = block.get("@type", "")
+        types = types if isinstance(types, list) else [types]
+        if "Product" not in types:
+            continue
+        offers = block.get("offers") or {}
+        if isinstance(offers, list):
+            offers = offers[0] if offers else {}
+        out.append(Product(
+            title=block.get("name") or "",
+            price=parse_price(offers.get("price") if isinstance(offers, dict) else None),
+            description=block.get("description") or "",
+        ))
+    return out
