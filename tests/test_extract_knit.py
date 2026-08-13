@@ -10,6 +10,7 @@ def test_knit_terms_matches_whole_words_case_insensitively():
 
 def test_knit_terms_does_not_match_substrings():
     # 'wool' must not fire on 'woolworths'; 'knit' must not fire on 'unknitted'
+    # Regression: must still hold after the plural-matching fix below.
     assert knit_terms_in("Woolworths gift card") == []
     assert knit_terms_in("Unknitted") == []
 
@@ -50,3 +51,24 @@ def test_knit_products_filters_and_keeps_the_product():
     ]
     hits = knit_products(items)
     assert [p.title for p in hits] == ["Cher Sweater in Eggnog", "Plain Tee"]
+
+
+def test_knit_terms_matches_plural_product_type_categories():
+    # Real Shopify product_type values are plural ("Sweaters", not "Sweater").
+    # The regex must not undercount knitwear because of a missing trailing 's'.
+    assert knit_terms_in("Sweaters") == ["sweater"]
+    assert knit_terms_in("Cardigans") == ["cardigan"]
+    assert knit_terms_in("Pullovers") == ["pullover"]
+    assert knit_terms_in("SWEATERS") == ["sweater"]
+    assert knit_terms_in("Sweaters & Sweatshirts") == ["sweater", "sweatshirt"]
+    assert knit_terms_in("Sweater and sweaters") == ["sweater"]
+
+
+def test_knit_terms_matches_real_world_plural_product_type_string():
+    # Observed live on a prospect's Shopify feed.
+    assert knit_terms_in("Shop All;Clothing/Tops; Clothing/Sweaters") == ["sweater"]
+
+
+def test_knit_terms_does_not_match_substrings_after_plural_fix():
+    assert knit_terms_in("Woolworths gift card") == []
+    assert knit_terms_in("Unknitted") == []

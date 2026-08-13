@@ -8,7 +8,7 @@ KNIT_TERMS = (
     "cashmere", "merino", "wool", "crewneck", "turtleneck", "sweatshirt",
     "poncho", "shawl",
 )
-KNIT_RE = re.compile(r"\b(" + "|".join(KNIT_TERMS) + r")\b", re.I)
+KNIT_RE = re.compile(r"\b(" + "|".join(KNIT_TERMS) + r")s?\b", re.I)
 
 
 def knit_terms_in(text: str | None) -> list[str]:
