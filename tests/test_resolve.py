@@ -40,3 +40,58 @@ def test_load_targets_collapses_www_duplicates(tmp_path):
 
     assert len(skipped) == 2
     assert {s[1] for s in skipped} == {"no_website", "social_only"}
+
+
+def test_classify_row_does_not_false_positive_on_lookalike_domains():
+    assert classify_row({"website": "https://apex.com"}) == "ok"
+    assert classify_row({"website": "https://onyx.com"}) == "ok"
+    assert classify_row({"website": "https://fedex.com"}) == "ok"
+    assert classify_row({"website": "https://shopmax.com"}) == "ok"
+
+
+def test_classify_row_detects_social_including_subdomains():
+    assert classify_row({"website": "https://www.instagram.com/store/"}) == "social_only"
+    assert classify_row({"website": "https://instagram.com/store"}) == "social_only"
+    assert classify_row({"website": "https://www.facebook.com/store"}) == "social_only"
+    assert classify_row({"website": "https://m.facebook.com/store"}) == "social_only"
+
+
+def test_canonical_domain_scheme_detection_is_case_insensitive():
+    assert canonical_domain("HTTP://WWW.EXAMPLE.COM/Shop") == "example.com"
+
+
+def test_canonical_domain_resolves_protocol_relative_urls():
+    assert canonical_domain("//example.com/path") == "example.com"
+
+
+def test_classify_row_treats_hostless_values_as_no_website():
+    assert classify_row({"website": "/somepath"}) == "no_website"
+    assert classify_row({"website": "   "}) == "no_website"
+    assert classify_row({"website": ""}) == "no_website"
+
+
+def test_canonical_domain_strips_userinfo_and_port():
+    assert canonical_domain("https://user:pass@example.com:8080/shop") == "example.com"
+
+
+def test_load_targets_conserves_every_row(tmp_path):
+    csv_path = tmp_path / "mixed.csv"
+    rows = [
+        "Sara Campbell,https://www.saracampbell.com/",
+        "Sara Campbell Naples,https://saracampbell.com/pages/naples",
+        "No Site Store,",
+        "Blank Space Store,   ",
+        "Insta Store,https://www.instagram.com/insta_store/",
+        "FB Store,https://m.facebook.com/fb_store",
+        "Monkees,https://www.monkeesofnaples.com",
+        "Onyx Boutique,https://onyx.com",
+        "Bad Path Store,/somepath",
+        "Loud Scheme Store,HTTP://WWW.LOUDSTORE.COM",
+        "Ported Store,https://user:pass@portedstore.com:8080/shop",
+    ]
+    csv_path.write_text("store_name,website\n" + "\n".join(rows) + "\n")
+
+    targets, skipped = load_targets(str(csv_path))
+    total_rows = len(rows)
+
+    assert sum(len(t.rows) for t in targets) + len(skipped) == total_rows

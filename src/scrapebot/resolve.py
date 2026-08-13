@@ -1,26 +1,48 @@
 """Turn raw CSV rows into a deduplicated list of scrape targets."""
 import csv
+import re
 from urllib.parse import urlparse
 
 from .models import Target
 
 SOCIAL_HOSTS = ("instagram.com", "facebook.com", "twitter.com", "x.com", "tiktok.com")
 
+_SCHEME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*://")
+
 
 def normalize_url(raw: str) -> str:
-    """Add a scheme if missing, strip whitespace and any trailing slash."""
+    """Add a scheme if missing, strip whitespace and any trailing slash.
+
+    An existing scheme is detected case-insensitively and left alone (so
+    "HTTP://..." and "ftp://..." are not mistaken for scheme-less input).
+    A protocol-relative value ("//host/path") gets an "https:" prefix rather
+    than a full "https://" prepended in front of its own leading slashes.
+    """
     u = (raw or "").strip()
     if not u:
         return ""
-    if not u.startswith(("http://", "https://")):
+    if u.startswith("//"):
+        u = "https:" + u
+    elif not _SCHEME_RE.match(u):
         u = "https://" + u
     return u.rstrip("/")
 
 
+def _host(raw: str) -> str:
+    """Lowercase host with userinfo, port, and any leading 'www.' removed.
+
+    Returns "" when the value has no parseable host (e.g. a bare path).
+    """
+    normalized = normalize_url(raw)
+    if not normalized:
+        return ""
+    host = (urlparse(normalized).hostname or "").lower()
+    return host[4:] if host.startswith("www.") else host
+
+
 def canonical_domain(raw: str) -> str:
     """Lowercase host with any leading 'www.' removed."""
-    host = urlparse(normalize_url(raw)).netloc.lower()
-    return host[4:] if host.startswith("www.") else host
+    return _host(raw)
 
 
 def classify_row(row: dict) -> str:
@@ -28,8 +50,10 @@ def classify_row(row: dict) -> str:
     website = (row.get("website") or "").strip()
     if not website:
         return "no_website"
-    host = urlparse(normalize_url(website)).netloc.lower()
-    if any(host.endswith(s) for s in SOCIAL_HOSTS):
+    host = _host(website)
+    if not host:
+        return "no_website"
+    if host in SOCIAL_HOSTS or any(host.endswith("." + s) for s in SOCIAL_HOSTS):
         return "social_only"
     return "ok"
 
