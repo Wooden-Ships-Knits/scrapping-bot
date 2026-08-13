@@ -154,3 +154,59 @@ def extract_socials(html: str) -> dict:
             out[key] = url
             break
     return out
+
+
+# Ordered: the first match wins, so specific e-commerce platforms beat generic CMS markers.
+PLATFORM_MARKERS = (
+    ("shopify", ("cdn.shopify.com", "shopify.theme", "myshopify.com")),
+    ("squarespace", ("squarespace.com", "static1.squarespace", "data-squarespace")),
+    ("wix", ("wixstatic.com", "wix.com", "_wixcssimportrule")),
+    ("bigcommerce", ("bigcommerce.com", "bcdata", "var bcdata")),
+    ("woocommerce", ("woocommerce", "wp-content/plugins/woocommerce")),
+    ("other-ecom", ("ecwid", "lightspeed", "shoplightspeed")),
+    ("wordpress", ("wp-content", "wp-includes")),
+)
+
+KNOWN_CHAINS = (
+    "h m", "macys", "charlotte russe", "windsor", "bealls",
+    "brandy melville", "four seasons", "nordstrom", "dillards",
+    "talbots", "chicos", "anthropologie", "j crew",
+)
+_STORE_LOCATOR_RE = re.compile(r"find a store|store locator|all locations|our stores", re.I)
+
+
+def detect_platform(html: str) -> str:
+    """Best-guess e-commerce platform from HTML markers."""
+    h = (html or "").lower()
+    for name, markers in PLATFORM_MARKERS:
+        if any(m in h for m in markers):
+            return name
+    return "custom/unknown"
+
+
+def _slug(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", (name or "").lower()).strip()
+
+
+def is_chain(store_name: str, html: str) -> bool:
+    """True for national chains, which are not wholesale prospects.
+
+    Two signals: a known-chain name list, and a store-locator page listing many
+    locations. Deliberately simple - it will miss chains not on the list.
+
+    Names are compared with punctuation and spaces removed, so "Macy's", "MACYS"
+    and "macy s" all collapse to "macys". Prefix matching is only allowed for
+    chain names of 6+ characters, so short names like "h m" (H&M) cannot swallow
+    unrelated boutiques.
+    """
+    slug = _slug(store_name)
+    compact = slug.replace(" ", "")
+    for chain in KNOWN_CHAINS:
+        chain_compact = chain.replace(" ", "")
+        if compact == chain_compact:
+            return True
+        if len(chain_compact) >= 6 and compact.startswith(chain_compact):
+            return True
+    if _STORE_LOCATOR_RE.search(html or "") and (html or "").lower().count("<li") > 30:
+        return True
+    return False
