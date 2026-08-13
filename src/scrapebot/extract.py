@@ -109,3 +109,48 @@ def price_stats(products: list[Product]) -> tuple[float | None, float | None, fl
     if not prices:
         return (None, None, None)
     return (min(prices), max(prices), statistics.median(prices))
+
+
+EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+MAILTO_RE = re.compile(r'mailto:([^"\'?>\s]+)', re.I)
+TEL_RE = re.compile(r'tel:([+\d][\d\-().\s]{6,})', re.I)
+PHONE_TEXT_RE = re.compile(r"\(?\b\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}\b")
+ASSET_SUFFIX_RE = re.compile(r"\.(png|jpe?g|gif|svg|webp|css|js)$", re.I)
+
+_IG_RE = re.compile(r'https?://(?:www\.)?instagram\.com/[^"\'\s>]+', re.I)
+_FB_RE = re.compile(r'https?://(?:www\.)?facebook\.com/[^"\'\s>]+', re.I)
+_SOCIAL_JUNK = ("sharer", "/share", "intent", "plugins/", "/tr?", "dialog/")
+
+
+def _dedupe(items: list[str]) -> list[str]:
+    seen: list[str] = []
+    for i in items:
+        if i and i not in seen:
+            seen.append(i)
+    return seen
+
+
+def extract_emails(html: str) -> list[str]:
+    """Emails from mailto: links first, then from page text. Deduplicated, order preserved."""
+    found = [m.split("?")[0].strip() for m in MAILTO_RE.findall(html or "")]
+    found += EMAIL_RE.findall(html or "")
+    return _dedupe([e for e in found if not ASSET_SUFFIX_RE.search(e)])
+
+
+def extract_phones(html: str) -> list[str]:
+    """Phone numbers from tel: links and page text."""
+    found = [m.strip() for m in TEL_RE.findall(html or "")]
+    found += [m.strip() for m in PHONE_TEXT_RE.findall(html or "")]
+    return _dedupe(found)
+
+
+def extract_socials(html: str) -> dict:
+    """First real Instagram and Facebook profile URL. Share/tracking links ignored."""
+    out = {"instagram": "", "facebook": ""}
+    for key, rx in (("instagram", _IG_RE), ("facebook", _FB_RE)):
+        for url in rx.findall(html or ""):
+            if any(j in url.lower() for j in _SOCIAL_JUNK):
+                continue
+            out[key] = url
+            break
+    return out
