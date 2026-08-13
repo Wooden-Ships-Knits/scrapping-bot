@@ -72,3 +72,77 @@ def test_knit_terms_matches_real_world_plural_product_type_string():
 def test_knit_terms_does_not_match_substrings_after_plural_fix():
     assert knit_terms_in("Woolworths gift card") == []
     assert knit_terms_in("Unknitted") == []
+
+
+# --- Fix A: description is raw body_html; strip markup before truncating ---
+
+def test_product_blob_strips_html_tags_from_description():
+    p = Product(title="Tee", price=None, description="<p>A soft <b>merino</b> blend.</p>")
+    blob = product_blob(p)
+    assert "merino" in blob
+    assert "<" not in blob
+
+
+def test_product_blob_unescapes_html_entities():
+    p = Product(title="Tee", price=None, description="<p>Wool &amp; silk</p>")
+    blob = product_blob(p)
+    assert "Wool & silk" in blob
+
+
+def test_product_blob_collapses_whitespace_runs():
+    p = Product(title="Tee", price=None, description="<p>a</p>\n\n   <p>b</p>")
+    blob = product_blob(p)
+    assert "  " not in blob
+    assert "a b" in blob
+
+
+def test_product_blob_finds_knit_terms_hidden_behind_leading_markup():
+    # First 400 RAW characters are entirely markup/attributes; the fabric line
+    # ("92% merino wool") only appears after them. The OLD raw-truncation
+    # behaviour would truncate before ever reaching the fabric line.
+    filler_attr = "x" * 450
+    raw_description = f'<div data-info="{filler_attr}">92% merino wool</div>'
+    assert len(raw_description) > 400
+    # Prove the old (broken) approach found nothing.
+    assert knit_terms_in(raw_description[:400]) == []
+
+    p = Product(title="Tee", price=None, description=raw_description)
+    terms = knit_terms_in(product_blob(p))
+    assert "merino" in terms
+    assert "wool" in terms
+
+
+def test_product_blob_still_truncates_plain_text_description_to_400():
+    p = Product(title="", price=None, description="z" * 900)
+    blob = product_blob(p)
+    assert len(blob) == 400
+
+
+# --- Fix B: weak terms ("wool", "shawl") alone on a woven-garment title don't count ---
+
+def test_knit_products_rejects_weak_term_on_woven_coat():
+    items = [Product(title="Wool Blend Plaid Reversible Coat", price=None)]
+    assert knit_products(items) == []
+
+
+def test_knit_products_rejects_weak_term_on_woven_pant():
+    items = [Product(title="Avenue Pant - Hazelnut", price=None, description="wool blend")]
+    assert knit_products(items) == []
+
+
+def test_knit_products_keeps_strong_term_even_with_woven_style_title():
+    items = [Product(title="Shawl Collar Cardigan", price=None)]
+    hits = knit_products(items)
+    assert [p.title for p in hits] == ["Shawl Collar Cardigan"]
+
+
+def test_knit_products_keeps_strong_term_alongside_weak_term():
+    items = [Product(title="Merino Wool Sweater", price=None)]
+    hits = knit_products(items)
+    assert [p.title for p in hits] == ["Merino Wool Sweater"]
+
+
+def test_knit_products_keeps_weak_term_when_title_is_not_woven():
+    items = [Product(title="Wool Wrap", price=None)]
+    hits = knit_products(items)
+    assert [p.title for p in hits] == ["Wool Wrap"]
