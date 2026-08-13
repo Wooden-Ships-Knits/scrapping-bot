@@ -470,6 +470,7 @@ Create `src/scrapebot/extract.py`:
 
 ```python
 """Pure extraction functions. No network, no file I/O, no global state."""
+import html
 import re
 
 from .models import Product
@@ -499,27 +500,79 @@ def knit_terms_in(text: str | None) -> list[str]:
     return seen
 
 
+# Terms too generic to qualify a product on their own: "wool" and "shawl" also
+# appear routinely on woven (non-knit) goods — coats, trousers, vests.
+WEAK_KNIT_TERMS = frozenset({"wool", "shawl"})
+
+# Deliberately excludes hat/glove/sock: those garments are frequently KNIT, and
+# measured across 4,759 real products they suppressed nothing useful. "vest" IS
+# included — it correctly catches quilted-nylon and down vests.
+WOVEN_GARMENT_TERMS = (
+    "coat", "jacket", "blazer", "trouser", "trousers", "pant", "pants",
+    "bag", "blanket", "rug", "skirt", "short", "shorts", "jean", "jeans",
+    "denim", "vest",
+)
+WOVEN_GARMENT_RE = re.compile(r"\b(" + "|".join(WOVEN_GARMENT_TERMS) + r")\b", re.I)
+
+_SCRIPT_STYLE_RE = re.compile(r"<(script|style)\b[^>]*>.*?</\1>", re.I | re.S)
+_TAG_RE = re.compile(r"<[^>]+>")
+_WHITESPACE_RE = re.compile(r"\s+")
+
+
+def _clean_html(text: str) -> str:
+    """Plain text from raw HTML: drop script/style blocks (incl. contents), strip
+    remaining tags, unescape entities, collapse whitespace."""
+    text = _SCRIPT_STYLE_RE.sub(" ", text)
+    text = _TAG_RE.sub(" ", text)
+    text = html.unescape(text)
+    return _WHITESPACE_RE.sub(" ", text).strip()
+
+
 def product_blob(p: Product) -> str:
-    """Searchable text for one product. Tolerates null fields from Shopify feeds."""
+    """Searchable text for one product. Tolerates null fields from Shopify feeds.
+
+    `description` is raw body_html straight from the Shopify feed, so it is
+    cleaned to plain text BEFORE truncation — otherwise markup can consume the
+    whole 400-char budget and hide the fabric line that follows it.
+    `Product.description` itself is left untouched; only this copy is cleaned.
+    """
     tags = p.tags or []
     parts = [
         p.title or "",
         p.product_type or "",
         " ".join(tags) if isinstance(tags, list) else str(tags),
-        (p.description or "")[:400],
+        _clean_html(p.description or "")[:400],
     ]
     return " ".join(part for part in parts if part).strip()
 
 
 def knit_products(products: list[Product]) -> list[Product]:
-    """The subset of products whose searchable text mentions a knit term."""
-    return [p for p in products if knit_terms_in(product_blob(p))]
+    """The subset of products whose searchable text mentions a knit term.
+
+    A product is suppressed when every matched term is "weak" (wool, shawl) AND
+    the title names a clearly woven garment. Any strong term present keeps the
+    product regardless of title.
+    """
+    hits = []
+    for p in products:
+        terms = knit_terms_in(product_blob(p))
+        if not terms:
+            continue
+        if all(t in WEAK_KNIT_TERMS for t in terms) and WOVEN_GARMENT_RE.search(p.title or ""):
+            continue
+        hits.append(p)
+    return hits
 ```
+
+`_clean_html` (regex) and `html_to_text` (BeautifulSoup, added in Task 8) are
+deliberately separate and must both exist. `_clean_html` runs once per product across
+thousands of products where regex is the right speed tradeoff; `html_to_text` parses
+whole pages where correctness matters more.
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_extract_knit.py -v`
-Expected: 10 passed
+Expected: 29 passed
 
 The 7 tests above plus 3 plural-handling tests added during review: plural product
 categories resolve to the singular base term (`"Sweaters"` -> `["sweater"]`), a real
@@ -1239,7 +1292,7 @@ Expected: 8 passed
 - [ ] **Step 5: Run the whole extract suite**
 
 Run: `.venv/bin/pytest tests/ -v`
-Expected: all tests pass, 58 total (4 models + 11 resolve + 10 knit + 5 price + 7 contacts
+Expected: all tests pass, 77 total (4 models + 11 resolve + 29 knit + 5 price + 7 contacts
 + 7 platform + 6 products + 8 pages).
 
 - [ ] **Step 6: Commit**
@@ -1791,7 +1844,7 @@ def acquire(target: Target, fetcher) -> Acquired:
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_sources.py -v`
-Expected: 10 passed
+Expected: 29 passed
 
 - [ ] **Step 5: Commit**
 
@@ -2235,7 +2288,7 @@ Expected: 2 passed
 - [ ] **Step 5: Run the full suite**
 
 Run: `.venv/bin/pytest`
-Expected: all tests pass, 84 total (58 from Task 8, plus 7 fetch + 10 sources
+Expected: all tests pass, 103 total (77 from Task 8, plus 7 fetch + 10 sources
 + 7 aggregate + 2 cli). No network was used by any test.
 
 - [ ] **Step 6: Commit**
