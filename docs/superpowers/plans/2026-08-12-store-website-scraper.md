@@ -1347,7 +1347,10 @@ def test_get_caches_and_does_not_refetch(tmp_path):
                 transport=make_transport({"https://x.com": (200, "body")}, calls))
     f.get("https://x.com")
     second = f.get("https://x.com")
-    assert len(calls) == 1, "second call must be served from cache"
+    # Count only calls to the page itself: `calls` also records the one-time
+    # robots.txt probe per origin, which is correct behaviour, not a cache miss.
+    page_calls = [c for c in calls if c[0] == "https://x.com"]
+    assert len(page_calls) == 1, "second call must be served from cache"
     assert second.from_cache is True and second.body == "body"
 
 
@@ -1365,7 +1368,8 @@ def test_get_retries_then_records_error(tmp_path):
     res = f.get("https://x.com")
     assert res.ok is False
     assert "TimeoutError" in res.error
-    assert len(calls) == 3, "initial attempt plus 2 retries"
+    page_calls = [c for c in calls if c[0] == "https://x.com"]
+    assert len(page_calls) == 3, "initial attempt plus 2 retries"
 
 
 def test_ssl_failure_retries_with_verification_disabled(tmp_path):
