@@ -10,5 +10,8 @@ data/.cache/
 data/raw/
 data/out/
 
+# Prospect and account data — customer records, never commit
+data/*.csv
+
 # macOS
 .DS_Store
