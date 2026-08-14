@@ -269,27 +269,51 @@ Create `src/scrapebot/resolve.py`:
 ```python
 """Turn raw CSV rows into a deduplicated list of scrape targets."""
 import csv
+import re
 from urllib.parse import urlparse
 
 from .models import Target
 
 SOCIAL_HOSTS = ("instagram.com", "facebook.com", "twitter.com", "x.com", "tiktok.com")
 
+_SCHEME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*://")
+
 
 def normalize_url(raw: str) -> str:
-    """Add a scheme if missing, strip whitespace and any trailing slash."""
+    """Add a scheme if missing, strip whitespace and any trailing slash.
+
+    An existing scheme is detected case-insensitively and left alone (so
+    "HTTP://..." and "ftp://..." are not mistaken for scheme-less input).
+    A protocol-relative value ("//host/path") gets an "https:" prefix rather
+    than a full "https://" prepended in front of its own leading slashes.
+    """
     u = (raw or "").strip()
     if not u:
         return ""
-    if not u.startswith(("http://", "https://")):
+    if u.startswith("//"):
+        u = "https:" + u
+    elif not _SCHEME_RE.match(u):
         u = "https://" + u
     return u.rstrip("/")
 
 
+def _host(raw: str) -> str:
+    """Lowercase host with userinfo, port, and any leading 'www.' removed.
+
+    Returns "" when the value has no parseable host (e.g. a bare path).
+    Uses .hostname rather than .netloc so credentials and ports never leak
+    into the value, which is used downstream as a filename.
+    """
+    normalized = normalize_url(raw)
+    if not normalized:
+        return ""
+    host = (urlparse(normalized).hostname or "").lower()
+    return host[4:] if host.startswith("www.") else host
+
+
 def canonical_domain(raw: str) -> str:
     """Lowercase host with any leading 'www.' removed."""
-    host = urlparse(normalize_url(raw)).netloc.lower()
-    return host[4:] if host.startswith("www.") else host
+    return _host(raw)
 
 
 def classify_row(row: dict) -> str:
@@ -297,8 +321,10 @@ def classify_row(row: dict) -> str:
     website = (row.get("website") or "").strip()
     if not website:
         return "no_website"
-    host = urlparse(normalize_url(website)).netloc.lower()
-    if any(host.endswith(s) for s in SOCIAL_HOSTS):
+    host = _host(website)
+    if not host:
+        return "no_website"
+    if host in SOCIAL_HOSTS or any(host.endswith("." + s) for s in SOCIAL_HOSTS):
         return "social_only"
     return "ok"
 
@@ -333,7 +359,14 @@ def load_targets(csv_path: str) -> tuple[list[Target], list[tuple[dict, str]]]:
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_resolve.py -v`
-Expected: 4 passed
+Expected: 11 passed
+
+The 4 tests above plus 7 hardening tests added during review, covering: lookalike
+domains that must NOT be treated as social (`apex.com`, `onyx.com`, `fedex.com` —
+`"x.com"` suffix-matches all of them without a dot boundary), genuine social
+subdomains (`m.facebook.com`), case-insensitive scheme detection, protocol-relative
+URLs, host-less values, userinfo/port stripping, and the row-conservation invariant
+that `load_targets`'s docstring promises.
 
 - [ ] **Step 5: Verify against the real input file**
 
@@ -437,6 +470,7 @@ Create `src/scrapebot/extract.py`:
 
 ```python
 """Pure extraction functions. No network, no file I/O, no global state."""
+import html
 import re
 
 from .models import Product
@@ -446,7 +480,12 @@ KNIT_TERMS = (
     "cashmere", "merino", "wool", "crewneck", "turtleneck", "sweatshirt",
     "poncho", "shawl",
 )
-KNIT_RE = re.compile(r"\b(" + "|".join(KNIT_TERMS) + r")\b", re.I)
+# Trailing "s" is optional because Shopify stores categorise knitwear in the plural
+# ("Sweaters", "Sweaters & Sweatshirts", "Clothing/Sweaters" are all real product_type
+# values observed on the prospect list). The capture group stays on the BASE term so
+# knit_terms_in("Sweaters") returns ["sweater"] and plurals dedupe with singulars.
+# The leading \b must stay: it is what stops "wool" firing on "Woolworths".
+KNIT_RE = re.compile(r"\b(" + "|".join(KNIT_TERMS) + r")s?\b", re.I)
 
 
 def knit_terms_in(text: str | None) -> list[str]:
@@ -461,27 +500,84 @@ def knit_terms_in(text: str | None) -> list[str]:
     return seen
 
 
+# Terms too generic to qualify a product on their own: "wool" and "shawl" also
+# appear routinely on woven (non-knit) goods — coats, trousers, vests.
+WEAK_KNIT_TERMS = frozenset({"wool", "shawl"})
+
+# Deliberately excludes hat/glove/sock: those garments are frequently KNIT, and
+# measured across 4,759 real products they suppressed nothing useful. "vest" IS
+# included — it correctly catches quilted-nylon and down vests.
+WOVEN_GARMENT_TERMS = (
+    "coat", "jacket", "blazer", "trouser", "trousers", "pant", "pants",
+    "bag", "blanket", "rug", "skirt", "short", "shorts", "jean", "jeans",
+    "denim", "vest",
+)
+WOVEN_GARMENT_RE = re.compile(r"\b(" + "|".join(WOVEN_GARMENT_TERMS) + r")\b", re.I)
+
+_SCRIPT_STYLE_RE = re.compile(r"<(script|style)\b[^>]*>.*?</\1>", re.I | re.S)
+_TAG_RE = re.compile(r"<[^>]+>")
+_WHITESPACE_RE = re.compile(r"\s+")
+
+
+def _clean_html(text: str) -> str:
+    """Plain text from raw HTML: drop script/style blocks (incl. contents), strip
+    remaining tags, unescape entities, collapse whitespace."""
+    text = _SCRIPT_STYLE_RE.sub(" ", text)
+    text = _TAG_RE.sub(" ", text)
+    text = html.unescape(text)
+    return _WHITESPACE_RE.sub(" ", text).strip()
+
+
 def product_blob(p: Product) -> str:
-    """Searchable text for one product. Tolerates null fields from Shopify feeds."""
+    """Searchable text for one product. Tolerates null fields from Shopify feeds.
+
+    `description` is raw body_html straight from the Shopify feed, so it is
+    cleaned to plain text BEFORE truncation — otherwise markup can consume the
+    whole 400-char budget and hide the fabric line that follows it.
+    `Product.description` itself is left untouched; only this copy is cleaned.
+    """
     tags = p.tags or []
     parts = [
         p.title or "",
         p.product_type or "",
         " ".join(tags) if isinstance(tags, list) else str(tags),
-        (p.description or "")[:400],
+        _clean_html(p.description or "")[:400],
     ]
     return " ".join(part for part in parts if part).strip()
 
 
 def knit_products(products: list[Product]) -> list[Product]:
-    """The subset of products whose searchable text mentions a knit term."""
-    return [p for p in products if knit_terms_in(product_blob(p))]
+    """The subset of products whose searchable text mentions a knit term.
+
+    A product is suppressed when every matched term is "weak" (wool, shawl) AND
+    the title names a clearly woven garment. Any strong term present keeps the
+    product regardless of title.
+    """
+    hits = []
+    for p in products:
+        terms = knit_terms_in(product_blob(p))
+        if not terms:
+            continue
+        if all(t in WEAK_KNIT_TERMS for t in terms) and WOVEN_GARMENT_RE.search(p.title or ""):
+            continue
+        hits.append(p)
+    return hits
 ```
+
+`_clean_html` (regex) and `html_to_text` (BeautifulSoup, added in Task 8) are
+deliberately separate and must both exist. `_clean_html` runs once per product across
+thousands of products where regex is the right speed tradeoff; `html_to_text` parses
+whole pages where correctness matters more.
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_extract_knit.py -v`
-Expected: 7 passed
+Expected: 29 passed
+
+The 7 tests above plus 3 plural-handling tests added during review: plural product
+categories resolve to the singular base term (`"Sweaters"` -> `["sweater"]`), a real
+observed `product_type` string (`"Shop All;Clothing/Tops; Clothing/Sweaters"`) matches,
+and substring rejection still holds after the change.
 
 - [ ] **Step 5: Commit**
 
@@ -1196,7 +1292,7 @@ Expected: 8 passed
 - [ ] **Step 5: Run the whole extract suite**
 
 Run: `.venv/bin/pytest tests/ -v`
-Expected: all tests pass, 48 total (4 models + 4 resolve + 7 knit + 5 price + 7 contacts
+Expected: all tests pass, 77 total (4 models + 11 resolve + 29 knit + 5 price + 7 contacts
 + 7 platform + 6 products + 8 pages).
 
 - [ ] **Step 6: Commit**
@@ -1251,7 +1347,10 @@ def test_get_caches_and_does_not_refetch(tmp_path):
                 transport=make_transport({"https://x.com": (200, "body")}, calls))
     f.get("https://x.com")
     second = f.get("https://x.com")
-    assert len(calls) == 1, "second call must be served from cache"
+    # Count only calls to the page itself: `calls` also records the one-time
+    # robots.txt probe per origin, which is correct behaviour, not a cache miss.
+    page_calls = [c for c in calls if c[0] == "https://x.com"]
+    assert len(page_calls) == 1, "second call must be served from cache"
     assert second.from_cache is True and second.body == "body"
 
 
@@ -1269,7 +1368,8 @@ def test_get_retries_then_records_error(tmp_path):
     res = f.get("https://x.com")
     assert res.ok is False
     assert "TimeoutError" in res.error
-    assert len(calls) == 3, "initial attempt plus 2 retries"
+    page_calls = [c for c in calls if c[0] == "https://x.com"]
+    assert len(page_calls) == 3, "initial attempt plus 2 retries"
 
 
 def test_ssl_failure_retries_with_verification_disabled(tmp_path):
@@ -1748,7 +1848,7 @@ def acquire(target: Target, fetcher) -> Acquired:
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_sources.py -v`
-Expected: 10 passed
+Expected: 29 passed
 
 - [ ] **Step 5: Commit**
 
@@ -2192,7 +2292,7 @@ Expected: 2 passed
 - [ ] **Step 5: Run the full suite**
 
 Run: `.venv/bin/pytest`
-Expected: all tests pass, 74 total (48 from Task 8, plus 7 fetch + 10 sources
+Expected: all tests pass, 103 total (77 from Task 8, plus 7 fetch + 10 sources
 + 7 aggregate + 2 cli). No network was used by any test.
 
 - [ ] **Step 6: Commit**
