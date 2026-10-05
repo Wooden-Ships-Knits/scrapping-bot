@@ -1,0 +1,6 @@
+node_modules/
+dist/
+test-results/
+playwright-report/
+# Intermediate of `pnpm gen:api`; the generated src/api/schema.d.ts is committed.
+openapi.json
