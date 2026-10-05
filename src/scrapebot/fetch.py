@@ -72,12 +72,16 @@ class Fetcher:
         if not path.exists():
             return None
         try:
-            data = json.loads(path.read_text())
-        except ValueError:
+            res = FetchResult(**json.loads(path.read_text()), from_cache=True)
+        except (ValueError, TypeError):
             return None
-        return FetchResult(**data, from_cache=True)
+        # Caches written before failures stopped being stored may still hold one.
+        return res if res.ok else None
 
     def _write_cache(self, res: FetchResult) -> None:
+        """Store successful responses only, so a re-run retries every failure."""
+        if not res.ok:
+            return
         self._cache_path(res.url).write_text(
             json.dumps(
                 {
@@ -157,6 +161,4 @@ class Fetcher:
             except Exception as exc:
                 last_error = f"{type(exc).__name__}: {exc}"[:200]
 
-        res = FetchResult(url=url, status_code=None, body="", final_url=url, error=last_error)
-        self._write_cache(res)
-        return res
+        return FetchResult(url=url, status_code=None, body="", final_url=url, error=last_error)

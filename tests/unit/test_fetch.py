@@ -1,3 +1,5 @@
+import pytest
+
 from scrapebot.fetch import Fetcher
 
 
@@ -124,3 +126,55 @@ def test_no_accept_language_header_is_sent(tmp_path):
     assert not any(k.lower() == "accept-language" for k in seen), (
         "Accept-Language must not be sent: it triggers currency localisation"
     )
+
+
+def test_failed_fetch_is_not_cached_so_a_rerun_retries(tmp_path):
+    """Issue 1: a temporary failure must not stick until data/.cache is deleted."""
+    calls = []
+    failing = Fetcher(
+        cache_dir=tmp_path,
+        delay=0,
+        retries=0,
+        transport=make_transport({"https://x.com": TimeoutError("timed out")}, calls),
+    )
+    assert failing.get("https://x.com").ok is False
+
+    recovered = Fetcher(
+        cache_dir=tmp_path,
+        delay=0,
+        transport=make_transport({"https://x.com": (200, "back")}, calls),
+    )
+    res = recovered.get("https://x.com")
+    assert res.ok
+    assert res.from_cache is False
+    assert res.body == "back"
+
+
+@pytest.mark.parametrize("status", [404, 429, 500, 503])
+def test_unsuccessful_status_is_not_cached(tmp_path, status):
+    calls = []
+    f = Fetcher(
+        cache_dir=tmp_path,
+        delay=0,
+        transport=make_transport({"https://x.com": (status, "")}, calls),
+    )
+    f.get("https://x.com")
+    f.get("https://x.com")
+    page_calls = [c for c in calls if c[0] == "https://x.com"]
+    assert len(page_calls) == 2, "an unsuccessful response must be fetched again"
+
+
+def test_failure_cached_by_an_older_version_is_ignored(tmp_path):
+    """Caches written before the fix hold failures; they must heal on the next run."""
+    calls = []
+    old = Fetcher(cache_dir=tmp_path, delay=0)
+    old._cache_path("https://x.com").write_text(
+        '{"url": "https://x.com", "status_code": null, "body": "", '
+        '"final_url": "https://x.com", "error": "TimeoutError", "ssl_bypassed": false}'
+    )
+    f = Fetcher(
+        cache_dir=tmp_path,
+        delay=0,
+        transport=make_transport({"https://x.com": (200, "fresh")}, calls),
+    )
+    assert f.get("https://x.com").body == "fresh"
