@@ -4,6 +4,7 @@ import json
 import re
 
 from .extract import (
+    detect_currency,
     html_to_text,
     internal_links,
     products_from_jsonld,
@@ -129,9 +130,15 @@ def acquire(target: Target, fetcher) -> Acquired:
         return got
 
     got.pages = [Page(url=target.url, html=home.body, text=html_to_text(home.body))]
+    got.currency, got.currency_source = detect_currency(home.body)
 
     products = shopify_products(target.domain, fetcher)
     if products:
+        # The feed carries no currency; its prices are in the currency the
+        # storefront declares, which is the store's base currency because no
+        # Accept-Language header is sent (see fetch.py).
+        for product in products:
+            product.currency = got.currency
         got.source_used = "shopify_feed"
         got.products = products
         got.pages_fetched = len(got.pages)
@@ -147,6 +154,12 @@ def acquire(target: Target, fetcher) -> Acquired:
 
     for page in got.pages:
         got.products.extend(products_from_jsonld(page.html))
+
+    if not got.currency:
+        for page in got.pages[1:]:
+            got.currency, got.currency_source = detect_currency(page.html)
+            if got.currency:
+                break
 
     got.pages_fetched = len(got.pages)
     got.status = _read_status(got)

@@ -115,3 +115,28 @@ def test_build_record_reports_ssl_bypassed_beside_the_status():
     rec = build_record(target, Acquired(domain="x.com", status="no_products", ssl_bypassed=True))
     assert rec["scrape_status"] == "no_products"
     assert rec["ssl_bypassed"] is True
+
+
+def test_build_record_carries_the_store_currency():
+    target = Target(domain="x.com", url="https://x.com", rows=[{}])
+    acquired = Acquired(
+        domain="x.com",
+        currency="USD",
+        currency_source="shopify_js",
+        products=[Product(title="Sweater", price=98.0, currency="USD")],
+    )
+    rec = build_record(target, acquired)
+    assert rec["currency"] == "USD"
+    assert rec["currency_mixed"] is False
+
+
+def test_build_record_flags_mixed_currencies():
+    target = Target(domain="x.com", url="https://x.com", rows=[{}])
+    acquired = Acquired(
+        domain="x.com",
+        products=[
+            Product(title="A", price=98.0, currency="USD"),
+            Product(title="B", price=90.0, currency="EUR"),
+        ],
+    )
+    assert build_record(target, acquired)["currency_mixed"] is True

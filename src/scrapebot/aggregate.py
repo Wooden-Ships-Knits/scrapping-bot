@@ -37,6 +37,8 @@ SCRAPED_COLUMNS = [
     "price_min",
     "price_max",
     "price_median",
+    "currency",
+    "currency_mixed",
     "emails",
     "phone",
     "instagram",
@@ -104,6 +106,10 @@ def build_record(target: Target, acquired: Acquired) -> dict:
     rec["price_min"] = p_min if p_min is not None else ""
     rec["price_max"] = p_max if p_max is not None else ""
     rec["price_median"] = p_med if p_med is not None else ""
+    currencies = {p.currency or acquired.currency for p in acquired.products} - {""}
+    rec["currency"] = acquired.currency or (min(currencies) if len(currencies) == 1 else "")
+    # Price columns compare numbers; across currencies they would be meaningless.
+    rec["currency_mixed"] = len(currencies) > 1
     rec["emails"] = "; ".join(extract.extract_emails(all_html)[:5])
     rec["phone"] = "; ".join(extract.extract_phones(all_html)[:3])
 

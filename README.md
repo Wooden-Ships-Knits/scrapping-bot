@@ -91,6 +91,7 @@ it. No ScrapeGraph library or subscription is used — see
 | `knit_examples` | Up to 5 actual product titles. **This is the evidence** — a count alone tells you nothing |
 | `knit_price_min` / `knit_price_max` | The price band of their *sweaters* specifically |
 | `price_min` / `price_max` / `price_median` | Store-wide range, for context |
+| `currency` / `currency_mixed` | Currency the store declares (ISO 4217), and whether products use more than one. Empty when the site does not say; a "$" alone is never trusted |
 | `emails`, `phone`, `instagram`, `facebook` | Contacts |
 | `is_chain` | True for national chains — not wholesale prospects |
 | `scrape_status` | `ok` (products found), `no_products` (readable, no catalogue found), `js_required`, `blocked`, `error`, `no_website`, `social_only` |
@@ -100,7 +101,7 @@ it. No ScrapeGraph library or subscription is used — see
 | `wholesale_page` | Usually empty for retailers; brands sometimes publish one |
 | `about_snippet` | First ~300 chars of their About page |
 
-*Planned* columns: `currency`, `currency_mixed`, `layers_tried`, `needs_review`.
+*Planned* columns: `layers_tried`, `needs_review`.
 
 Read `knit_price_min`/`knit_price_max`, not the store-wide range. A boutique spanning
 $2–$545 tells you nothing; sweaters at $39–$698 tells you whether your price point fits.

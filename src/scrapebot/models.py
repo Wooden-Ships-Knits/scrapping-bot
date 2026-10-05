@@ -27,6 +27,7 @@ class Product:
     product_type: str = ""
     tags: list[str] = field(default_factory=list)
     description: str = ""
+    currency: str = ""  # ISO 4217 as declared by the source; "" when unknown
 
 
 @dataclass
@@ -56,4 +57,6 @@ class Acquired:
     status: str = "ok"  # ok | no_products | js_required | blocked | error
     error: str = ""
     ssl_bypassed: bool = False  # TLS verification was disabled to read the site
+    currency: str = ""  # store currency, ISO 4217; "" when the site does not declare one
+    currency_source: str = ""  # shopify_js | meta | jsonld
     pages_fetched: int = 0

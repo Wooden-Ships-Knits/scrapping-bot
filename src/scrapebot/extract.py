@@ -299,17 +299,65 @@ def products_from_jsonld(html: str) -> list[Product]:
         types = types if isinstance(types, list) else [types]
         if "Product" not in types:
             continue
-        offers = block.get("offers") or {}
-        if isinstance(offers, list):
-            offers = offers[0] if offers else {}
+        offer = _first_offer(block)
         out.append(
             Product(
                 title=block.get("name") or "",
-                price=parse_price(offers.get("price") if isinstance(offers, dict) else None),
+                price=parse_price(offer.get("price")),
                 description=block.get("description") or "",
+                currency=_currency_code(offer.get("priceCurrency")),
             )
         )
     return out
+
+
+def _first_offer(block: dict) -> dict:
+    offers = block.get("offers") or {}
+    if isinstance(offers, list):
+        offers = offers[0] if offers else {}
+    return offers if isinstance(offers, dict) else {}
+
+
+_CURRENCY_CODE_RE = re.compile(r"^[A-Za-z]{3}$")
+_SHOPIFY_CURRENCY_RE = re.compile(r'Shopify\.currency\s*=\s*\{[^}]*"active"\s*:\s*"([A-Za-z]{3})"')
+_META_CURRENCY_RES = (
+    re.compile(
+        r'<meta[^>]+property=["\'](?:og|product):price:currency["\'][^>]+content=["\']([^"\']+)',
+        re.I,
+    ),
+    re.compile(
+        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\'](?:og|product):price:currency',
+        re.I,
+    ),
+)
+
+
+def _currency_code(value) -> str:
+    """An ISO 4217-shaped code, uppercased, or "" for anything else."""
+    text = str(value or "").strip()
+    return text.upper() if _CURRENCY_CODE_RE.match(text) else ""
+
+
+def detect_currency(html: str) -> tuple[str, str]:
+    """(currency, source) declared by a page, or ("", "") when it declares none.
+
+    Sources, most reliable first: Shopify's theme script (the currency prices are
+    shown in), OpenGraph price meta tags, then JSON-LD offers. A currency symbol
+    in text is never used: "$" alone does not say which dollar.
+    """
+    html = html or ""
+    m = _SHOPIFY_CURRENCY_RE.search(html)
+    if m:
+        return m.group(1).upper(), "shopify_js"
+    for rx in _META_CURRENCY_RES:
+        m = rx.search(html)
+        if m and _currency_code(m.group(1)):
+            return _currency_code(m.group(1)), "meta"
+    for block in _jsonld_blocks(html):
+        code = _currency_code(_first_offer(block).get("priceCurrency"))
+        if code:
+            return code, "jsonld"
+    return "", ""
 
 
 WHOLESALE_RE = re.compile(r"wholesale|stockist|trade[\-_ ]?account|retailer|become[\-_ ]a", re.I)

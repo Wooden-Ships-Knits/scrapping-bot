@@ -176,3 +176,17 @@ def test_acquire_never_reports_ok_with_zero_products():
     }
     got = acquire(Target(domain="x.com", url="https://x.com"), FakeFetcher(pages))
     assert not (got.status == "ok" and not got.products)
+
+
+def test_acquire_records_store_currency_and_stamps_feed_products():
+    """Issue 3: a price without a currency lets a localised price in silently."""
+    home = '<html><script>Shopify.currency = {"active":"CAD","rate":"1.0"};</script>cdn.shopify.com</html>'
+    f = FakeFetcher(
+        {
+            "https://x.com": (200, home),
+            "https://x.com/products.json?limit=250&page=1": (200, feed_page(2)),
+        }
+    )
+    got = acquire(Target(domain="x.com", url="https://x.com"), f)
+    assert (got.currency, got.currency_source) == ("CAD", "shopify_js")
+    assert {p.currency for p in got.products} == {"CAD"}
