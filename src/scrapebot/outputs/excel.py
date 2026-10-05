@@ -15,6 +15,7 @@ TRUNCATED_MARKER = " …[truncated: Excel cell limit]"
 
 class ExcelWriter:
     name = "xlsx"
+    max_rows = MAX_DATA_ROWS
 
     def write(self, tables: list[Table], dest: Path) -> list[Path]:
         from openpyxl import Workbook
@@ -40,22 +41,29 @@ class ExcelWriter:
             return c
 
         bold = Font(bold=True)
+
+        def new_sheet(table: Table, n: int) -> Any:
+            ws = wb.create_sheet(table.name if n == 1 else f"{table.name}_{n}")
+            ws.freeze_panes = "A2"
+            header = []
+            for c in table.columns:
+                h = WriteOnlyCell(ws, value=c.name)
+                h.font = bold
+                header.append(h)
+            ws.append(header)
+            return ws
+
         for table in tables:
-            rows = flat_rows(table)
-            chunks = [rows[i : i + MAX_DATA_ROWS] for i in range(0, len(rows), MAX_DATA_ROWS)]
-            if len(chunks) > 1:
-                log.warning("Excel: table %s split across %d sheets", table.name, len(chunks))
-            for n, chunk in enumerate(chunks or [[]], start=1):
-                ws = wb.create_sheet(table.name if n == 1 else f"{table.name}_{n}")
-                ws.freeze_panes = "A2"
-                header = []
-                for c in table.columns:
-                    h = WriteOnlyCell(ws, value=c.name)
-                    h.font = bold
-                    header.append(h)
-                ws.append(header)
-                for row in chunk:
-                    ws.append([cell(ws, v) for v in row])
+            sheets, written = 1, 0
+            ws = new_sheet(table, sheets)
+            for row in flat_rows(table):
+                if written == self.max_rows:  # Excel's row limit: continue on a new sheet
+                    sheets, written = sheets + 1, 0
+                    ws = new_sheet(table, sheets)
+                ws.append([cell(ws, v) for v in row])
+                written += 1
+            if sheets > 1:
+                log.warning("Excel: table %s split across %d sheets", table.name, sheets)
 
         wb.save(path)
         if truncated:

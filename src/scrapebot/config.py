@@ -29,6 +29,8 @@ class FetchConfig(_Section):
     delay_seconds: float = Field(default=1.5, ge=0)  # per domain
     timeout_seconds: float = Field(default=20, gt=0)
     retries: int = Field(default=2, ge=0)
+    # Stores visited at once. Each host still gets one request at a time, `delay_seconds` apart.
+    concurrency: int = Field(default=6, ge=1, le=32)
 
 
 class OutputConfig(_Section):

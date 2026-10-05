@@ -20,6 +20,7 @@ const SKIP_REASON: Record<string, string> = {
 const RUN_STATE: Record<string, string> = {
   queued: "Menunggu",
   running: "Berjalan",
+  stopped: "Dihentikan",
   done: "Selesai",
   failed: "Gagal",
   interrupted: "Terhenti",
@@ -54,7 +55,7 @@ export const writerLabel = pick(WRITER);
 /** Tone for a status badge: good, warn, bad or neutral. */
 export function tone(code: string): "good" | "warn" | "bad" | "neutral" {
   if (code === "ok" || code === "done") return "good";
-  if (code === "no_products" || code === "js_required" || code === "interrupted") return "warn";
+  if (["no_products", "js_required", "interrupted", "stopped"].includes(code)) return "warn";
   if (code === "blocked" || code === "error" || code === "failed") return "bad";
   return "neutral";
 }

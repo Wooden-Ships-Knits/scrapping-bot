@@ -12,6 +12,7 @@ def captured(monkeypatch, tmp_path):
 
     class Result:
         links_in = processed = skipped = stores = 0
+        stopped = False
         root = report_path = summary_path = tmp_path
 
     def fake_run(config):

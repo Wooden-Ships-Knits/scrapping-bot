@@ -42,5 +42,6 @@ def test_store_appends_and_reads_back(tmp_path):
     assert store.read("contacts") == [row.model_dump(mode="json")] * 2
     assert "ü" in store.path("contacts").read_text(encoding="utf-8"), "UTF-8, not escaped"
     tables = {t.name: t for t in store.load_tables()}
-    assert len(tables["contacts"].rows) == 2
-    assert tables["changes"].rows == []
+    assert len(list(tables["contacts"].rows)) == 2
+    assert list(tables["changes"].rows) == []
+    assert list(tables["contacts"].rows) == list(tables["contacts"].rows), "re-iterable"

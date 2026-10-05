@@ -1,12 +1,15 @@
 import csv
 import json
+import threading
+import time
 from datetime import UTC, datetime
 
 import pytest
 
+from scrapebot import pipeline
 from scrapebot.config import RunConfig
 from scrapebot.inputs.readers import InputError
-from scrapebot.pipeline import new_run_id, run
+from scrapebot.pipeline import execute, new_run_id, prepare, resume, run
 from scrapebot.tables import TABLES
 from tests.fakes import FakeFetcher
 
@@ -174,3 +177,92 @@ def test_run_ids_sort_by_start_time_to_the_millisecond():
     second = new_run_id(datetime(2026, 10, 5, 8, 52, 53, 2000, tzinfo=UTC))
     assert first.startswith("20261005T085253001Z-")
     assert first < second
+
+
+def test_stores_are_visited_in_parallel(tmp_path):
+    """PRD AQ-11: several stores at once."""
+    active, peak = [0], [0]
+    lock = threading.Lock()
+
+    class SlowFetcher(FakeFetcher):
+        def get(self, url):
+            with lock:
+                active[0] += 1
+                peak[0] = max(peak[0], active[0])
+            time.sleep(0.05)
+            with lock:
+                active[0] -= 1
+            return super().get(url)
+
+    links = "\n".join(f"https://s{i}.com" for i in range(6))
+    cfg = config_for(
+        tmp_path, f"website\n{links}\n", fetch={"cache_dir": tmp_path / "c", "concurrency": 3}
+    )
+    result = run(cfg, fetcher=SlowFetcher({}))
+    assert result.stores == 6
+    assert peak[0] == 3
+
+
+def test_one_store_crashing_does_not_stop_the_run(tmp_path, monkeypatch):
+    real = pipeline.acquire
+
+    def flaky(target, fetcher):
+        if target.domain == "bad.com":
+            raise RuntimeError("parser bug")
+        return real(target, fetcher)
+
+    monkeypatch.setattr(pipeline, "acquire", flaky)
+    cfg = config_for(tmp_path, "website\nhttps://bad.com\nhttps://good.com\n")
+    result = run(cfg, fetcher=FakeFetcher({"https://good.com": (200, READABLE)}))
+    stores = {s["domain"]: s for s in read_jsonl(result.root / "tables" / "stores.jsonl")}
+    assert stores["bad.com"]["status"] == "error"
+    assert "internal error: RuntimeError: parser bug" in stores["bad.com"]["error"]
+    assert stores["good.com"]["status"] == "no_products"
+
+
+def test_a_stopped_run_resumes_without_visiting_finished_stores(tmp_path):
+    """PRD OP-03: stop in the middle, resume, and get the same data."""
+    links = "\n".join(f"https://s{i}.com" for i in range(5))
+    cfg = config_for(
+        tmp_path, f"website\n{links}\n", fetch={"cache_dir": tmp_path / "c", "concurrency": 1}
+    )
+    responses = {f"https://s{i}.com": (200, READABLE) for i in range(5)}
+    stop = threading.Event()
+
+    def stop_after_two(n, total, got):
+        if n == 2:
+            stop.set()
+
+    first = execute(
+        prepare(cfg), fetcher=FakeFetcher(responses), progress=stop_after_two, stop=stop
+    )
+    assert first.stopped is True
+    assert first.stores == 2
+    assert (first.root / "stopped.json").exists()
+    assert not (first.root / "report.md").exists()
+
+    second_fetcher = FakeFetcher(responses)
+    done = execute(resume(first.root), fetcher=second_fetcher)
+    assert done.stopped is False
+    assert done.run_id == first.run_id
+    visited = {url for url in second_fetcher.calls if url.count("/") == 2}
+    assert visited == {"https://s2.com", "https://s3.com", "https://s4.com"}
+    stores = read_jsonl(done.root / "tables" / "stores.jsonl")
+    assert sorted(s["domain"] for s in stores) == [f"s{i}.com" for i in range(5)]
+    with done.summary_path.open() as fh:
+        assert len(list(csv.DictReader(fh))) == 5
+    assert "balanced" in done.report_path.read_text()
+
+
+def test_resume_refuses_a_changed_input(tmp_path):
+    cfg = config_for(
+        tmp_path,
+        "website\nhttps://a.com\nhttps://b.com\n",
+        fetch={"cache_dir": tmp_path / "c", "concurrency": 1},
+    )
+    stop = threading.Event()
+    stop.set()
+    first = execute(prepare(cfg), fetcher=FakeFetcher({}), stop=stop)
+    (tmp_path / "in.csv").write_text("website\nhttps://other.com\n")
+    with pytest.raises(InputError, match="input changed"):
+        resume(first.root)

@@ -147,6 +147,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{run_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Run
+         * @description Continue a stopped or interrupted run without revisiting finished stores.
+         */
+        post: operations["resume_run_api_runs__run_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{run_id}/rows/{table}": {
         parameters: {
             query?: never;
@@ -158,6 +178,26 @@ export interface paths {
         get: operations["rows_api_runs__run_id__rows__table__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{run_id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop Run
+         * @description Finish the stores in progress, start no new ones; the run stays resumable.
+         */
+        post: operations["stop_run_api_runs__run_id__stop_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -334,7 +374,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "queued" | "running" | "done" | "failed" | "interrupted";
+            state: "queued" | "running" | "stopped" | "done" | "failed" | "interrupted";
             /** Stores Done */
             stores_done: number;
             /** Stores Total */
@@ -392,7 +432,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "queued" | "running" | "done" | "failed" | "interrupted";
+            state: "queued" | "running" | "stopped" | "done" | "failed" | "interrupted";
             /** Status Counts */
             status_counts: {
                 [key: string]: number;
@@ -730,6 +770,37 @@ export interface operations {
             };
         };
     };
+    resume_run_api_runs__run_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     rows_api_runs__run_id__rows__table__get: {
         parameters: {
             query?: {
@@ -753,6 +824,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RowsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stop_run_api_runs__run_id__stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunOut"];
                 };
             };
             /** @description Validation Error */

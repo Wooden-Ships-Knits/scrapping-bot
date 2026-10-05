@@ -17,7 +17,12 @@ class JsonWriter:
         paths = []
         for table in tables:
             path = out / f"{table.name}.json"
-            path.write_text(json.dumps(table.rows, ensure_ascii=False, indent=1), encoding="utf-8")
+            with path.open("w", encoding="utf-8") as fh:  # a JSON array, written row by row
+                fh.write("[")
+                for i, row in enumerate(table.rows):
+                    fh.write(",\n" if i else "\n")
+                    fh.write(json.dumps(row, ensure_ascii=False))
+                fh.write("\n]\n")
             paths.append(path)
         return paths
 
@@ -59,7 +64,7 @@ class _DelimitedWriter:
             with path.open("w", newline="", encoding="utf-8") as fh:
                 writer = csv.writer(fh, delimiter=self.delimiter)
                 writer.writerow([c.name for c in table.columns])
-                writer.writerows([[_cell(v) for v in row] for row in flat_rows(table)])
+                writer.writerows([_cell(v) for v in row] for row in flat_rows(table))
             paths.append(path)
         return paths
 

@@ -5,7 +5,7 @@ import { api, ApiError, FINISHED, type Run } from "./client";
 const POLL_MS = 2000;
 
 /** The live state of a run: server-sent events while it runs, polling as a fallback. */
-export function useRun(runId: string): { run: Run | null; error: string } {
+export function useRun(runId: string, nonce = 0): { run: Run | null; error: string } {
   const [run, setRun] = useState<Run | null>(null);
   const [error, setError] = useState("");
 
@@ -52,7 +52,7 @@ export function useRun(runId: string): { run: Run | null; error: string } {
       };
     }
     return stop;
-  }, [runId]);
+  }, [runId, nonce]);
 
   return { run, error };
 }

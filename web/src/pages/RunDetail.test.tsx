@@ -114,3 +114,20 @@ describe("RunDetail", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Run gagal: RuntimeError: disk full");
   });
 });
+
+describe("stop and resume", () => {
+  it("offers STOP while running and LANJUTKAN when stopped", async () => {
+    const user = userEvent.setup();
+    const { unmount } = render(<RunDetail run={run({ state: "running", stores_done: 1, downloads: [] })} />);
+    await user.click(screen.getByRole("button", { name: /STOP/ }));
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(`/api/runs/${RUN_ID}/stop`, { method: "POST" });
+    unmount();
+
+    const onRestart = vi.fn();
+    render(<RunDetail run={run({ state: "stopped", stores_done: 1, downloads: [] })} onRestart={onRestart} />);
+    expect(screen.getByText(/1 dari 2 toko selesai/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /LANJUTKAN/ }));
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(`/api/runs/${RUN_ID}/resume`, { method: "POST" });
+    expect(onRestart).toHaveBeenCalled();
+  });
+});

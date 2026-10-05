@@ -13,7 +13,7 @@ from . import __version__
 from .config import RunConfig, load_config
 from .inputs.readers import SUPPORTED_SUFFIXES, InputError
 from .outputs import available_writers
-from .pipeline import run
+from .pipeline import execute, resume, run
 
 # The repo's web/dist, where `make web-build` puts the interface.
 DEFAULT_WEB_DIST = Path(__file__).resolve().parents[2] / "web" / "dist"
@@ -47,6 +47,10 @@ def _parser() -> argparse.ArgumentParser:
     r.add_argument("--runs-dir", type=Path, help="where run folders go (default data/runs)")
     r.add_argument("--cache-dir", type=Path, help="HTTP cache (default data/.cache)")
     r.add_argument("-v", "--verbose", action="store_true", help="log every request decision")
+
+    res = sub.add_parser("resume", help="continue a stopped or interrupted run")
+    res.add_argument("run", type=Path, help="the run folder, e.g. data/runs/<run_id>")
+    res.add_argument("-v", "--verbose", action="store_true", help="debug logging")
 
     s = sub.add_parser("serve", help="start the local web interface")
     s.add_argument("-c", "--config", type=Path, help="YAML config for fetch and output defaults")
@@ -124,17 +128,27 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "serve":
         return serve(args)
     try:
-        config = build_config(args)
-        result = run(config)
+        resuming = args.command == "resume"
+        result = execute(resume(args.run)) if resuming else run(build_config(args))
     except (InputError, ValidationError) as exc:
         print(f"scrapebot: {exc}", file=sys.stderr)
         return 2
+    except KeyboardInterrupt:
+        print(
+            "\nStopped. Finished stores are saved; continue with "
+            "`scrapebot resume data/runs/<run_id>` (the run id is in the log above).",
+            file=sys.stderr,
+        )
+        return 130
 
     print(
         f"\nLinks in: {result.links_in} = processed {result.processed} "
         f"+ skipped {result.skipped}. Stores visited: {result.stores}."
     )
     print(f"Run folder: {result.root}")
+    if result.stopped:
+        print(f"Stopped before the end. Continue with: scrapebot resume {result.root}")
+        return 0
     print(f"Report:     {result.report_path}")
     print(f"Summary:    {result.summary_path}")
     return 0

@@ -8,11 +8,15 @@ import json
 import platform
 import sys
 from collections import Counter
+from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .tables import RunRow
+
+if TYPE_CHECKING:
+    from .store import RunStore
 
 MANIFEST_PACKAGES = (
     "scrapebot", "requests", "beautifulsoup4", "lxml", "pydantic", "tldextract",
@@ -26,6 +30,44 @@ UNAVAILABLE_STAGES = (
     "Browser render (gated on the M1 survey, M4)",
     "Change detection against earlier runs (planned, M5)",
 )
+
+
+@dataclass
+class RunStats:
+    """What the report and manifest need, gathered by streaming each table once.
+
+    `inputs` and `stores` stay as rows (one per link or store); the large tables
+    are only counted.
+    """
+
+    inputs: list[dict[str, Any]]
+    stores: list[dict[str, Any]]
+    counts: dict[str, int] = field(default_factory=dict)
+    products_by_source: Counter[str] = field(default_factory=Counter)
+    products_for_review: int = 0
+    contacts_by_type: Counter[str] = field(default_factory=Counter)
+    failed_pages: int = 0
+    changes_by_type: Counter[str] = field(default_factory=Counter)
+
+
+def collect_stats(store: "RunStore") -> RunStats:
+    stats = RunStats(inputs=store.read("inputs"), stores=store.read("stores"))
+    for p in store.rows("products"):
+        stats.products_by_source[p["source"]] += 1
+        stats.products_for_review += bool(p.get("needs_review"))
+    stats.failed_pages = sum(1 for page in store.rows("pages") if page.get("error"))
+    stats.contacts_by_type.update(c["type"] for c in store.rows("contacts"))
+    stats.changes_by_type.update(c["change_type"] for c in store.rows("changes"))
+    stats.counts = {
+        "runs": len(store.read("runs")),
+        "inputs": len(stats.inputs),
+        "stores": len(stats.stores),
+        "products": sum(stats.products_by_source.values()),
+        "pages": sum(1 for _ in store.rows("pages")),
+        "contacts": sum(stats.contacts_by_type.values()),
+        "changes": sum(stats.changes_by_type.values()),
+    }
+    return stats
 
 
 def reconcile(inputs: list[dict[str, Any]]) -> tuple[int, int, int]:
@@ -53,17 +95,17 @@ def _table(header: tuple[str, str], counts: Counter[str]) -> list[str]:
 
 def build_report(
     run: RunRow,
-    tables: dict[str, list[dict[str, Any]]],
+    stats: RunStats,
     exports: dict[str, list[Path]],
     root: Path,
     duration_seconds: float,
 ) -> str:
-    inputs, stores = tables["inputs"], tables["stores"]
+    inputs, stores = stats.inputs, stats.stores
     links_in, processed, skipped = reconcile(inputs)
     balanced = links_in == processed + skipped
     by_status: Counter[str] = Counter(s["status"] for s in stores)
-    by_source: Counter[str] = Counter(p["source"] for p in tables["products"])
-    by_contact: Counter[str] = Counter(c["type"] for c in tables["contacts"])
+    by_source = stats.products_by_source
+    by_contact = stats.contacts_by_type
 
     def domains(status: str) -> list[str]:
         return [s["domain"] for s in stores if s["status"] == status]
@@ -94,9 +136,19 @@ def build_report(
         "",
         "## Data collected",
         "",
-        f"- Products: {len(tables['products'])}",
-        f"- Pages: {len(tables['pages'])}",
-        f"- Contacts: {len(tables['contacts'])}",
+        f"- Products: {stats.counts['products']}"
+        + (
+            f" ({stats.products_for_review} flagged `needs_review`)"
+            if stats.products_for_review
+            else ""
+        ),
+        f"- Pages: {stats.counts['pages']}"
+        + (
+            f" ({stats.failed_pages} could not be read; see `pages.error`)"
+            if stats.failed_pages
+            else ""
+        ),
+        f"- Contacts: {stats.counts['contacts']}",
         "",
         "Products by source:",
         "",
@@ -159,12 +211,12 @@ def package_versions() -> dict[str, str]:
 
 def build_manifest(
     run: RunRow,
-    tables: dict[str, list[dict[str, Any]]],
+    stats: RunStats,
     exports: dict[str, list[Path]],
     root: Path,
     duration_seconds: float,
 ) -> dict[str, Any]:
-    links_in, processed, skipped = reconcile(tables["inputs"])
+    links_in, processed, skipped = reconcile(stats.inputs)
     return {
         "run_id": run.run_id,
         "started_at": run.started_at,
@@ -178,7 +230,7 @@ def build_manifest(
             "links_in": links_in,
             "processed": processed,
             "skipped": skipped,
-            **{name: len(rows) for name, rows in tables.items()},
+            **stats.counts,
         },
         "exports": {
             name: [str(p.relative_to(root)) for p in paths] for name, paths in exports.items()

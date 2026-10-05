@@ -1,16 +1,22 @@
 """One run, end to end: read links, visit each store, write tables, export, report.
 
-Plain sequential orchestration (ADR 0003). Each store's rows are appended to the
-canonical tables as soon as it is done, so a crash loses at most one store.
+Plain orchestration (ADR 0003): a thread pool visits several stores at once while
+the fetcher keeps one request at a time per host (PRD AQ-11). Each store's rows are
+appended to the canonical tables as soon as it is done, so a crash or a stop loses
+at most the stores in progress, and the run can be resumed.
 """
 
+import json
 import logging
 import secrets
+import threading
 import time
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from . import __version__
 from .acquire import acquire
@@ -20,8 +26,8 @@ from .inputs.readers import InputError, InputRecord, read_file, read_text
 from .inputs.resolve import Resolution, ResolvedInput, resolve
 from .models import Acquired, Target
 from .outputs import export
-from .report import build_manifest, build_report, reconcile, write_manifest
-from .store import RunStore
+from .report import build_manifest, build_report, collect_stats, reconcile, write_manifest
+from .store import JsonlRows, RunStore
 from .summary import summary_row, write_summary_csv
 from .tables import ContactRow, InputRow, PageRow, ProductRow, Row, RunRow, StoreRow
 
@@ -31,6 +37,8 @@ Progress = Callable[[int, int, Acquired], None]
 
 REPORT_FILE = "report.md"  # written last: its presence marks a finished run
 CONFIG_FILE = "config.json"  # written first, so an unfinished run can still be described
+STOPPED_FILE = "stopped.json"  # present while a stopped run waits to be resumed
+SUMMARY_ROWS_FILE = "summary.jsonl"  # summary rows, kept as stores finish, for resume
 
 
 @dataclass(frozen=True)
@@ -44,6 +52,7 @@ class RunResult:
     skipped: int
     stores: int
     exports: dict[str, list[Path]]
+    stopped: bool = False
 
 
 def _now() -> datetime:
@@ -143,6 +152,7 @@ class PreparedRun:
 
     Nothing has been fetched yet. Splitting this from `execute` lets a caller (the
     web API) report input errors and the run id before the slow part starts.
+    `done` holds the stores an earlier, stopped attempt already finished.
     """
 
     config: RunConfig
@@ -150,6 +160,7 @@ class PreparedRun:
     started: datetime
     resolution: Resolution
     store: RunStore
+    done: set[str] = field(default_factory=set)
 
     @property
     def root(self) -> Path:
@@ -177,12 +188,55 @@ def prepare(config: RunConfig) -> PreparedRun:
     return PreparedRun(config, run_id, started, resolution, store)
 
 
+def resume(root: Path) -> PreparedRun:
+    """Pick up a stopped or interrupted run where it left off (PRD OP-03).
+
+    The input is read again and must give the same links; stores already in the
+    `stores` table are not visited again.
+    """
+    root = Path(root)
+    if (root / REPORT_FILE).exists():
+        raise InputError(f"Run {root.name} is already finished")
+    config = RunConfig.model_validate_json((root / CONFIG_FILE).read_text(encoding="utf-8"))
+    resolution = resolve(read_records(config.input), limit=config.limit)
+    store = RunStore(root)
+    recorded = [row["raw"] for row in store.rows("inputs")]
+    if recorded != [item.raw for item in resolution.inputs]:
+        raise InputError("The input changed since this run started; start a new run instead")
+    done = {row["domain"] for row in store.rows("stores")}
+    (root / STOPPED_FILE).unlink(missing_ok=True)
+    started = _started_of(root.name)
+    log.info("Resuming run %s: %d of %d stores done", root.name, len(done), len(resolution.targets))
+    return PreparedRun(config, root.name, started, resolution, store, done)
+
+
+def _started_of(run_id: str) -> datetime:
+    return datetime.strptime(run_id[:15], "%Y%m%dT%H%M%S").replace(tzinfo=UTC)
+
+
+def _safe_acquire(target: Target, fetcher: Fetcher) -> Acquired:
+    """A bug while reading one store is recorded on that store, never fatal to the run."""
+    try:
+        return acquire(target, fetcher)
+    except Exception as exc:
+        log.exception("Unexpected error while visiting %s", target.domain)
+        return Acquired(
+            domain=target.domain,
+            url=target.url,
+            status="error",
+            error=f"internal error: {type(exc).__name__}: {exc}"[:300],
+        )
+
+
 def execute(
     prepared: PreparedRun,
     fetcher: Fetcher | None = None,
     progress: Progress | None = None,
+    stop: threading.Event | None = None,
 ) -> RunResult:
-    """Visit every store, then write exports, the summary, the report and the manifest."""
+    """Visit every store, several at once, then write the exports, summary, manifest and,
+    last, the report. When `stop` is set, the stores in progress finish, nothing new
+    starts, and the run is left resumable."""
     config, run_id, store, resolution = (
         prepared.config,
         prepared.run_id,
@@ -197,29 +251,71 @@ def execute(
         retries=config.fetch.retries,
     )
     by_id = {item.input_id: item for item in resolution.inputs}
-    summary = []
+    summary_file = store.root / SUMMARY_ROWS_FILE
+    todo = [t for t in resolution.targets if t.domain not in prepared.done]
+    total, finished = len(resolution.targets), len(prepared.done)
 
-    total = len(resolution.targets)
-    for n, target in enumerate(resolution.targets, start=1):
-        got = acquire(target, fetcher)
+    def record(target: Target, got: Acquired) -> None:
         store.append(store_rows(run_id, target, got, _iso(_now())))
-        summary += [summary_row(by_id[i], got) for i in target.input_ids]
-        log.info(
-            "[%d/%d] %s: %s, %d products via %s",
-            n,
-            total,
-            got.domain,
-            got.status,
-            len(got.products),
-            got.source_used,
+        _append_json_lines(summary_file, [summary_row(by_id[i], got) for i in target.input_ids])
+
+    with ThreadPoolExecutor(max_workers=config.fetch.concurrency) as pool:
+        queue = iter(todo)
+        running: dict[Future[Acquired], Target] = {}
+
+        def fill() -> None:
+            while len(running) < config.fetch.concurrency and not (stop and stop.is_set()):
+                target = next(queue, None)
+                if target is None:
+                    return
+                running[pool.submit(_safe_acquire, target, fetcher)] = target
+
+        fill()
+        while running:
+            completed, _ = wait(running, return_when=FIRST_COMPLETED)
+            for future in completed:
+                target = running.pop(future)
+                got = future.result()
+                record(target, got)
+                finished += 1
+                log.info(
+                    "[%d/%d] %s: %s, %d products via %s",
+                    finished,
+                    total,
+                    got.domain,
+                    got.status,
+                    len(got.products),
+                    got.source_used,
+                )
+                if progress:
+                    progress(finished, total, got)
+            fill()
+
+    remaining = total - finished
+    if remaining:
+        _append_json_lines(
+            store.root / STOPPED_FILE, [{"remaining": remaining, "at": _iso(_now())}]
         )
-        if progress:
-            progress(n, total, got)
+        log.info("Run %s stopped with %d stores left; resume it to continue", run_id, remaining)
+        links_in, processed, skipped = reconcile(store.read("inputs"))
+        return RunResult(
+            run_id=run_id,
+            root=store.root,
+            report_path=store.root / REPORT_FILE,
+            summary_path=store.root / "summary.csv",
+            links_in=links_in,
+            processed=processed,
+            skipped=skipped,
+            stores=finished,
+            exports={},
+            stopped=True,
+        )
 
     visited = {i for t in resolution.targets for i in t.input_ids}
-    summary += [
-        summary_row(item, None) for item in resolution.inputs if item.input_id not in visited
-    ]
+    _append_json_lines(
+        summary_file,
+        [summary_row(item, None) for item in resolution.inputs if item.input_id not in visited],
+    )
 
     run_row = RunRow(
         run_id=run_id,
@@ -233,22 +329,23 @@ def execute(
     )
     store.append([run_row])
 
-    tables = store.load_tables()
-    rows_by_table = {t.name: t.rows for t in tables}
-    exports = export(tables, config.output.writers, store.root / "export")
-    summary_path = write_summary_csv(resolution.inputs, summary, store.root / "summary.csv")
+    exports = export(store.load_tables(), config.output.writers, store.root / "export")
+    summary_path = write_summary_csv(
+        resolution.inputs, list(JsonlRows(summary_file)), store.root / "summary.csv"
+    )
 
+    stats = collect_stats(store)
     duration = time.monotonic() - t0
     write_manifest(
-        build_manifest(run_row, rows_by_table, exports, store.root, duration),
+        build_manifest(run_row, stats, exports, store.root, duration),
         store.root / "manifest.json",
     )
     report_path = store.root / REPORT_FILE
     report_path.write_text(
-        build_report(run_row, rows_by_table, exports, store.root, duration), encoding="utf-8"
+        build_report(run_row, stats, exports, store.root, duration), encoding="utf-8"
     )
 
-    links_in, processed, skipped = reconcile(rows_by_table["inputs"])
+    links_in, processed, skipped = reconcile(stats.inputs)
     return RunResult(
         run_id=run_id,
         root=store.root,
@@ -260,6 +357,12 @@ def execute(
         stores=total,
         exports=exports,
     )
+
+
+def _append_json_lines(path: Path, rows: list[dict[str, Any]]) -> None:
+    if rows:
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
 
 
 def run(

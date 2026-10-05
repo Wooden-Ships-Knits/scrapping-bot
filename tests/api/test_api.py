@@ -44,7 +44,7 @@ def wait_until_finished(client, run_id, timeout=10.0):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         run = client.get(f"/api/runs/{run_id}").json()
-        if run["state"] in ("done", "failed", "interrupted"):
+        if run["state"] in ("done", "failed", "interrupted", "stopped"):
             return run
         time.sleep(0.02)
     raise AssertionError(f"run {run_id} did not finish")
@@ -250,3 +250,46 @@ def test_overview_totals(client):
     body = client.get("/api/overview").json()
     assert (body["runs"], body["runs_done"], body["stores"], body["products"]) == (1, 1, 2, 1)
     assert body["last_run"]["mode"] == "test"
+
+
+def test_stop_then_resume_from_the_interface(tmp_path):
+    import threading
+
+    gate = threading.Event()
+
+    class GatedFetcher(FakeFetcher):
+        def get(self, url):
+            gate.wait(5)
+            return super().get(url)
+
+    base = RunConfig.model_validate(
+        {
+            "output": {"runs_dir": tmp_path / "runs"},
+            "fetch": {"cache_dir": tmp_path / "c", "concurrency": 1},
+        }
+    )
+    app = create_app(
+        ApiSettings(base=base, poll_seconds=0.01), fetcher_factory=lambda: GatedFetcher(RESPONSES)
+    )
+    with TestClient(app) as c:
+        body = {
+            "source": {"text": LINKS},
+            "writers": ["json"],
+            "test_mode": False,
+            "skip_test_run": True,
+        }
+        run_id = c.post("/api/runs", json=body).json()["run_id"]
+        assert c.post(f"/api/runs/{run_id}/stop").status_code == 202
+        gate.set()
+        stopped = wait_until_finished(c, run_id)
+        assert stopped["state"] == "stopped"
+        assert stopped["stores_done"] < stopped["stores_total"]
+        assert c.post(f"/api/runs/{run_id}/stop").status_code == 409
+
+        assert c.post(f"/api/runs/{run_id}/resume").status_code == 202
+        done = wait_until_finished(c, run_id)
+        assert done["state"] == "done"
+        assert done["stores_done"] == done["stores_total"] == 3
+        assert c.post(f"/api/runs/{run_id}/resume").status_code == 409, (
+            "a finished run cannot resume"
+        )

@@ -270,3 +270,46 @@ def test_export_survives_one_failing_writer(tmp_path, monkeypatch):
     written = export(sample_tables(), ["csv", "json"], tmp_path)
     assert written["csv"] == []
     assert written["json"]
+
+
+def test_excel_splits_a_table_across_sheets_at_the_row_limit(tmp_path, monkeypatch):
+    writer = get_writer("xlsx")
+    monkeypatch.setattr(writer, "max_rows", 2)
+    rows = [
+        ContactRow(
+            run_id=RUN, domain="a.com", type="email", value=f"{i}@a.com", source_url="u"
+        ).model_dump(mode="json")
+        for i in range(5)
+    ]
+    table = Table(name="contacts", columns=columns(ContactRow), rows=rows)
+    writer.write([table], tmp_path)
+    wb = load_workbook(tmp_path / "tables.xlsx", read_only=True)
+    assert wb.sheetnames == ["contacts", "contacts_2", "contacts_3"]
+    assert sum(len(list(ws.iter_rows())) - 1 for ws in wb.worksheets) == 5
+
+
+@pytest.mark.parametrize("fmt", available_writers())
+def test_writers_stream_rows_from_a_one_shot_iterator(fmt, tmp_path):
+    """A run's tables are read from disk as they are written; nothing needs a list."""
+    tables = [
+        Table(name=t.name, columns=t.columns, rows=iter(list(t.rows))) for t in sample_tables()
+    ]
+    get_writer(fmt).write(tables, tmp_path)
+    for table in sample_tables():
+        assert read_back(fmt, tmp_path, table) == list(table.rows), f"{fmt}: {table.name}"
+
+
+def test_parquet_and_duckdb_write_large_tables_in_batches(tmp_path, monkeypatch):
+    from scrapebot.outputs import base
+
+    monkeypatch.setattr(base, "BATCH_ROWS", 3)
+    rows = [
+        ContactRow(
+            run_id=RUN, domain="a.com", type="email", value=f"{i}@a.com", source_url="u"
+        ).model_dump(mode="json")
+        for i in range(10)
+    ]
+    table = Table(name="contacts", columns=columns(ContactRow), rows=rows)
+    for fmt in ("parquet", "duckdb", "sqlite"):
+        get_writer(fmt).write([table], tmp_path)
+        assert read_back(fmt, tmp_path, table) == rows, fmt

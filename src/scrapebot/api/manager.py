@@ -8,7 +8,7 @@ import logging
 import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from ..fetch import Fetcher
 from ..pipeline import PreparedRun, execute
@@ -24,6 +24,7 @@ class LiveRun:
     run_id: str
     state: RunState = "queued"
     error: str = ""
+    stop: threading.Event = field(default_factory=threading.Event)
 
 
 class RunManager:
@@ -41,15 +42,26 @@ class RunManager:
         return live
 
     def _execute(self, prepared: PreparedRun, live: LiveRun) -> None:
+        if live.stop.is_set():  # stopped while still queued
+            live.state = "stopped"
+            return
         live.state = "running"
         try:
             fetcher = self._fetcher_factory() if self._fetcher_factory else None
-            execute(prepared, fetcher=fetcher)
-            live.state = "done"
+            result = execute(prepared, fetcher=fetcher, stop=live.stop)
+            live.state = "stopped" if result.stopped else "done"
         except Exception as exc:  # a failed run must be visible, never crash the server
             log.exception("Run %s failed", live.run_id)
             live.error = f"{type(exc).__name__}: {exc}"
             live.state = "failed"
+
+    def stop(self, run_id: str) -> bool:
+        """Ask a queued or running run to stop after the stores in progress."""
+        live = self.get(run_id)
+        if live is None or live.state not in ("queued", "running"):
+            return False
+        live.stop.set()
+        return True
 
     def get(self, run_id: str) -> LiveRun | None:
         with self._lock:

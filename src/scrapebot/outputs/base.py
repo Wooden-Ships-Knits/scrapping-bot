@@ -1,7 +1,14 @@
-"""What every writer receives, and the conversions they share."""
+"""What every writer receives, and the conversions they share.
+
+Rows are streamed: a table's `rows` is any re-iterable source (a list in tests,
+the canonical JSONL file in a run), and writers never hold a whole table in
+memory, so a 1,000-store run with long pages and full feed objects still exports.
+"""
 
 import json
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
+from itertools import islice
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -10,12 +17,14 @@ from ..tables import Column
 if TYPE_CHECKING:
     import pyarrow as pa
 
+BATCH_ROWS = 5000
+
 
 @dataclass(frozen=True)
 class Table:
     name: str
     columns: list[Column]
-    rows: list[dict[str, Any]]
+    rows: Iterable[dict[str, Any]]  # iterated once per writer
 
 
 class Writer(Protocol):
@@ -33,12 +42,18 @@ def flat_value(value: Any, column: Column) -> Any:
     return value
 
 
-def flat_rows(table: Table) -> list[list[Any]]:
-    return [[flat_value(row.get(c.name), c) for c in table.columns] for row in table.rows]
+def flat_rows(table: Table) -> Iterator[list[Any]]:
+    for row in table.rows:
+        yield [flat_value(row.get(c.name), c) for c in table.columns]
 
 
-def to_arrow(table: Table) -> "pa.Table":
-    """An Arrow table with a fixed schema, so empty tables keep their column types."""
+def batches(rows: Iterable[Any], size: int = BATCH_ROWS) -> Iterator[list[Any]]:
+    it = iter(rows)
+    while batch := list(islice(it, size)):
+        yield batch
+
+
+def arrow_schema(table: Table) -> "pa.Schema":
     import pyarrow as pa
 
     types = {
@@ -48,6 +63,23 @@ def to_arrow(table: Table) -> "pa.Table":
         "bool": pa.bool_(),
         "json": pa.string(),
     }
-    schema = pa.schema([pa.field(c.name, types[c.kind]) for c in table.columns])
-    data = {c.name: [flat_value(row.get(c.name), c) for row in table.rows] for c in table.columns}
-    return pa.Table.from_pydict(data, schema=schema)
+    return pa.schema([pa.field(c.name, types[c.kind]) for c in table.columns])
+
+
+def arrow_batches(table: Table) -> Iterator["pa.Table"]:
+    """The table as Arrow tables of at most BATCH_ROWS rows, with a fixed schema so
+    empty tables keep their column types."""
+    import pyarrow as pa
+
+    schema = arrow_schema(table)
+    for batch in batches(table.rows):
+        data = {c.name: [flat_value(row.get(c.name), c) for row in batch] for c in table.columns}
+        yield pa.Table.from_pydict(data, schema=schema)
+
+
+def to_arrow(table: Table) -> "pa.Table":
+    """The whole table as one Arrow table. For small tables and tests."""
+    import pyarrow as pa
+
+    parts = list(arrow_batches(table))
+    return pa.concat_tables(parts) if parts else arrow_schema(table).empty_table()

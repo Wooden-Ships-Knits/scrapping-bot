@@ -7,7 +7,7 @@ never touched. Regenerating a run's export rebuilds that run's file.
 import sqlite3
 from pathlib import Path
 
-from .base import Table, flat_rows, to_arrow
+from .base import Table, arrow_batches, arrow_schema, batches, flat_rows
 
 _SQLITE_TYPES = {
     "str": "TEXT",
@@ -35,9 +35,9 @@ class SqliteWriter:
                 cols = ", ".join(f"{_quote(c.name)} {_SQLITE_TYPES[c.kind]}" for c in table.columns)
                 con.execute(f"CREATE TABLE {_quote(table.name)} ({cols})")
                 marks = ", ".join("?" for _ in table.columns)
-                con.executemany(
-                    f"INSERT INTO {_quote(table.name)} VALUES ({marks})", flat_rows(table)
-                )
+                insert = f"INSERT INTO {_quote(table.name)} VALUES ({marks})"
+                for batch in batches(flat_rows(table)):
+                    con.executemany(insert, batch)
                 if any(c.name == "domain" for c in table.columns):
                     con.execute(
                         f"CREATE INDEX {_quote(f'idx_{table.name}_domain')} "
@@ -61,9 +61,13 @@ class DuckdbWriter:
         con = duckdb.connect(str(path))
         try:
             for table in tables:
-                con.register("incoming", to_arrow(table))
+                con.register("incoming", arrow_schema(table).empty_table())
                 con.execute(f"CREATE TABLE {_quote(table.name)} AS SELECT * FROM incoming")
                 con.unregister("incoming")
+                for batch in arrow_batches(table):
+                    con.register("incoming", batch)
+                    con.execute(f"INSERT INTO {_quote(table.name)} SELECT * FROM incoming")
+                    con.unregister("incoming")
         finally:
             con.close()
         return [path]

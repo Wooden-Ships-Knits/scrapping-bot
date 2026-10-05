@@ -16,7 +16,7 @@ export type Rows = Schemas["RowsOut"];
 export type Overview = Schemas["OverviewOut"];
 export type PreviewTable = "stores" | "products" | "contacts" | "pages" | "inputs";
 
-export const FINISHED: readonly RunState[] = ["done", "failed", "interrupted"];
+export const FINISHED: readonly RunState[] = ["done", "failed", "interrupted", "stopped"];
 
 export class ApiError extends Error {
   constructor(
@@ -66,6 +66,8 @@ export const api = {
   startRun: (body: RunRequest) => request<Run>("/api/runs", json(body)),
   startFullRun: (testRunId: string) =>
     request<Run>(`/api/runs/${testRunId}/full`, { method: "POST" }),
+  stopRun: (runId: string) => request<Run>(`/api/runs/${runId}/stop`, { method: "POST" }),
+  resumeRun: (runId: string) => request<Run>(`/api/runs/${runId}/resume`, { method: "POST" }),
   runs: () => request<RunListItem[]>("/api/runs"),
   run: (runId: string) => request<Run>(`/api/runs/${runId}`),
   overview: () => request<Overview>("/api/overview"),

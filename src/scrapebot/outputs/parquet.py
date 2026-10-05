@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from .base import Table, to_arrow
+from .base import Table, arrow_batches, arrow_schema
 
 
 class ParquetWriter:
@@ -16,6 +16,8 @@ class ParquetWriter:
         paths = []
         for table in tables:
             path = out / f"{table.name}.parquet"
-            pq.write_table(to_arrow(table), path)
+            with pq.ParquetWriter(path, arrow_schema(table)) as writer:
+                for batch in arrow_batches(table):
+                    writer.write_table(batch)
             paths.append(path)
         return paths

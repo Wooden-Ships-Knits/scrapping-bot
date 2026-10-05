@@ -19,7 +19,7 @@ from ..config import InputConfig, RunConfig
 from ..inputs.readers import SUPPORTED_SUFFIXES, InputError
 from ..inputs.resolve import DUPLICATE, resolve
 from ..outputs import available_writers
-from ..pipeline import load_records, prepare
+from ..pipeline import load_records, prepare, resume
 from . import library
 from .manager import FetcherFactory, RunManager
 from .schemas import (
@@ -40,7 +40,7 @@ from .schemas import (
 UPLOAD_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 EXAMPLES = 8
-FINISHED = ("done", "failed", "interrupted")
+FINISHED = ("done", "failed", "interrupted", "stopped")
 
 
 class ApiSettings(BaseModel):
@@ -195,6 +195,27 @@ def create_app(
             )
         cfg = RunConfig.model_validate_json((root / "config.json").read_text(encoding="utf-8"))
         return start(cfg.model_copy(update={"limit": None}))
+
+    @app.post("/api/runs/{run_id}/stop", status_code=202)
+    def stop_run(run_id: str) -> RunOut:
+        """Finish the stores in progress, start no new ones; the run stays resumable."""
+        root_or_404(run_id)
+        if not manager.stop(run_id):
+            raise ApiError(409, "not_running", "Run ini tidak sedang berjalan.")
+        return load(run_id)
+
+    @app.post("/api/runs/{run_id}/resume", status_code=202)
+    def resume_run(run_id: str) -> RunOut:
+        """Continue a stopped or interrupted run without revisiting finished stores."""
+        root = root_or_404(run_id)
+        if load(run_id).state not in ("stopped", "interrupted"):
+            raise ApiError(409, "not_resumable", "Hanya run yang berhenti yang bisa dilanjutkan.")
+        try:
+            prepared = resume(root)
+        except InputError as exc:
+            raise ApiError(422, "bad_input", str(exc)) from exc
+        manager.submit(prepared)
+        return load(run_id)
 
     @app.get("/api/runs")
     def runs() -> list[RunListItem]:

@@ -4,7 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-RunState = Literal["queued", "running", "done", "failed", "interrupted"]
+RunState = Literal["queued", "running", "stopped", "done", "failed", "interrupted"]
 
 
 class _In(BaseModel):

@@ -13,7 +13,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, Literal
 
-from ..pipeline import CONFIG_FILE, REPORT_FILE
+from ..pipeline import CONFIG_FILE, REPORT_FILE, STOPPED_FILE
 from .schemas import DownloadOut, RunListItem, RunOut, RunState, StoreOut
 
 RUN_ID_RE = re.compile(r"^\d{8}T\d{9}Z-[0-9a-f]{6}$")  # 20261005T085253123Z-56162b
@@ -98,7 +98,9 @@ def _run_roots(runs_dir: Path) -> list[Path]:
 def _state(root: Path, live_state: RunState | None) -> RunState:
     if is_finished(root):
         return "done"
-    return live_state or "interrupted"
+    if live_state in ("queued", "running", "failed"):
+        return live_state
+    return "stopped" if (root / STOPPED_FILE).exists() else live_state or "interrupted"
 
 
 def downloads(root: Path) -> list[DownloadOut]:

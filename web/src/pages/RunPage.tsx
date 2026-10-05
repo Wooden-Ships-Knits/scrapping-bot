@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Download, Play } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, Play, RotateCw, Square } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { api, ApiError, type PreviewTable, type Rows, type Run } from "../api/client";
@@ -30,7 +30,8 @@ const RENDERERS: Partial<Record<PreviewTable, Renderers>> = {
 };
 
 export function RunPage({ runId }: { runId: string }) {
-  const { run, error } = useRun(runId);
+  const [nonce, setNonce] = useState(0); // bumped to reconnect after a resume
+  const { run, error } = useRun(runId, nonce);
   if (!run) {
     return (
       <div className="page">
@@ -38,10 +39,18 @@ export function RunPage({ runId }: { runId: string }) {
       </div>
     );
   }
-  return <RunDetail run={run} connectionError={error} />;
+  return <RunDetail run={run} connectionError={error} onRestart={() => setNonce((n) => n + 1)} />;
 }
 
-export function RunDetail({ run, connectionError }: { run: Run; connectionError?: string }) {
+export function RunDetail({
+  run,
+  connectionError,
+  onRestart,
+}: {
+  run: Run;
+  connectionError?: string;
+  onRestart?: () => void;
+}) {
   const finished = run.state === "done";
   const percent = run.stores_total ? Math.round((100 * run.stores_done) / run.stores_total) : 100;
   const balanced = run.links_in === run.processed + run.skipped;
@@ -66,15 +75,14 @@ export function RunDetail({ run, connectionError }: { run: Run; connectionError?
           Run gagal: {run.error || "lihat log server"}.
         </div>
       )}
-      {run.state === "interrupted" && (
-        <div className="notice warn">
-          Run terhenti sebelum selesai (server dimatikan?). Toko yang sudah selesai tetap tersimpan di folder run.
-        </div>
+      {(run.state === "interrupted" || run.state === "stopped") && (
+        <ResumeNotice run={run} onRestart={onRestart} />
       )}
 
       <section className="card">
         <div className="card-body">
           <div className="progress-head mono">
+            {(run.state === "running" || run.state === "queued") && <StopButton run={run} />}
             <span>
               Toko dikunjungi: <strong>{formatNumber(run.stores_done)}</strong> dari {formatNumber(run.stores_total)}
             </span>
@@ -128,6 +136,53 @@ export function RunDetail({ run, connectionError }: { run: Run; connectionError?
       {finished && run.mode === "test" && <ContinueFullRun run={run} />}
 
       <ResultCard run={run} />
+    </div>
+  );
+}
+
+function StopButton({ run }: { run: Run }) {
+  const [asked, setAsked] = useState(false);
+  return (
+    <button
+      type="button"
+      className="button ghost small-button"
+      disabled={asked}
+      onClick={() => {
+        setAsked(true);
+        api.stopRun(run.run_id).catch(() => setAsked(false));
+      }}
+    >
+      <Square size={12} /> {asked ? "MENGHENTIKAN…" : "STOP"}
+    </button>
+  );
+}
+
+function ResumeNotice({ run, onRestart }: { run: Run; onRestart?: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function resume() {
+    setBusy(true);
+    setError("");
+    try {
+      await api.resumeRun(run.run_id);
+      onRestart?.();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Server tidak bisa dihubungi.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="notice warn">
+      <span>
+        {run.state === "stopped" ? "Run dihentikan" : "Run terhenti sebelum selesai (server dimatikan?)"}:{" "}
+        {formatNumber(run.stores_done)} dari {formatNumber(run.stores_total)} toko selesai dan tersimpan.
+      </span>
+      <span className="spacer" />
+      <button type="button" className="button primary" onClick={resume} disabled={busy}>
+        <RotateCw size={14} /> {busy ? "MELANJUTKAN…" : "LANJUTKAN"}
+      </button>
+      {error && <span role="alert">{error}</span>}
     </div>
   );
 }
