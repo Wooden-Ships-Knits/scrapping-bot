@@ -1,0 +1,70 @@
+[project]
+name = "scrapebot"
+version = "2.0.0.dev0"
+description = "Collects raw product, price and contact data from store websites in bulk."
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "beautifulsoup4>=4.12",
+    "lxml>=5.0",
+    "requests>=2.32",
+]
+
+[project.scripts]
+scrapebot = "scrapebot.cli:main"
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.0",
+    "pyright>=1.1.400",
+    "pytest>=8.3",
+    "ruff>=0.12",
+]
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/scrapebot"]
+
+# ---------------------------------------------------------------------------
+# Tooling
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+extend-exclude = ["docs"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "B",        # bugbear
+    "UP",       # pyupgrade
+    "SIM",      # simplify
+    "RUF",      # ruff-specific
+    "PT",       # pytest style
+]
+ignore = [
+    "RUF001",   # ambiguous unicode in strings: real store copy uses curly quotes
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["E501"]  # fixture HTML and long assertion messages
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.11"
+typeCheckingMode = "basic"
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-q", "--strict-markers"]
+markers = [
+    "network: touches the real network (never run in CI)",
+]

@@ -3,15 +3,26 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+build/
+dist/
+*.egg-info/
+
+# Tool caches
 .pytest_cache/
+.ruff_cache/
+.mypy_cache/
 
-# Scraper artefacts — regenerable, and large
-data/.cache/
-data/raw/
-data/out/
+# Secrets
+.env
+.env.*
+!.env.example
 
-# Prospect and account data — customer records, never commit
-data/*.csv
+# Run data: inputs hold prospect and account records, outputs are regenerable.
+# Never commit either. Keep only the README that explains the folder.
+data/*
+!data/README.md
 
-# macOS
+# Editors and OS
+.idea/
+.vscode/
 .DS_Store
