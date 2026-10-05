@@ -130,6 +130,61 @@ def download_path(root: Path, key: str) -> Path | None:
     return archive
 
 
+PREVIEW_MAX_CHARS = 600
+PREVIEW_TABLES = ("stores", "products", "contacts", "pages", "inputs")
+
+
+def _shorten(value: Any) -> tuple[Any, bool]:
+    if isinstance(value, str) and len(value) > PREVIEW_MAX_CHARS:
+        return value[:PREVIEW_MAX_CHARS] + "…", True
+    return value, False
+
+
+def read_rows(
+    root: Path, table: str, offset: int, limit: int, include_raw: bool = False
+) -> tuple[list[str], int, list[dict[str, Any]], bool]:
+    """(columns, total, rows, truncated) for one page of a table, streamed from JSONL.
+
+    Long text is shortened and the bulky `raw` source object is left out unless asked
+    for: the preview is for looking, the downloads hold everything.
+    """
+    from ..tables import TABLES
+
+    columns = [c for c in TABLES[table].model_fields if include_raw or c != "raw"]
+    rows: list[dict[str, Any]] = []
+    total, truncated = 0, False
+    path = root / "tables" / f"{table}.jsonl"
+    if path.exists():
+        with path.open(encoding="utf-8") as fh:
+            for line in fh:
+                if not line.strip():
+                    continue
+                if offset <= total < offset + limit:
+                    try:
+                        row = json.loads(line)
+                    except ValueError:
+                        continue
+                    shown = {}
+                    for key in columns:
+                        shown[key], cut = _shorten(row.get(key))
+                        truncated |= cut
+                    rows.append(shown)
+                total += 1
+    return columns, total, rows, truncated
+
+
+def cli_command(config: dict[str, Any]) -> str:
+    """The command line that runs the same settings."""
+    source = config["input"].get("source")
+    parts = ["uv run scrapebot run", f'"{source}"' if source else "links.txt"]
+    if config.get("limit"):
+        parts.append(f"--limit {config['limit']}")
+    parts.append("-f " + ",".join(config["output"]["writers"]))
+    if config["input"].get("url_column", "auto") != "auto":
+        parts.append(f"--url-column {config['input']['url_column']}")
+    return " ".join(parts)
+
+
 def load_run(
     root: Path,
     live_state: RunState | None = None,
@@ -169,7 +224,18 @@ def load_run(
         else [],
         downloads=downloads(root) if is_finished(root) else [],
         error=error,
+        config=_public_config(config),
+        cli=cli_command(config),
     )
+
+
+def _public_config(config: dict[str, Any]) -> dict[str, Any]:
+    """The config as shown in the interface: pasted text is summarised, not repeated."""
+    shown = json.loads(json.dumps(config))
+    text = shown["input"].get("text")
+    if text:
+        shown["input"]["text"] = f"{len(text)} characters of pasted links"
+    return shown
 
 
 def _store_fields(stores: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -199,6 +265,7 @@ def list_runs(runs_dir: Path, live: dict[str, RunState]) -> list[RunListItem]:
                 stores_total=run.stores_total,
                 stores_done=run.stores_done,
                 products=run.products,
+                contacts=run.contacts,
             )
         )
     return items

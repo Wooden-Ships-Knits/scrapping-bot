@@ -2,16 +2,22 @@ import { useEffect, useState } from "react";
 
 // Hash routes keep the app a static bundle that any server can host:
 //   #/            new run
+//   #/overview    overview
 //   #/runs        history
 //   #/runs/<id>   one run
 
-export type Route = { page: "new" } | { page: "history" } | { page: "run"; runId: string };
+export type Route =
+  | { page: "new" }
+  | { page: "overview" }
+  | { page: "history" }
+  | { page: "run"; runId: string };
 
 export function parseRoute(hash: string): Route {
   const path = hash.replace(/^#/, "") || "/";
   const run = path.match(/^\/runs\/([\w-]+)$/);
   if (run?.[1]) return { page: "run", runId: run[1] };
   if (path === "/runs") return { page: "history" };
+  if (path === "/overview") return { page: "overview" };
   return { page: "new" };
 }
 

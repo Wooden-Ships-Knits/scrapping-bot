@@ -1,6 +1,6 @@
 """Request and response bodies. The web app's TypeScript types are generated from these."""
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -106,6 +106,8 @@ class RunOut(BaseModel):
     stores: list[StoreOut]
     downloads: list[DownloadOut]
     error: str
+    config: dict[str, Any]  # the run's settings, never secrets
+    cli: str  # the equivalent command line
 
 
 class RunListItem(BaseModel):
@@ -118,6 +120,7 @@ class RunListItem(BaseModel):
     stores_total: int
     stores_done: int
     products: int
+    contacts: int
 
 
 class OptionsOut(BaseModel):
@@ -127,6 +130,26 @@ class OptionsOut(BaseModel):
     max_links: int
     default_test_limit: int
     max_upload_mb: int
+
+
+class RowsOut(BaseModel):
+    """A page of one table's rows, for previewing data in the interface."""
+
+    table: str
+    columns: list[str]
+    total: int
+    offset: int
+    rows: list[dict[str, Any]]
+    truncated_fields: bool  # long values were shortened for the preview
+
+
+class OverviewOut(BaseModel):
+    runs: int
+    runs_done: int
+    stores: int
+    products: int
+    contacts: int
+    last_run: RunListItem | None
 
 
 class ErrorOut(BaseModel):

@@ -203,3 +203,50 @@ def test_a_run_survives_a_server_restart(client, tmp_path):
         again = fresh.get(f"/api/runs/{run['run_id']}").json()
     assert again["state"] == "done"
     assert again["stores_done"] == run["stores_done"]
+
+
+def test_rows_preview_pages_through_a_table_without_raw_objects(client):
+    run = wait_until_finished(
+        client, start(client, test_mode=False, skip_test_run=True).json()["run_id"]
+    )
+    body = client.get(f"/api/runs/{run['run_id']}/rows/products?limit=1").json()
+    assert body["total"] == 1
+    assert body["rows"][0]["title"] == "Cher Sweater"
+    assert "raw" not in body["columns"], "the bulky source object is left out of the preview"
+    stores = client.get(f"/api/runs/{run['run_id']}/rows/stores?offset=1&limit=1").json()
+    assert (stores["total"], len(stores["rows"]), stores["offset"]) == (3, 1, 1)
+    assert client.get(f"/api/runs/{run['run_id']}/rows/runs").status_code == 404
+
+
+def test_rows_preview_shortens_long_text(client, tmp_path):
+    long_page = "<html><body><p>" + "word " * 2000 + "</p></body></html>"
+    settings = ApiSettings(
+        base=RunConfig.model_validate({"output": {"runs_dir": tmp_path / "long"}}),
+        poll_seconds=0.01,
+    )
+    app = create_app(
+        settings, fetcher_factory=lambda: FakeFetcher({"https://long.com": (200, long_page)})
+    )
+    with TestClient(app) as c:
+        run_id = c.post(
+            "/api/runs", json={"source": {"text": "long.com"}, "writers": ["json"]}
+        ).json()["run_id"]
+        wait_until_finished(c, run_id)
+        body = c.get(f"/api/runs/{run_id}/rows/pages").json()
+    assert body["truncated_fields"] is True
+    assert body["rows"][0]["text"].endswith("…")
+
+
+def test_run_detail_carries_params_and_the_equivalent_cli(client):
+    run = wait_until_finished(client, start(client).json()["run_id"])
+    assert run["cli"] == "uv run scrapebot run links.txt --limit 2 -f xlsx,csv"
+    assert run["config"]["input"]["text"].endswith("characters of pasted links"), (
+        "pasted text is summarised"
+    )
+
+
+def test_overview_totals(client):
+    wait_until_finished(client, start(client).json()["run_id"])
+    body = client.get("/api/overview").json()
+    assert (body["runs"], body["runs_done"], body["stores"], body["products"]) == (1, 1, 2, 1)
+    assert body["last_run"]["mode"] == "test"

@@ -12,6 +12,9 @@ export type Store = Schemas["StoreOut"];
 export type Source = Schemas["SourceIn"];
 export type RunRequest = Schemas["RunIn"];
 export type Upload = Schemas["UploadOut"];
+export type Rows = Schemas["RowsOut"];
+export type Overview = Schemas["OverviewOut"];
+export type PreviewTable = "stores" | "products" | "contacts" | "pages" | "inputs";
 
 export const FINISHED: readonly RunState[] = ["done", "failed", "interrupted"];
 
@@ -65,6 +68,9 @@ export const api = {
     request<Run>(`/api/runs/${testRunId}/full`, { method: "POST" }),
   runs: () => request<RunListItem[]>("/api/runs"),
   run: (runId: string) => request<Run>(`/api/runs/${runId}`),
+  overview: () => request<Overview>("/api/overview"),
+  rows: (runId: string, table: PreviewTable, offset = 0, limit = 50) =>
+    request<Rows>(`/api/runs/${runId}/rows/${table}?offset=${offset}&limit=${limit}`),
   eventsUrl: (runId: string) => `/api/runs/${runId}/events`,
   downloadUrl: (runId: string, key: string) => `/api/runs/${runId}/download/${key}`,
 };

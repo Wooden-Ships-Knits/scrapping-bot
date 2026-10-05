@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { NewRun } from "./NewRun";
+import { Scrape } from "./Scrape";
 
 const OPTIONS = {
   writers: ["json", "csv", "xlsx", "parquet"],
@@ -19,7 +19,7 @@ function preview(overrides = {}) {
     stores: 2,
     duplicates: 0,
     skipped: { social_only: 1 },
-    skipped_examples: [],
+    skipped_examples: [{ raw: "https://instagram.com/x", reason: "social_only" }],
     store_examples: ["a.com", "b.com"],
     max_links: 1000,
     too_many: false,
@@ -28,8 +28,7 @@ function preview(overrides = {}) {
   };
 }
 
-const reply = (body: unknown, status = 200) =>
-  Promise.resolve(new Response(JSON.stringify(body), { status }));
+const reply = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status }));
 
 let calls: { url: string; body: unknown }[];
 
@@ -55,25 +54,27 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("NewRun", () => {
+describe("Scrape", () => {
   it("previews pasted links, then starts a test run", async () => {
     mockApi();
     const user = userEvent.setup();
-    render(<NewRun />);
+    render(<Scrape />);
 
-    const run = await screen.findByRole("button", { name: "Jalankan uji (2 toko)" });
+    const run = await screen.findByRole("button", { name: "START RUN UJI" });
     expect(run).toBeDisabled();
 
     await user.type(screen.getByRole("textbox", { name: "Tautan toko" }), "a.com b.com");
-    expect(await screen.findByTestId("preview")).toHaveTextContent("Terdeteksi 3 tautan · 2 toko unik");
-    expect(screen.getByTestId("preview")).toHaveTextContent("Media sosial 1");
+    const card = await screen.findByTestId("preview");
+    expect(card).toHaveTextContent("3 tautan");
+    expect(card).toHaveTextContent('"https://a.com"');
+    expect(card).toHaveTextContent("dilewati: Media sosial");
+    expect(screen.getByTestId("link-count")).toHaveTextContent("3 tautan · 2 toko");
 
     await waitFor(() => expect(run).toBeEnabled());
     await user.click(run);
 
     await waitFor(() => expect(window.location.hash).toBe("#/runs/R1"));
-    const started = calls.find((c) => c.url === "/api/runs");
-    expect(started?.body).toEqual({
+    expect(calls.find((c) => c.url === "/api/runs")?.body).toEqual({
       source: { text: "a.com b.com" },
       url_column: "auto",
       writers: ["xlsx", "csv"],
@@ -86,11 +87,12 @@ describe("NewRun", () => {
   it("asks for confirmation before a full run of an untested list", async () => {
     mockApi(preview({ tested: false }));
     const user = userEvent.setup();
-    render(<NewRun />);
+    render(<Scrape />);
     await user.type(await screen.findByRole("textbox", { name: "Tautan toko" }), "a.com");
+    await user.click(screen.getByRole("button", { name: "Mode uji" }));
     await user.click(screen.getByRole("checkbox", { name: "Jalankan beberapa toko pertama dulu" }));
 
-    const run = screen.getByRole("button", { name: "Jalankan semua" });
+    const run = screen.getByRole("button", { name: "START RUN" });
     expect(await screen.findByText(/belum pernah diuji/)).toBeInTheDocument();
     expect(run).toBeDisabled();
     await user.click(screen.getByRole("checkbox", { name: "Saya sengaja melewati mode uji" }));
@@ -100,24 +102,32 @@ describe("NewRun", () => {
   it("blocks lists over the limit and needs at least one format", async () => {
     mockApi(preview({ too_many: true, links: 1500 }));
     const user = userEvent.setup();
-    render(<NewRun />);
+    render(<Scrape />);
     await user.type(await screen.findByRole("textbox", { name: "Tautan toko" }), "a.com");
     expect(await screen.findByText(/Terlalu banyak/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Jalankan uji/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /START RUN/ })).toBeDisabled();
 
+    await user.click(screen.getByRole("button", { name: "Format keluaran" }));
     await user.click(screen.getByRole("checkbox", { name: "Excel" }));
     await user.click(screen.getByRole("checkbox", { name: "CSV" }));
-    expect(screen.getByText("Pilih minimal satu format.")).toBeInTheDocument();
+    expect(screen.getByText("Pilih minimal satu format keluaran.")).toBeInTheDocument();
+  });
+
+  it("shows the equivalent command line", async () => {
+    mockApi();
+    const user = userEvent.setup();
+    render(<Scrape />);
+    await screen.findByRole("button", { name: "START RUN UJI" });
+    await user.click(screen.getByRole("button", { name: /GET CLI/ }));
+    expect(screen.getByText("uv run scrapebot run links.txt --limit 2 -f xlsx,csv")).toBeInTheDocument();
   });
 
   it("shows the server's explanation when a run cannot start", async () => {
-    mockApi(preview(), () =>
-      reply({ detail: { code: "bad_input", message: "The input holds no links" } }, 422),
-    );
+    mockApi(preview(), () => reply({ detail: { code: "bad_input", message: "The input holds no links" } }, 422));
     const user = userEvent.setup();
-    render(<NewRun />);
+    render(<Scrape />);
     await user.type(await screen.findByRole("textbox", { name: "Tautan toko" }), "a.com");
-    const run = screen.getByRole("button", { name: /Jalankan uji/ });
+    const run = screen.getByRole("button", { name: /START RUN/ });
     await waitFor(() => expect(run).toBeEnabled());
     await user.click(run);
     expect(await screen.findByRole("alert")).toHaveTextContent("The input holds no links");

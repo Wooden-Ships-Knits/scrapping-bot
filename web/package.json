@@ -12,6 +12,7 @@
     "gen:api": "cd .. && uv run python -m scrapebot.api.openapi > web/openapi.json && cd web && openapi-typescript openapi.json -o src/api/schema.d.ts"
   },
   "dependencies": {
+    "lucide-react": "^1.52.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },

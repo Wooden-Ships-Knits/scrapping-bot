@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Annotated
 
 from anyio import to_thread
-from fastapi import FastAPI, File, Request, UploadFile
+from fastapi import FastAPI, File, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -25,8 +25,10 @@ from .manager import FetcherFactory, RunManager
 from .schemas import (
     ErrorOut,
     OptionsOut,
+    OverviewOut,
     PreviewIn,
     PreviewOut,
+    RowsOut,
     RunIn,
     RunListItem,
     RunOut,
@@ -223,6 +225,39 @@ def create_app(
             stream(),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    @app.get("/api/overview")
+    def overview() -> OverviewOut:
+        items = library.list_runs(runs_dir, manager.states())
+        return OverviewOut(
+            runs=len(items),
+            runs_done=sum(1 for r in items if r.state == "done"),
+            stores=sum(r.stores_done for r in items),
+            products=sum(r.products for r in items),
+            contacts=sum(r.contacts for r in items),
+            last_run=items[0] if items else None,
+        )
+
+    @app.get("/api/runs/{run_id}/rows/{table}")
+    def rows(
+        run_id: str,
+        table: str,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=200)] = 50,
+        include_raw: bool = False,
+    ) -> RowsOut:
+        root = root_or_404(run_id)
+        if table not in library.PREVIEW_TABLES:
+            raise ApiError(404, "table_not_found", f"Tabel {table} tidak bisa dipratinjau.")
+        columns, total, page, truncated = library.read_rows(root, table, offset, limit, include_raw)
+        return RowsOut(
+            table=table,
+            columns=columns,
+            total=total,
+            offset=offset,
+            rows=page,
+            truncated_fields=truncated,
         )
 
     @app.get("/api/runs/{run_id}/download/{key}")

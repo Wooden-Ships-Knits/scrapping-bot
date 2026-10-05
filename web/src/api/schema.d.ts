@@ -21,6 +21,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Overview */
+        get: operations["overview_api_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/preview": {
         parameters: {
             query?: never;
@@ -130,6 +147,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{run_id}/rows/{table}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Rows */
+        get: operations["rows_api_runs__run_id__rows__table__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/uploads": {
         parameters: {
             query?: never;
@@ -185,6 +219,20 @@ export interface components {
             /** Writers */
             writers: string[];
         };
+        /** OverviewOut */
+        OverviewOut: {
+            /** Contacts */
+            contacts: number;
+            last_run: components["schemas"]["RunListItem"] | null;
+            /** Products */
+            products: number;
+            /** Runs */
+            runs: number;
+            /** Runs Done */
+            runs_done: number;
+            /** Stores */
+            stores: number;
+        };
         /** PreviewIn */
         PreviewIn: {
             source: components["schemas"]["SourceIn"];
@@ -217,6 +265,26 @@ export interface components {
             /** Too Many */
             too_many: boolean;
         };
+        /**
+         * RowsOut
+         * @description A page of one table's rows, for previewing data in the interface.
+         */
+        RowsOut: {
+            /** Columns */
+            columns: string[];
+            /** Offset */
+            offset: number;
+            /** Rows */
+            rows: {
+                [key: string]: unknown;
+            }[];
+            /** Table */
+            table: string;
+            /** Total */
+            total: number;
+            /** Truncated Fields */
+            truncated_fields: boolean;
+        };
         /** RunIn */
         RunIn: {
             /**
@@ -245,6 +313,8 @@ export interface components {
         };
         /** RunListItem */
         RunListItem: {
+            /** Contacts */
+            contacts: number;
             /** Links In */
             links_in: number;
             /**
@@ -272,6 +342,12 @@ export interface components {
         };
         /** RunOut */
         RunOut: {
+            /** Cli */
+            cli: string;
+            /** Config */
+            config: {
+                [key: string]: unknown;
+            };
             /** Contacts */
             contacts: number;
             /** Downloads */
@@ -419,6 +495,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OptionsOut"];
+                };
+            };
+        };
+    };
+    overview_api_overview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverviewOut"];
                 };
             };
         };
@@ -621,6 +717,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rows_api_runs__run_id__rows__table__get: {
+        parameters: {
+            query?: {
+                offset?: number;
+                limit?: number;
+                include_raw?: boolean;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+                table: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RowsOut"];
                 };
             };
             /** @description Validation Error */
