@@ -3,6 +3,8 @@
 import argparse
 import logging
 import sys
+import threading
+import webbrowser
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -12,6 +14,9 @@ from .config import RunConfig, load_config
 from .inputs.readers import SUPPORTED_SUFFIXES, InputError
 from .outputs import available_writers
 from .pipeline import run
+
+# The repo's web/dist, where `make web-build` puts the interface.
+DEFAULT_WEB_DIST = Path(__file__).resolve().parents[2] / "web" / "dist"
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -42,6 +47,18 @@ def _parser() -> argparse.ArgumentParser:
     r.add_argument("--runs-dir", type=Path, help="where run folders go (default data/runs)")
     r.add_argument("--cache-dir", type=Path, help="HTTP cache (default data/.cache)")
     r.add_argument("-v", "--verbose", action="store_true", help="log every request decision")
+
+    s = sub.add_parser("serve", help="start the local web interface")
+    s.add_argument("-c", "--config", type=Path, help="YAML config for fetch and output defaults")
+    s.add_argument("-p", "--port", type=int, default=8765, help="port on 127.0.0.1 (default 8765)")
+    s.add_argument(
+        "--web-dist",
+        type=Path,
+        default=DEFAULT_WEB_DIST,
+        help="built web app to serve (default web/dist; build it with `make web-build`)",
+    )
+    s.add_argument("--open", action="store_true", help="open the interface in the browser")
+    s.add_argument("-v", "--verbose", action="store_true", help="debug logging")
     return parser
 
 
@@ -66,6 +83,37 @@ def build_config(args: argparse.Namespace) -> RunConfig:
     return RunConfig.model_validate(data)
 
 
+def serve(args: argparse.Namespace) -> int:
+    """The web interface on 127.0.0.1 only: it is a single-user local tool (ADR 0007)."""
+    try:
+        import uvicorn
+
+        from .api import ApiSettings, create_app
+    except ImportError:
+        print(
+            "scrapebot: the web interface needs the ui extra: uv sync --extra ui", file=sys.stderr
+        )
+        return 2
+    try:
+        base = load_config(args.config) if args.config else RunConfig()
+    except ValidationError as exc:
+        print(f"scrapebot: {exc}", file=sys.stderr)
+        return 2
+    if not (args.web_dist / "index.html").exists():
+        print(
+            f"scrapebot: no built web app in {args.web_dist}; only the API is served. "
+            "Build it with `make web-build`.",
+            file=sys.stderr,
+        )
+    app = create_app(ApiSettings(base=base, web_dist=args.web_dist))
+    url = f"http://127.0.0.1:{args.port}"
+    print(f"scrapebot interface: {url}  (Ctrl+C to stop)")
+    if args.open:
+        threading.Timer(1.0, webbrowser.open, args=(url,)).start()
+    uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     logging.basicConfig(
@@ -73,6 +121,8 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(message)s",
         datefmt="%H:%M:%S",
     )
+    if args.command == "serve":
+        return serve(args)
     try:
         config = build_config(args)
         result = run(config)

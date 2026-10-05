@@ -20,8 +20,16 @@ dependencies = [
 [project.scripts]
 scrapebot = "scrapebot.cli:main"
 
+[project.optional-dependencies]
+ui = [
+    "fastapi>=0.115",
+    "python-multipart>=0.0.18",
+    "uvicorn>=0.32",
+]
+
 [dependency-groups]
 dev = [
+    "httpx2>=2.13.1",
     "pre-commit>=4.0",
     "pyright>=1.1.400",
     "pytest>=8.3",
