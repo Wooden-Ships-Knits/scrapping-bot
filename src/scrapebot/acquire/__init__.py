@@ -9,18 +9,20 @@ Stage order for one store (ADR 0001):
    input. Always fetched, feed or not, so contacts are never missed.
 4. Discovery: product sitemaps, else the homepage's links two levels deep.
 5. Structured data on every page: JSON-LD, Microdata, RDFa, OpenGraph, app state.
+6. LLM, only for a store that still has no products (PRD LM-06), and only products
+   that pass the evidence rule (LM-07).
 
-Every stage tried is recorded in `layers_tried`. Later milestones add a browser
-render and an LLM after stage 5, for stores that still have no products.
+Every stage tried is recorded in `layers_tried`.
 """
 
 from collections import Counter
+from typing import TYPE_CHECKING
 
 from ..extract.contacts import find_contacts
 from ..extract.profile import detect_currency, detect_platform
 from ..extract.structured import page_products
 from ..fetch import Fetcher
-from ..models import Acquired, Product, Target
+from ..models import Acquired, Page, Product, Target
 from .discovery import (
     MAX_PAGES,
     PRIORITY_CAP,
@@ -34,6 +36,9 @@ from .discovery import (
 )
 from .feeds import FEEDS, feeds_for
 
+if TYPE_CHECKING:
+    from ..llm.gateway import LLMExtractor
+
 # A homepage with less visible text than this is a JavaScript shell: the content
 # arrives only after scripts run, so an empty result says nothing about the catalogue.
 SHELL_TEXT_CHARS = 200
@@ -43,7 +48,12 @@ BLOCKED_STATUSES = (401, 403, 429)
 __all__ = ["MAX_PAGES", "acquire"]
 
 
-def acquire(target: Target, fetcher: Fetcher, max_pages: int = MAX_PAGES) -> Acquired:
+def acquire(
+    target: Target,
+    fetcher: Fetcher,
+    max_pages: int = MAX_PAGES,
+    llm: "LLMExtractor | None" = None,
+) -> Acquired:
     """Gather everything available for one store. Never raises for network conditions."""
     got = Acquired(domain=target.domain, url=target.url, layers_tried=["homepage"])
 
@@ -92,9 +102,44 @@ def acquire(target: Target, fetcher: Fetcher, max_pages: int = MAX_PAGES) -> Acq
         if not got.currency:
             got.currency, got.currency_source = _currency_from_products(got.products)
 
+    if not got.products and llm is not None and got.read_pages:
+        _llm_stage(got, llm)
+
     got.contacts = find_contacts(got.read_pages)
     got.status = _read_status(got)
     return got
+
+
+# Pages most likely to list products go to the model first.
+LLM_PAGE_ORDER = ("collection", "product", "home", "other", "brands", "about")
+
+
+def _llm_stage(got: Acquired, llm: "LLMExtractor") -> None:
+    from ..llm.evidence import apply_evidence_rule
+    from ..llm.gateway import MAX_PAGES as LLM_MAX_PAGES
+
+    order = {kind: i for i, kind in enumerate(LLM_PAGE_ORDER)}
+    pages: list[Page] = sorted(
+        (p for p in got.read_pages if p.kind in order), key=lambda p: order[p.kind]
+    )[:LLM_MAX_PAGES]
+    if not pages:
+        return
+    got.layers_tried.append("llm")
+    extraction, calls = llm.extract(got.domain, pages)
+    got.llm_calls = calls
+    if any(c.status == "skipped_budget" for c in calls):
+        got.layers_tried.append("llm_budget_reached")
+    if extraction is None:
+        return
+    answered = next(c for c in calls if c.status == "ok")
+    kept, dropped = apply_evidence_rule(extraction, pages, answered.model, answered.prompt_version)
+    got.store_type = extraction.store_type
+    got.llm_products_dropped = len(dropped)
+    if kept:
+        got.products = kept
+        got.source_used = "llm"
+        if not got.currency:
+            got.currency, got.currency_source = _currency_from_products(kept)
 
 
 def _discover(

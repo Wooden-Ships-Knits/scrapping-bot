@@ -1,0 +1,10 @@
+{
+  "model": "qwen2.5:3b",
+  "created_at": "2026-10-05T10:00:00Z",
+  "response": "__ANSWER__",
+  "message": {"role": "assistant", "content": "__ANSWER__"},
+  "done": true,
+  "done_reason": "stop",
+  "prompt_eval_count": 812,
+  "eval_count": 64
+}

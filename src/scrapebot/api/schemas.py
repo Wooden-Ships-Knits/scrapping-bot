@@ -2,7 +2,7 @@
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
 RunState = Literal["queued", "running", "stopped", "done", "failed", "interrupted"]
 
@@ -29,6 +29,36 @@ class PreviewIn(_In):
     url_column: str = "auto"
 
 
+class LLMIn(_In):
+    """LLM settings for one run. The key stays in memory for this run only (PRD LM-04)."""
+
+    enabled: bool = False
+    model: str = ""
+    fallbacks: list[str] = Field(default_factory=list)
+    budget_usd: float = Field(default=1.0, ge=0)
+    api_base: str | None = None
+    api_key: SecretStr | None = None
+
+
+class LLMCheckIn(_In):
+    model: str
+    api_key: SecretStr | None = None
+    api_base: str | None = None
+
+
+class LLMCheckOut(BaseModel):
+    ok: bool
+    message: str
+
+
+class ProviderOut(BaseModel):
+    provider: str
+    label: str
+    example_model: str
+    needs_key: bool
+    key_in_env: bool  # a key for this provider is set in .env or the environment
+
+
 class RunIn(_In):
     source: SourceIn
     url_column: str = "auto"
@@ -38,6 +68,7 @@ class RunIn(_In):
     # PRD OP-01: a full run needs a test run of the same input first, unless the
     # operator deliberately skips it.
     skip_test_run: bool = False
+    llm: LLMIn | None = None
 
 
 class UploadOut(BaseModel):
@@ -108,6 +139,9 @@ class RunOut(BaseModel):
     error: str
     config: dict[str, Any]  # the run's settings, never secrets
     cli: str  # the equivalent command line
+    llm_model: str  # "" when the run did not use the LLM stage
+    llm_cost_usd: float
+    llm_stores: int  # stores sent to the LLM
 
 
 class RunListItem(BaseModel):

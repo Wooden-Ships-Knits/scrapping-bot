@@ -15,7 +15,7 @@ def captured(monkeypatch, tmp_path):
         stopped = False
         root = report_path = summary_path = tmp_path
 
-    def fake_run(config):
+    def fake_run(config, **kwargs):
         seen["config"] = config
         return Result()
 
@@ -64,3 +64,31 @@ def test_dash_reads_pasted_links_from_stdin(captured, monkeypatch):
 def test_bad_settings_exit_with_code_2(captured, capsys):
     assert cli.main(["run", "x.csv", "--format", "pdf"]) == 2
     assert "unknown writer" in capsys.readouterr().err
+
+
+def test_llm_flags_enable_the_llm_stage_without_any_key_in_the_config(captured):
+    cli.main(
+        [
+            "run",
+            "x.csv",
+            "--llm",
+            "ollama/qwen2.5:3b",
+            "--llm-fallback",
+            "gemini/gemini-2.5-flash",
+            "--llm-budget",
+            "0.5",
+        ]
+    )
+    llm = captured["config"].llm
+    assert (llm.enabled, llm.model, llm.fallbacks, llm.budget_usd) == (
+        True,
+        "ollama/qwen2.5:3b",
+        ["gemini/gemini-2.5-flash"],
+        0.5,
+    )
+    assert "key" not in llm.model_dump_json()
+
+
+def test_a_model_without_a_provider_is_refused(captured, capsys):
+    assert cli.main(["run", "x.csv", "--llm", "gpt-4o-mini"]) == 2
+    assert "provider/model" in capsys.readouterr().err

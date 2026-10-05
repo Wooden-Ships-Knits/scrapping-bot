@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from . import __version__
 from .config import RunConfig, load_config
 from .inputs.readers import SUPPORTED_SUFFIXES, InputError
+from .keys import install_redaction, load_keys
 from .outputs import available_writers
 from .pipeline import execute, resume, run
 
@@ -46,6 +47,15 @@ def _parser() -> argparse.ArgumentParser:
     r.add_argument("--max-links", type=int, help="refuse inputs with more links (default 1000)")
     r.add_argument("--runs-dir", type=Path, help="where run folders go (default data/runs)")
     r.add_argument("--cache-dir", type=Path, help="HTTP cache (default data/.cache)")
+    r.add_argument(
+        "--llm",
+        metavar="PROVIDER/MODEL",
+        help="read stores nothing else could with this model, e.g. gemini/gemini-2.5-flash "
+        "or ollama/qwen2.5:3b. Keys come from .env or the environment",
+    )
+    r.add_argument("--llm-fallback", action="append", metavar="MODEL", help="tried in order")
+    r.add_argument("--llm-budget", type=float, metavar="USD", help="stop LLM calls at this cost")
+    r.add_argument("--llm-api-base", metavar="URL", help="server for local models (Ollama)")
     r.add_argument("-v", "--verbose", action="store_true", help="log every request decision")
 
     sv = sub.add_parser("survey", help="measure which stage can read which store (read-only)")
@@ -92,6 +102,14 @@ def build_config(args: argparse.Namespace) -> RunConfig:
         data["fetch"]["cache_dir"] = args.cache_dir
     if args.limit is not None:
         data["limit"] = args.limit
+    if getattr(args, "llm", None):
+        data["llm"].update(enabled=True, model=args.llm)
+    if getattr(args, "llm_fallback", None):
+        data["llm"]["fallbacks"] = args.llm_fallback
+    if getattr(args, "llm_budget", None) is not None:
+        data["llm"]["budget_usd"] = args.llm_budget
+    if getattr(args, "llm_api_base", None):
+        data["llm"]["api_base"] = args.llm_api_base
     return RunConfig.model_validate(data)
 
 
@@ -156,13 +174,17 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(message)s",
         datefmt="%H:%M:%S",
     )
+    install_redaction()
     if args.command == "serve":
         return serve(args)
     if args.command == "survey":
         return survey(args)
     try:
-        resuming = args.command == "resume"
-        result = execute(resume(args.run)) if resuming else run(build_config(args))
+        keys = load_keys()
+        if args.command == "resume":
+            result = execute(resume(args.run), keys=keys)
+        else:
+            result = run(build_config(args), keys=keys)
     except (InputError, ValidationError) as exc:
         print(f"scrapebot: {exc}", file=sys.stderr)
         return 2

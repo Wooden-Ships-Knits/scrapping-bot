@@ -11,12 +11,14 @@ import logging
 import secrets
 import threading
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+from pydantic import SecretStr
 
 from . import __version__
 from .acquire import acquire
@@ -29,7 +31,19 @@ from .outputs import export
 from .report import build_manifest, build_report, collect_stats, reconcile, write_manifest
 from .store import JsonlRows, RunStore
 from .summary import summary_row, write_summary_csv
-from .tables import ContactRow, InputRow, PageRow, ProductRow, Row, RunRow, StoreRow
+from .tables import (
+    ContactRow,
+    InputRow,
+    LLMCallRow,
+    PageRow,
+    ProductRow,
+    Row,
+    RunRow,
+    StoreRow,
+)
+
+if TYPE_CHECKING:
+    from .llm.gateway import Budget, LLMExtractor
 
 log = logging.getLogger(__name__)
 
@@ -108,9 +122,14 @@ def store_rows(run_id: str, target: Target, got: Acquired, fetched_at: str) -> I
         failed_page_count=len(got.pages) - len(got.read_pages),
         contact_count=len(got.contacts),
         ssl_bypassed=got.ssl_bypassed,
+        llm_used=bool(got.llm_calls),
+        llm_products_dropped=got.llm_products_dropped,
+        store_type=got.store_type,
         input_ids=target.input_ids,
         fetched_at=fetched_at,
     )
+    for call in got.llm_calls:
+        yield LLMCallRow(run_id=run_id, domain=got.domain, **call.model_dump())
     for p in got.products:
         yield ProductRow(
             run_id=run_id,
@@ -214,10 +233,10 @@ def _started_of(run_id: str) -> datetime:
     return datetime.strptime(run_id[:15], "%Y%m%dT%H%M%S").replace(tzinfo=UTC)
 
 
-def _safe_acquire(target: Target, fetcher: Fetcher) -> Acquired:
+def _safe_acquire(target: Target, fetcher: Fetcher, llm: "LLMExtractor | None" = None) -> Acquired:
     """A bug while reading one store is recorded on that store, never fatal to the run."""
     try:
-        return acquire(target, fetcher)
+        return acquire(target, fetcher, llm=llm)
     except Exception as exc:
         log.exception("Unexpected error while visiting %s", target.domain)
         return Acquired(
@@ -228,11 +247,28 @@ def _safe_acquire(target: Target, fetcher: Fetcher) -> Acquired:
         )
 
 
+def build_llm(config: RunConfig, keys: Mapping[str, SecretStr]) -> "tuple[LLMExtractor, Budget]":
+    """The LLM stage for a run, with its budget."""
+    from .llm.gateway import Budget, LiteLLMExtractor
+
+    budget = Budget(config.llm.budget_usd)
+    extractor = LiteLLMExtractor(
+        config.llm.model,
+        keys,
+        budget,
+        fallbacks=config.llm.fallbacks,
+        api_base=config.llm.api_base,
+    )
+    return extractor, budget
+
+
 def execute(
     prepared: PreparedRun,
     fetcher: Fetcher | None = None,
     progress: Progress | None = None,
     stop: threading.Event | None = None,
+    keys: Mapping[str, SecretStr] | None = None,
+    llm: "LLMExtractor | None" = None,
 ) -> RunResult:
     """Visit every store, several at once, then write the exports, summary, manifest and,
     last, the report. When `stop` is set, the stores in progress finish, nothing new
@@ -250,6 +286,8 @@ def execute(
         timeout=config.fetch.timeout_seconds,
         retries=config.fetch.retries,
     )
+    if llm is None and config.llm.enabled:
+        llm, _ = build_llm(config, keys or {})
     by_id = {item.input_id: item for item in resolution.inputs}
     summary_file = store.root / SUMMARY_ROWS_FILE
     todo = [t for t in resolution.targets if t.domain not in prepared.done]
@@ -268,7 +306,7 @@ def execute(
                 target = next(queue, None)
                 if target is None:
                     return
-                running[pool.submit(_safe_acquire, target, fetcher)] = target
+                running[pool.submit(_safe_acquire, target, fetcher, llm)] = target
 
         fill()
         while running:
@@ -317,6 +355,7 @@ def execute(
         [summary_row(item, None) for item in resolution.inputs if item.input_id not in visited],
     )
 
+    llm_cost = sum(call["cost_usd"] for call in store.rows("llm_calls"))
     run_row = RunRow(
         run_id=run_id,
         started_at=_iso(prepared.started),
@@ -326,6 +365,7 @@ def execute(
         input_count=len(resolution.inputs),
         store_count=total,
         limit=config.limit,
+        llm_cost_usd=round(llm_cost, 6),
     )
     store.append([run_row])
 
@@ -369,7 +409,8 @@ def run(
     config: RunConfig,
     fetcher: Fetcher | None = None,
     progress: Progress | None = None,
+    keys: Mapping[str, SecretStr] | None = None,
 ) -> RunResult:
     """Run the whole pipeline for one input. Raises `InputError` before fetching anything
     if the input cannot be read."""
-    return execute(prepare(config), fetcher=fetcher, progress=progress)
+    return execute(prepare(config), fetcher=fetcher, progress=progress, keys=keys)

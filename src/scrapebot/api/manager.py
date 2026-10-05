@@ -6,9 +6,11 @@ machine responsive; later runs wait in the queue.
 
 import logging
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+
+from pydantic import SecretStr
 
 from ..fetch import Fetcher
 from ..pipeline import PreparedRun, execute
@@ -25,6 +27,8 @@ class LiveRun:
     state: RunState = "queued"
     error: str = ""
     stop: threading.Event = field(default_factory=threading.Event)
+    # Keys for this run, in memory only, kept so a stopped run can resume with them.
+    keys: Mapping[str, SecretStr] = field(default_factory=dict, repr=False)
 
 
 class RunManager:
@@ -34,8 +38,8 @@ class RunManager:
         self._runs: dict[str, LiveRun] = {}
         self._lock = threading.Lock()
 
-    def submit(self, prepared: PreparedRun) -> LiveRun:
-        live = LiveRun(run_id=prepared.run_id)
+    def submit(self, prepared: PreparedRun, keys: Mapping[str, SecretStr] | None = None) -> LiveRun:
+        live = LiveRun(run_id=prepared.run_id, keys=dict(keys or {}))
         with self._lock:
             self._runs[live.run_id] = live
         self._executor.submit(self._execute, prepared, live)
@@ -48,7 +52,7 @@ class RunManager:
         live.state = "running"
         try:
             fetcher = self._fetcher_factory() if self._fetcher_factory else None
-            result = execute(prepared, fetcher=fetcher, stop=live.stop)
+            result = execute(prepared, fetcher=fetcher, stop=live.stop, keys=live.keys)
             live.state = "stopped" if result.stopped else "done"
         except Exception as exc:  # a failed run must be visible, never crash the server
             log.exception("Run %s failed", live.run_id)

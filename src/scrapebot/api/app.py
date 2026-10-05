@@ -13,21 +13,26 @@ from anyio import to_thread
 from fastapi import FastAPI, File, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError
 
 from ..config import InputConfig, RunConfig
 from ..inputs.readers import SUPPORTED_SUFFIXES, InputError
 from ..inputs.resolve import DUPLICATE, resolve
+from ..keys import load_keys
+from ..llm.gateway import KEY_VARIABLES, check_connection, key_for, provider_of
 from ..outputs import available_writers
 from ..pipeline import load_records, prepare, resume
 from . import library
 from .manager import FetcherFactory, RunManager
 from .schemas import (
     ErrorOut,
+    LLMCheckIn,
+    LLMCheckOut,
     OptionsOut,
     OverviewOut,
     PreviewIn,
     PreviewOut,
+    ProviderOut,
     RowsOut,
     RunIn,
     RunListItem,
@@ -38,6 +43,18 @@ from .schemas import (
 )
 
 UPLOAD_ID_RE = re.compile(r"^[0-9a-f]{32}$")
+
+# (provider, label, example model). Any LiteLLM provider/model works; these are offered.
+PROVIDERS = (
+    ("gemini", "Google Gemini", "gemini/gemini-2.5-flash"),
+    ("openai", "OpenAI", "openai/gpt-4o-mini"),
+    ("anthropic", "Anthropic Claude", "anthropic/claude-haiku-4-5-20251001"),
+    ("mistral", "Mistral", "mistral/mistral-small-latest"),
+    ("groq", "Groq", "groq/llama-3.3-70b-versatile"),
+    ("openrouter", "OpenRouter", "openrouter/openai/gpt-4o-mini"),
+    ("azure", "Azure OpenAI", "azure/<deployment-name>"),
+    ("ollama", "Ollama (lokal)", "ollama/qwen2.5:3b"),
+)
 SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 EXAMPLES = 8
 FINISHED = ("done", "failed", "interrupted", "stopped")
@@ -51,6 +68,7 @@ class ApiSettings(BaseModel):
     web_dist: Path | None = None  # the built web app; served at / when present
     max_upload_mb: int = 20
     poll_seconds: float = 0.5
+    env_file: Path = Path(".env")  # provider keys; read, never written
 
 
 class ApiError(Exception):
@@ -100,12 +118,17 @@ def create_app(
         live = manager.get(run_id)
         return library.load_run(root, live.state if live else None, live.error if live else "")
 
-    def start(cfg: RunConfig) -> RunOut:
+    def run_keys(model: str, given: SecretStr | None) -> dict[str, SecretStr]:
+        """Keys for a run: the one typed in the interface wins over .env and the environment."""
+        given_map = {provider_of(model): given.get_secret_value()} if given and model else {}
+        return load_keys(settings.env_file, given_map)
+
+    def start(cfg: RunConfig, keys: dict[str, SecretStr] | None = None) -> RunOut:
         try:
             prepared = prepare(cfg)
         except InputError as exc:
             raise ApiError(422, "bad_input", str(exc)) from exc
-        manager.submit(prepared)
+        manager.submit(prepared, keys)
         return load(prepared.run_id)
 
     @app.get("/api/options")
@@ -178,11 +201,15 @@ def create_app(
         data["input"] = cfg_input.model_dump()
         data["output"]["writers"] = body.writers
         data["limit"] = body.test_limit if body.test_mode else None
+        keys: dict[str, SecretStr] = {}
+        if body.llm and body.llm.enabled:
+            data["llm"] = body.llm.model_dump(exclude={"api_key"})
+            keys = run_keys(body.llm.model, body.llm.api_key)
         try:
             cfg = RunConfig.model_validate(data)
         except ValidationError as exc:
             raise ApiError(422, "bad_settings", exc.errors()[0]["msg"]) from exc
-        return start(cfg)
+        return start(cfg, keys)
 
     @app.post("/api/runs/{run_id}/full", status_code=202)
     def full_run(run_id: str) -> RunOut:
@@ -194,7 +221,9 @@ def create_app(
                 409, "not_a_finished_test", "Hanya run uji yang selesai bisa dilanjutkan."
             )
         cfg = RunConfig.model_validate_json((root / "config.json").read_text(encoding="utf-8"))
-        return start(cfg.model_copy(update={"limit": None}))
+        live = manager.get(run_id)
+        keys = dict(live.keys) if live and live.keys else run_keys(cfg.llm.model, None)
+        return start(cfg.model_copy(update={"limit": None}), keys)
 
     @app.post("/api/runs/{run_id}/stop", status_code=202)
     def stop_run(run_id: str) -> RunOut:
@@ -214,7 +243,9 @@ def create_app(
             prepared = resume(root)
         except InputError as exc:
             raise ApiError(422, "bad_input", str(exc)) from exc
-        manager.submit(prepared)
+        live = manager.get(run_id)
+        keys = dict(live.keys) if live and live.keys else run_keys(prepared.config.llm.model, None)
+        manager.submit(prepared, keys)
         return load(run_id)
 
     @app.get("/api/runs")
@@ -247,6 +278,31 @@ def create_app(
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
+
+    @app.get("/api/llm/providers")
+    def llm_providers() -> list[ProviderOut]:
+        """The supported providers (PRD LM-02) and whether .env already has a key for each.
+        Keys themselves are never sent."""
+        env_keys = load_keys(settings.env_file)
+        return [
+            ProviderOut(
+                provider=provider,
+                label=label,
+                example_model=example,
+                needs_key=provider in KEY_VARIABLES,
+                key_in_env=provider in env_keys,
+            )
+            for provider, label, example in PROVIDERS
+        ]
+
+    @app.post("/api/llm/check")
+    def llm_check(body: LLMCheckIn) -> LLMCheckOut:
+        """Prove a key and model work before a run (PRD LM-05)."""
+        if "/" not in body.model:
+            return LLMCheckOut(ok=False, message="Tulis model sebagai penyedia/model.")
+        keys = run_keys(body.model, body.api_key)
+        ok, message = check_connection(body.model, key_for(body.model, keys), body.api_base)
+        return LLMCheckOut(ok=ok, message=message)
 
     @app.get("/api/overview")
     def overview() -> OverviewOut:

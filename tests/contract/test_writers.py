@@ -24,6 +24,7 @@ from scrapebot.tables import (
     Column,
     ContactRow,
     InputRow,
+    LLMCallRow,
     PageRow,
     ProductRow,
     RunRow,
@@ -116,6 +117,19 @@ def sample_tables(long_text: str = "Hello") -> list[Table]:
             )
         ],
         "changes": [],
+        "llm_calls": [
+            LLMCallRow(
+                run_id=RUN,
+                domain="café-tricot.fr",
+                model="gemini/gemini-2.5-flash",
+                prompt_version="extract-v1",
+                status="ok",
+                input_tokens=1200,
+                output_tokens=310,
+                cost_usd=0.000412,
+                duration_seconds=2.4,
+            )
+        ],
     }
     return [
         Table(

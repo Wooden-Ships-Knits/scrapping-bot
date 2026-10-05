@@ -109,7 +109,16 @@ def test_main_scenario_test_run_then_full_run(client):
     xlsx = client.get(f"/api/runs/{full_run['run_id']}/download/xlsx")
     assert xlsx.status_code == 200
     sheets = load_workbook(io.BytesIO(xlsx.content), read_only=True).sheetnames
-    assert sheets == ["runs", "inputs", "stores", "products", "pages", "contacts", "changes"]
+    assert sheets == [
+        "runs",
+        "inputs",
+        "stores",
+        "products",
+        "pages",
+        "contacts",
+        "changes",
+        "llm_calls",
+    ]
 
     csv_zip = client.get(f"/api/runs/{full_run['run_id']}/download/csv")
     assert csv_zip.status_code == 200
@@ -293,3 +302,123 @@ def test_stop_then_resume_from_the_interface(tmp_path):
         assert c.post(f"/api/runs/{run_id}/resume").status_code == 409, (
             "a finished run cannot resume"
         )
+
+
+SECRET = "sk-proj-THISISATESTKEYTHATMUSTNEVERLEAK123"
+
+
+def test_llm_run_through_the_interface_never_leaks_the_key(tmp_path, caplog):
+    """PRD section 13, absolute metric: zero API keys in logs or outputs."""
+    import logging
+
+    import respx
+
+    from scrapebot.keys import RedactingFilter
+
+    caplog.set_level(logging.DEBUG)
+    caplog.handler.addFilter(RedactingFilter())
+    grid = (
+        "<html><body><h1>Rose</h1>"
+        + "<p>Boutique.</p>" * 30
+        + "<div>Cable Knit Cardigan $129.00</div></body></html>"
+    )
+    answer = {
+        "store_type": "multi_brand",
+        "products": [
+            {"title": "Cable Knit Cardigan", "price": "$129.00", "source_url": "https://rose.com"}
+        ],
+        "confidence": 0.8,
+    }
+    completion = {
+        "id": "x", "object": "chat.completion", "created": 1, "model": "gpt-4o-mini",
+        "choices": [{"index": 0, "message": {"role": "assistant", "content": json.dumps(answer)}, "finish_reason": "stop"}],
+        "usage": {"prompt_tokens": 500, "completion_tokens": 40, "total_tokens": 540},
+    }  # fmt: skip
+    base = RunConfig.model_validate(
+        {"output": {"runs_dir": tmp_path / "runs"}, "fetch": {"cache_dir": tmp_path / "c"}}
+    )
+    settings = ApiSettings(base=base, poll_seconds=0.01, env_file=tmp_path / "missing.env")
+    app = create_app(
+        settings, fetcher_factory=lambda: FakeFetcher({"https://rose.com": (200, grid)})
+    )
+    with respx.mock(assert_all_called=False) as mock, TestClient(app) as c:
+        route = mock.post("https://api.openai.com/v1/chat/completions").respond(
+            200, json=completion
+        )
+        body = {
+            "source": {"text": "rose.com"},
+            "writers": ["json", "csv", "xlsx"],
+            "test_mode": False,
+            "skip_test_run": True,
+            "llm": {
+                "enabled": True,
+                "model": "openai/gpt-4o-mini",
+                "api_key": SECRET,
+                "budget_usd": 1,
+            },
+        }
+        resp = c.post("/api/runs", json=body)
+        assert resp.status_code == 202
+        run = wait_until_finished(c, resp.json()["run_id"])
+        detail_text = c.get(f"/api/runs/{run['run_id']}").text
+
+    assert route.called
+    assert route.calls[0].request.headers["authorization"] == f"Bearer {SECRET}", (
+        "the key reached the provider"
+    )
+    assert (run["llm_model"], run["llm_stores"], run["products"]) == ("openai/gpt-4o-mini", 1, 1)
+    assert run["llm_cost_usd"] > 0
+    assert "--llm openai/gpt-4o-mini" in run["cli"]
+
+    leaks = [
+        p
+        for p in (tmp_path / "runs").rglob("*")
+        if p.is_file() and SECRET.encode() in p.read_bytes()
+    ]
+    assert leaks == [], f"key written to {leaks}"
+    assert SECRET not in detail_text
+    assert SECRET not in caplog.text
+
+
+def test_llm_providers_report_env_keys_without_revealing_them(tmp_path):
+    env = tmp_path / ".env"
+    env.write_text(f"GEMINI_API_KEY={SECRET}\n")
+    base = RunConfig.model_validate({"output": {"runs_dir": tmp_path / "runs"}})
+    with TestClient(create_app(ApiSettings(base=base, env_file=env))) as c:
+        resp = c.get("/api/llm/providers")
+    providers = {p["provider"]: p for p in resp.json()}
+    assert providers["gemini"]["key_in_env"] is True
+    assert providers["openai"]["key_in_env"] is False
+    assert providers["ollama"]["needs_key"] is False
+    assert SECRET not in resp.text
+
+
+def test_llm_check_explains_a_bad_key(tmp_path):
+    import respx
+
+    base = RunConfig.model_validate({"output": {"runs_dir": tmp_path / "runs"}})
+    with (
+        respx.mock(assert_all_called=False) as mock,
+        TestClient(create_app(ApiSettings(base=base, env_file=tmp_path / "x"))) as c,
+    ):
+        mock.post("https://api.openai.com/v1/chat/completions").respond(
+            401,
+            json={
+                "error": {
+                    "message": "Incorrect API key provided: sk-proj-****",
+                    "type": "invalid_request_error",
+                    "param": None,
+                    "code": "invalid_api_key",
+                }
+            },
+        )
+        resp = c.post(
+            "/api/llm/check",
+            json={"model": "openai/gpt-4o-mini", "api_key": "sk-proj-wrongwrongwrongwrong"},
+        )
+        bad_model = c.post("/api/llm/check", json={"model": "gpt-4o-mini"})
+    assert resp.json() == {
+        "ok": False,
+        "message": "API key ditolak penyedia. Periksa key dan penyedianya.",
+    }
+    assert bad_model.json()["ok"] is False

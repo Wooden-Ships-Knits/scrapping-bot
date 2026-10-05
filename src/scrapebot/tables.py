@@ -1,4 +1,5 @@
-"""The seven tidy tables every run produces (ADR 0006, PRD section 8).
+"""The tidy tables every run produces (ADR 0006, PRD section 8): the seven of the PRD
+plus `llm_calls`, which records every model call (PRD LM-11).
 
 Each table is a Pydantic model whose fields are its columns, in order. Writers
 derive column types from the annotations, so a new column is added here and
@@ -63,6 +64,9 @@ class StoreRow(Row):
     failed_page_count: int = 0  # pages that could not be read; see `pages.error`
     contact_count: int = 0
     ssl_bypassed: bool = False
+    llm_used: bool = False  # the LLM stage was called for this store
+    llm_products_dropped: int = 0  # products the LLM named that failed the evidence rule
+    store_type: str = ""  # own_brand | multi_brand | unknown, when the LLM judged it
     input_ids: list[int] = Field(default_factory=list)
     fetched_at: str
 
@@ -119,9 +123,35 @@ class ChangeRow(Row):
     new_value: str = ""
 
 
+class LLMCallRow(Row):
+    """One call to a model: tokens, cost, model and prompt version (PRD LM-11)."""
+
+    table: ClassVar[str] = "llm_calls"
+    run_id: str
+    domain: str
+    model: str
+    prompt_version: str
+    status: str  # ok | error | skipped_budget
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost_usd: float = 0.0
+    cost_estimated: bool = False
+    duration_seconds: float = 0.0
+    error: str = ""
+
+
 TABLES: dict[str, type[Row]] = {
     model.table: model
-    for model in (RunRow, InputRow, StoreRow, ProductRow, PageRow, ContactRow, ChangeRow)
+    for model in (
+        RunRow,
+        InputRow,
+        StoreRow,
+        ProductRow,
+        PageRow,
+        ContactRow,
+        ChangeRow,
+        LLMCallRow,
+    )
 }
 
 

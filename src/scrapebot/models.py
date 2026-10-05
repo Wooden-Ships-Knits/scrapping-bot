@@ -84,6 +84,20 @@ class Contact(_Record):
     source_url: str
 
 
+class LLMCall(_Record):
+    """One call to a model (PRD LM-11)."""
+
+    model: str
+    prompt_version: str
+    status: str  # ok | error | skipped_budget
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost_usd: float = 0.0
+    cost_estimated: bool = False  # LiteLLM had no price; estimated at pessimistic rates
+    duration_seconds: float = 0.0
+    error: str = ""
+
+
 class Target(_Record):
     """One store to visit, built from one or more input links on the same domain."""
 
@@ -109,6 +123,9 @@ class Acquired(_Record):
     products: list[Product] = Field(default_factory=list)
     pages: list[Page] = Field(default_factory=list)
     contacts: list[Contact] = Field(default_factory=list)
+    store_type: str = ""  # own_brand | multi_brand | unknown, when the LLM judged it
+    llm_calls: list[LLMCall] = Field(default_factory=list)
+    llm_products_dropped: int = 0  # products the LLM named that failed the evidence rule
 
     @property
     def read_pages(self) -> list[Page]:

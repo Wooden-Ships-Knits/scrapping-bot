@@ -184,6 +184,13 @@ def cli_command(config: dict[str, Any]) -> str:
     parts.append("-f " + ",".join(config["output"]["writers"]))
     if config["input"].get("url_column", "auto") != "auto":
         parts.append(f"--url-column {config['input']['url_column']}")
+    llm = config.get("llm") or {}
+    if llm.get("enabled") and llm.get("model"):
+        parts.append(f"--llm {llm['model']}")
+        parts += [f"--llm-fallback {m}" for m in llm.get("fallbacks", [])]
+        parts.append(f"--llm-budget {llm.get('budget_usd', 1.0)}")
+        if llm.get("api_base"):
+            parts.append(f"--llm-api-base {llm['api_base']}")
     return " ".join(parts)
 
 
@@ -200,6 +207,8 @@ def load_run(
     skipped = Counter(i["status"] for i in inputs if i["status"] != "processed")
     processed = sum(1 for i in inputs if i["status"] == "processed")
     kind, name = _source(config)
+    llm = config.get("llm") or {}
+    llm_calls = read_jsonl(root / "tables" / "llm_calls.jsonl")
     started = runs[0]["started_at"] if runs else _started_from_id(root.name)
     return RunOut(
         run_id=root.name,
@@ -228,6 +237,9 @@ def load_run(
         error=error,
         config=_public_config(config),
         cli=cli_command(config),
+        llm_model=llm["model"] if llm.get("enabled") else "",
+        llm_cost_usd=round(sum(c["cost_usd"] for c in llm_calls), 6),
+        llm_stores=sum(1 for s in stores if s.get("llm_used")),
     )
 
 

@@ -33,6 +33,24 @@ class FetchConfig(_Section):
     concurrency: int = Field(default=6, ge=1, le=32)
 
 
+class LLMConfig(_Section):
+    """The LLM stage (PRD 7.4). Never holds keys: those come from the interface or .env."""
+
+    enabled: bool = False
+    model: str = ""  # provider/model, e.g. gemini/gemini-2.5-flash or ollama/qwen2.5:3b
+    fallbacks: list[str] = Field(default_factory=list)  # tried in order when `model` fails
+    budget_usd: float = Field(default=1.0, ge=0)  # LLM calls stop once a run spends this
+    api_base: str | None = None  # for a local or self-hosted server, e.g. Ollama
+
+    @field_validator("model")
+    @classmethod
+    def _provider_prefix(cls, model: str) -> str:
+        model = model.strip()
+        if model and "/" not in model:
+            raise ValueError("write the model as provider/model, e.g. gemini/gemini-2.5-flash")
+        return model
+
+
 class OutputConfig(_Section):
     runs_dir: Path = Path("data/runs")
     writers: list[str] = Field(default_factory=lambda: ["xlsx", "csv"])
@@ -54,6 +72,7 @@ class RunConfig(_Section):
     input: InputConfig = Field(default_factory=InputConfig)
     fetch: FetchConfig = Field(default_factory=FetchConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
+    llm: LLMConfig = Field(default_factory=LLMConfig)
     # Test mode (PRD OP-01): visit only the first N stores, end to end. None = full run.
     limit: int | None = Field(default=None, ge=1)
 

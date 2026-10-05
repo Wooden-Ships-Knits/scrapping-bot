@@ -26,7 +26,6 @@ MANIFEST_PACKAGES = (
 # Stages in the architecture that this build cannot run yet. Listed in every report
 # so an empty result is never mistaken for "nothing there".
 UNAVAILABLE_STAGES = (
-    "LLM extraction (planned, M3)",
     "Browser render (gated on the M1 survey, M4)",
     "Change detection against earlier runs (planned, M5)",
 )
@@ -48,6 +47,7 @@ class RunStats:
     contacts_by_type: Counter[str] = field(default_factory=Counter)
     failed_pages: int = 0
     changes_by_type: Counter[str] = field(default_factory=Counter)
+    llm_calls: list[dict[str, Any]] = field(default_factory=list)
 
 
 def collect_stats(store: "RunStore") -> RunStats:
@@ -58,6 +58,7 @@ def collect_stats(store: "RunStore") -> RunStats:
     stats.failed_pages = sum(1 for page in store.rows("pages") if page.get("error"))
     stats.contacts_by_type.update(c["type"] for c in store.rows("contacts"))
     stats.changes_by_type.update(c["change_type"] for c in store.rows("changes"))
+    stats.llm_calls = store.read("llm_calls")
     stats.counts = {
         "runs": len(store.read("runs")),
         "inputs": len(stats.inputs),
@@ -66,6 +67,7 @@ def collect_stats(store: "RunStore") -> RunStats:
         "pages": sum(1 for _ in store.rows("pages")),
         "contacts": sum(stats.contacts_by_type.values()),
         "changes": sum(stats.changes_by_type.values()),
+        "llm_calls": len(stats.llm_calls),
     }
     return stats
 
@@ -91,6 +93,45 @@ def _table(header: tuple[str, str], counts: Counter[str]) -> list[str]:
     rows = [f"| {header[0]} | {header[1]} |", "|---|---:|"]
     rows += [f"| `{key or '-'}` | {n} |" for key, n in counts.most_common()]
     return rows if counts else ["- none"]
+
+
+def _llm_section(stats: RunStats) -> list[str]:
+    """PRD LM-06, LM-09, LM-11: who used the LLM, what it cost, where the budget stopped."""
+    calls = stats.llm_calls
+    if not calls:
+        return []
+    ok = [c for c in calls if c["status"] == "ok"]
+    skipped = sorted({c["domain"] for c in calls if c["status"] == "skipped_budget"})
+    failed = [c for c in calls if c["status"] == "error"]
+    used = [s for s in stats.stores if s.get("llm_used")]
+    with_products = [s for s in used if s["source_used"] == "llm"]
+    dropped = sum(s.get("llm_products_dropped", 0) for s in used)
+    cost = sum(c["cost_usd"] for c in calls)
+    estimated = any(c["cost_estimated"] for c in calls)
+    lines = [
+        "## LLM",
+        "",
+        f"- Stores sent to the LLM (no products from any other stage): {len(used)}",
+        f"- Stores the LLM found products for: {len(with_products)}",
+        f"- Products dropped by the evidence rule: {dropped}",
+        f"- Calls: {len(ok)} answered, {len(failed)} failed, {len(skipped)} skipped for budget",
+        f"- Tokens: {sum(c['input_tokens'] for c in calls)} in, "
+        f"{sum(c['output_tokens'] for c in calls)} out",
+        f"- Cost: ${cost:.4f}"
+        + (" (partly estimated: no list price for the model)" if estimated else ""),
+        f"- Models: {', '.join(sorted({c['model'] for c in ok})) or 'none answered'}",
+    ]
+    if skipped:
+        lines += [
+            "",
+            f"**Budget reached.** {len(skipped)} stores were not sent to the LLM:",
+            "",
+            *[f"- {d}" for d in skipped],
+        ]
+    if failed:
+        errors = Counter(c["error"] for c in failed)
+        lines += ["", "Failed calls:", "", *[f"- {e} ({n})" for e, n in errors.most_common()]]
+    return [*lines, ""]
 
 
 def build_report(
@@ -182,6 +223,7 @@ def build_report(
         "",
         *_bullets([s["domain"] for s in stores if s["ssl_bypassed"]]),
         "",
+        *_llm_section(stats),
         "## Stages not available in this build",
         "",
         *_bullets(list(UNAVAILABLE_STAGES)),

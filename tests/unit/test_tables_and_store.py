@@ -5,8 +5,18 @@ from scrapebot.store import RunStore
 from scrapebot.tables import TABLES, Column, ContactRow, ProductRow, columns
 
 
-def test_there_are_seven_tables_in_a_fixed_order():
-    assert list(TABLES) == ["runs", "inputs", "stores", "products", "pages", "contacts", "changes"]
+def test_the_tables_come_in_a_fixed_order():
+    """The PRD's seven, then llm_calls (PRD LM-11)."""
+    assert list(TABLES) == [
+        "runs",
+        "inputs",
+        "stores",
+        "products",
+        "pages",
+        "contacts",
+        "changes",
+        "llm_calls",
+    ]
 
 
 def test_every_table_joins_on_run_id_and_all_but_runs_and_inputs_on_domain():

@@ -28,6 +28,12 @@ ui = [
     "python-multipart>=0.0.18",
     "uvicorn>=0.32",
 ]
+llm = [
+    "instructor>=1.8",
+    "litellm>=1.70",
+    "python-dotenv>=1.0",
+    "trafilatura>=2.0",
+]
 
 [dependency-groups]
 dev = [
@@ -35,6 +41,7 @@ dev = [
     "pre-commit>=4.0",
     "pyright>=1.1.400",
     "pytest>=8.3",
+    "respx>=0.22",
     "ruff>=0.12",
 ]
 
@@ -84,4 +91,8 @@ testpaths = ["tests"]
 addopts = ["-q", "--strict-markers"]
 markers = [
     "network: touches the real network (never run in CI)",
+]
+filterwarnings = [
+    # LiteLLM's own type definitions; nothing in this repo
+    "ignore:Item .* is using the `ReadOnly` qualifier:UserWarning",
 ]
