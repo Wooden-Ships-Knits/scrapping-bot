@@ -17,7 +17,7 @@ from .acquire import acquire
 from .config import InputConfig, RunConfig
 from .fetch import Fetcher, HttpFetcher
 from .inputs.readers import InputError, InputRecord, read_file, read_text
-from .inputs.resolve import ResolvedInput, resolve
+from .inputs.resolve import Resolution, ResolvedInput, resolve
 from .models import Acquired, Target
 from .outputs import export
 from .report import build_manifest, build_report, reconcile, write_manifest
@@ -28,6 +28,9 @@ from .tables import ContactRow, InputRow, PageRow, ProductRow, Row, RunRow, Stor
 log = logging.getLogger(__name__)
 
 Progress = Callable[[int, int, Acquired], None]
+
+REPORT_FILE = "report.md"  # written last: its presence marks a finished run
+CONFIG_FILE = "config.json"  # written first, so an unfinished run can still be described
 
 
 @dataclass(frozen=True)
@@ -52,18 +55,22 @@ def _iso(moment: datetime) -> str:
 
 
 def new_run_id(moment: datetime) -> str:
-    """Sortable by time, unique across runs started in the same second."""
-    return f"{moment:%Y%m%dT%H%M%SZ}-{secrets.token_hex(3)}"
+    """Sortable by start time to the millisecond, unique even for runs started together."""
+    return f"{moment:%Y%m%dT%H%M%S}{moment.microsecond // 1000:03d}Z-{secrets.token_hex(3)}"
+
+
+def load_records(cfg: InputConfig) -> list[InputRecord]:
+    """The input links as supplied, unchecked."""
+    if cfg.text is not None:
+        return read_text(cfg.text)
+    if cfg.source is not None:
+        return read_file(cfg.source, cfg.url_column)
+    raise InputError("No input: give a file or paste links")
 
 
 def read_records(cfg: InputConfig) -> list[InputRecord]:
     """The input links, checked against the per-run maximum before anything is fetched."""
-    if cfg.text is not None:
-        records = read_text(cfg.text)
-    elif cfg.source is not None:
-        records = read_file(cfg.source, cfg.url_column)
-    else:
-        raise InputError("No input: give a file or paste links")
+    records = load_records(cfg)
     if not records:
         raise InputError("The input holds no links")
     if len(records) > cfg.max_links:
@@ -128,24 +135,36 @@ def _input_row(run_id: str, item: ResolvedInput) -> InputRow:
     )
 
 
-def run(
-    config: RunConfig,
-    fetcher: Fetcher | None = None,
-    progress: Progress | None = None,
-) -> RunResult:
-    """Run the whole pipeline for one input. Raises `InputError` before fetching anything
-    if the input cannot be read."""
-    started, t0 = _now(), time.monotonic()
-    records = read_records(config.input)
-    resolution = resolve(records, limit=config.limit)
+@dataclass
+class PreparedRun:
+    """A run whose input has been read and checked, with its folder created.
+
+    Nothing has been fetched yet. Splitting this from `execute` lets a caller (the
+    web API) report input errors and the run id before the slow part starts.
+    """
+
+    config: RunConfig
+    run_id: str
+    started: datetime
+    resolution: Resolution
+    store: RunStore
+
+    @property
+    def root(self) -> Path:
+        return self.store.root
+
+
+def prepare(config: RunConfig) -> PreparedRun:
+    """Read and resolve the input, then create the run folder with its `inputs` table.
+
+    Raises `InputError` before creating anything if the input cannot be used.
+    """
+    started = _now()
+    resolution = resolve(read_records(config.input), limit=config.limit)
     run_id = new_run_id(started)
     store = RunStore(config.output.runs_dir / run_id)
-    fetcher = fetcher or HttpFetcher(
-        cache_dir=config.fetch.cache_dir,
-        delay=config.fetch.delay_seconds,
-        timeout=config.fetch.timeout_seconds,
-        retries=config.fetch.retries,
-    )
+    store.append(_input_row(run_id, item) for item in resolution.inputs)
+    (store.root / CONFIG_FILE).write_text(config.model_dump_json(indent=2), encoding="utf-8")
     log.info(
         "Run %s: %d links, %d stores to visit, %d skipped",
         run_id,
@@ -153,8 +172,28 @@ def run(
         len(resolution.targets),
         len(resolution.skipped),
     )
+    return PreparedRun(config, run_id, started, resolution, store)
 
-    store.append(_input_row(run_id, item) for item in resolution.inputs)
+
+def execute(
+    prepared: PreparedRun,
+    fetcher: Fetcher | None = None,
+    progress: Progress | None = None,
+) -> RunResult:
+    """Visit every store, then write exports, the summary, the report and the manifest."""
+    config, run_id, store, resolution = (
+        prepared.config,
+        prepared.run_id,
+        prepared.store,
+        prepared.resolution,
+    )
+    t0 = time.monotonic()
+    fetcher = fetcher or HttpFetcher(
+        cache_dir=config.fetch.cache_dir,
+        delay=config.fetch.delay_seconds,
+        timeout=config.fetch.timeout_seconds,
+        retries=config.fetch.retries,
+    )
     by_id = {item.input_id: item for item in resolution.inputs}
     summary = []
 
@@ -180,11 +219,10 @@ def run(
         summary_row(item, None) for item in resolution.inputs if item.input_id not in visited
     ]
 
-    finished = _now()
     run_row = RunRow(
         run_id=run_id,
-        started_at=_iso(started),
-        finished_at=_iso(finished),
+        started_at=_iso(prepared.started),
+        finished_at=_iso(_now()),
         scrapebot_version=__version__,
         config=config.model_dump(mode="json"),
         input_count=len(resolution.inputs),
@@ -199,13 +237,13 @@ def run(
     summary_path = write_summary_csv(resolution.inputs, summary, store.root / "summary.csv")
 
     duration = time.monotonic() - t0
-    report_path = store.root / "report.md"
-    report_path.write_text(
-        build_report(run_row, rows_by_table, exports, store.root, duration), encoding="utf-8"
-    )
     write_manifest(
         build_manifest(run_row, rows_by_table, exports, store.root, duration),
         store.root / "manifest.json",
+    )
+    report_path = store.root / REPORT_FILE
+    report_path.write_text(
+        build_report(run_row, rows_by_table, exports, store.root, duration), encoding="utf-8"
     )
 
     links_in, processed, skipped = reconcile(rows_by_table["inputs"])
@@ -220,3 +258,13 @@ def run(
         stores=total,
         exports=exports,
     )
+
+
+def run(
+    config: RunConfig,
+    fetcher: Fetcher | None = None,
+    progress: Progress | None = None,
+) -> RunResult:
+    """Run the whole pipeline for one input. Raises `InputError` before fetching anything
+    if the input cannot be read."""
+    return execute(prepare(config), fetcher=fetcher, progress=progress)

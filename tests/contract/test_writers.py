@@ -31,7 +31,7 @@ from scrapebot.tables import (
     columns,
 )
 
-RUN = "20261005T000000Z-abc123"
+RUN = "20261005T000000000Z-abc123"
 
 
 def sample_tables(long_text: str = "Hello") -> list[Table]:

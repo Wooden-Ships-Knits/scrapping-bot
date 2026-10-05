@@ -1,11 +1,12 @@
 import csv
 import json
+from datetime import UTC, datetime
 
 import pytest
 
 from scrapebot.config import RunConfig
 from scrapebot.inputs.readers import InputError
-from scrapebot.pipeline import run
+from scrapebot.pipeline import new_run_id, run
 from scrapebot.tables import TABLES
 from tests.fakes import FakeFetcher
 
@@ -166,3 +167,10 @@ def test_each_run_gets_its_own_folder(tmp_path):
     assert first.root != second.root
     assert first.root.exists()
     assert second.root.exists()
+
+
+def test_run_ids_sort_by_start_time_to_the_millisecond():
+    first = new_run_id(datetime(2026, 10, 5, 8, 52, 53, 1000, tzinfo=UTC))
+    second = new_run_id(datetime(2026, 10, 5, 8, 52, 53, 2000, tzinfo=UTC))
+    assert first.startswith("20261005T085253001Z-")
+    assert first < second
