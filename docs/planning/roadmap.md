@@ -11,6 +11,11 @@ fixed. Its gate is half met: all tests pass and LIMIT runs on five real Naples s
 were checked by reading the output; the full v1 city list still has to be run (the
 list is not in the repo).
 
+**The web interface is built** (branch `feat/web-ui`), pulled forward from M3 at the
+operator's request so the team can run lists without a terminal. It covers every M0
+capability; LLM settings join it in M3. Verified offline by an end-to-end suite and on
+real Naples stores through the real interface.
+
 v1 answered the question exactly and for free for Shopify stores.
 
 The recon run on 2026-08-12 covered 67 store domains in Naples, FL:
@@ -40,6 +45,7 @@ boutiques publish no machine-readable product data, and v1 reads only JSON-LD.
 | 8 | Pages that fail to load are not recorded, only the stage in `layers_tried` | `acquire/discovery.py` | A broken contact or deep link is invisible in the output | M2 |
 | 9 | Export loads every table of a run into memory | `pipeline.py`, `store.py` | Fine for hundreds of stores; a 1,000-link run with long pages may need streaming writers | M2 |
 | 10 | Plain `logging` instead of `structlog`; config has no environment overrides | `cli.py`, `config.py` | Standards sections 4 and 7 not yet met; nothing needs secrets before M3 | M3 |
+| 11 | A running run cannot be stopped from the interface, and an interrupted run cannot resume | `api/manager.py`, `pipeline.py` | Stopping the server is the only way to stop; the run is then re-run from the start (PRD OP-03) | M2 |
 
 ## Milestones
 
@@ -51,7 +57,7 @@ the actual output. A later milestone starts only when the gate is met.
 | **M0. Foundation** ✓ built | Fix issues 1–3 and 6. Data model with seven tables. Input adapters (text and files). Writers: JSON, JSONL, CSV, TSV, Excel, Parquet, SQLite, DuckDB. LIMIT mode. Reconciliation in the report. Move to `pyproject.toml` + `uv` | All tests pass ✓; the v1 city list gives equivalent data in every format (pending: run the full list) |
 | **M1. Survey and benchmark** | Read-only run over the non-Shopify stores; record which stage would succeed. Gold set of 20 sites checked by hand. Benchmark LLM providers and extraction libraries (instructor, ScrapeGraphAI, Crawl4AI) | Coverage matrix and benchmark reviewed; decides M4 |
 | **M2. Non-Shopify acquisition** | WooCommerce and Squarespace feeds (Lightspeed if confirmed), `extruct` and app state, product sitemaps, depth-2 crawl, parallel domains, challenge detection | Non-Shopify coverage re-measured against the PRD target |
-| **M3. LLM and interface** | LiteLLM + instructor gateway with all listed providers, evidence rule, budget, fallback. TypeScript web app (React + Vite) over a local FastAPI service, with test mode, progress and downloads | A non-technical operator completes the main scenario unaided |
+| **M3. LLM and interface** | LiteLLM + instructor gateway with all listed providers, evidence rule, budget, fallback. ~~TypeScript web app over a local FastAPI service, with test mode, progress and downloads~~ ✓ built early; M3 adds the LLM settings (provider, model, key, budget) to it | A non-technical operator completes the main scenario unaided |
 | **M4. Browser render** (gated) | Per-page content check, Camoufox, XHR capture, region-based browser locale | **Only if** M1 finds at least 5 stores that only a browser can read |
 | **M5. Global and changes** | Region settings for any country, phone parsing per region, page language detection, Google Sheets input and writer, PostgreSQL writer, change detection | A two-country list and a second run produce a `changes` table |
 | **M6. Release and handover** | Full run on a real list. Five handover documents in `docs/operations/`. `CHANGELOG.md`, version 2.0.0 | All absolute PRD metrics met; the team runs one list on its own |

@@ -11,27 +11,41 @@ from the judgment part, and lets you re-judge without re-scraping.
 
 ## Status
 
-**v2 milestone M0 (foundation) is built.** Bulk links in any format, seven tidy
-tables, eight output formats, test mode and a reconciled run report. Shopify stores
+**v2 milestone M0 (foundation) and the web interface are built.** Bulk links in any
+format, seven tidy tables, eight output formats, test mode, a reconciled run report,
+and a local web interface for all of it. Shopify stores
 are read exactly through their product feed; other sites through JSON-LD only, until
 M2 adds more ways to read them.
 
-**Still to come:** more ways to read non-Shopify sites, any LLM provider, a local web
-interface, region settings, Google Sheets and PostgreSQL output, and change detection.
+**Still to come:** more ways to read non-Shopify sites, any LLM provider, region settings, Google Sheets and PostgreSQL output, and change detection.
 See the [PRD](docs/product/prd.md), the [architecture](docs/architecture/overview.md)
 and the [roadmap](docs/planning/roadmap.md). Everything below describes what runs today unless
 it says *planned*.
 
 ## Setup
 
-Needs [uv](https://docs.astral.sh/uv/) (`brew install uv`). uv installs the right
-Python version itself.
+Needs [uv](https://docs.astral.sh/uv/) and [pnpm](https://pnpm.io)
+(`brew install uv pnpm`) and Node 22+. uv installs the right Python version itself.
 
 ```bash
-make install        # uv sync + git hooks
+make install        # Python + web dependencies, test browser, git hooks
 ```
 
-## Run
+## Interface
+
+```bash
+make serve          # builds the web app, starts it on http://127.0.0.1:8765 and opens it
+```
+
+Paste links or upload a file, pick the output formats, and press **Jalankan uji**:
+test mode visits the first 2 stores. Check the result page (the reconciliation must
+say *seimbang*, the stores you know have a catalogue must show *Ada produk*), open the
+Excel file, then press **Jalankan seluruh daftar** for the whole list. A full run of a
+list that was never tested needs a deliberate confirmation. Progress updates live;
+closing the browser does not stop a run, and **Riwayat** lists every run with its
+downloads. The interface is local only (127.0.0.1) and in Indonesian.
+
+## Command line
 
 ```bash
 uv run scrapebot run data/prospects.xlsx --limit 2      # test mode: first 2 stores
@@ -173,10 +187,15 @@ woven garment (coat, trousers, vest). That keeps wool coats out of the sweater p
 ## Development
 
 ```bash
-make check          # lint, types and tests: the same checks CI runs
+make check          # lint, types and tests (Python and web): what CI runs
+make e2e            # the interface end to end in a real browser, offline
+make dev            # API + Vite with hot reload on http://127.0.0.1:5173
+make api-types      # after changing an API model: regenerate the TypeScript types
 make fmt            # format and apply safe lint fixes
 make help           # every task
 ```
+
+Needs Node 22+ and pnpm (`brew install pnpm`) for the web app.
 
 All tests run offline against fixtures saved from real prospect sites. No test makes a
 network call. How code is written, tested and reviewed is in the

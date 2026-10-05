@@ -12,10 +12,12 @@ Guidance for Claude Code (and any contributor) working in this repo.
 ## Commands
 
 ```bash
-make install   # uv sync + pre-commit hooks
-make check     # ruff, pyright, pytest: must pass before any commit
+make install   # Python + web deps, Playwright browser, pre-commit hooks
+make check     # ruff, pyright, pytest, web typecheck + unit tests: must pass before a commit
+make e2e       # Playwright, offline, desktop + mobile
 make fmt       # format + safe lint fixes
-uv run scrapebot <input>   # run the bot
+make serve     # web interface on http://127.0.0.1:8765
+uv run scrapebot run <input> --limit 2   # the bot from the command line
 ```
 
 ## Rules that are easy to break
@@ -27,5 +29,8 @@ uv run scrapebot <input>   # run the bot
 - Never store or export HTML; store page text (ADR 0006).
 - Raw means raw: acquisition does not clean or convert values.
 - The pipeline never imports the API or UI.
+- After changing a model in `api/schemas.py`, run `make api-types` and commit
+  `web/src/api/schema.d.ts`; CI fails on drift.
+- UI text is Indonesian; every API code gets a label in `web/src/labels.ts`.
 - Never commit anything in `data/` or `.env`.
 - One branch per change, conventional commits, docs updated in the same change.

@@ -76,10 +76,21 @@ flowchart TD
 | Entry point | Role | Status |
 |---|---|---|
 | CLI | `scrapebot run <input>`, optionally with a YAML config. Used directly and by automation (n8n, cron) | Built |
-| Web app + local API | React + TypeScript frontend over a local FastAPI service. Paste or upload links, choose settings, test mode, progress (SSE), downloads. Thin layer over the same pipeline ([ADR 0007](../decisions/0007-typescript-web-ui-local-api.md)) | Planned (M3) |
+| Web app + local API | `scrapebot serve`: React + TypeScript (`web/`) over a local FastAPI service (`api/`) on 127.0.0.1. Paste or upload links, preview, choose formats, test mode with a gate before untested full runs, live progress (SSE), history, downloads ([ADR 0007](../decisions/0007-typescript-web-ui-local-api.md)) | Built (LLM settings come with M3) |
 
-Both build the same `RunConfig`. The pipeline runs in a background worker and writes
-progress into the run directory, so a closed browser does not lose a run.
+Both build the same `RunConfig`. The pipeline is split into `prepare` (read and
+resolve the input, create the run folder with `config.json` and the `inputs` table)
+and `execute` (visit stores, export, report). The API runs `execute` in a single
+background worker, one run at a time; a closed browser or a restarted server loses
+nothing, because the run folder is the source of truth. `report.md` is written last,
+so its presence marks a finished run; a folder without it and no live worker is shown
+as *interrupted*.
+
+API routes: `GET /api/options`, `POST /api/uploads`, `POST /api/preview`,
+`POST /api/runs`, `POST /api/runs/{id}/full`, `GET /api/runs`, `GET /api/runs/{id}`,
+`GET /api/runs/{id}/events` (SSE), `GET /api/runs/{id}/download/{key}`. The web app's
+TypeScript types are generated from the API's OpenAPI schema (`make api-types`); CI
+fails when they drift.
 
 ```yaml
 # config.yaml (example)

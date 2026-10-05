@@ -12,8 +12,9 @@ says what to build; this page says how.
 | Lint and format | `ruff` | `ruff check` and `ruff format` pass before every commit |
 | Types | `pyright` | Basic mode for existing modules, strict for new ones |
 | Tests | `pytest` | Offline only; see section 5 |
-| Hooks | `pre-commit` | Runs ruff, pyright and the fast tests |
-| CI | GitHub Actions | Lint, types and tests on every pull request |
+| Hooks | `pre-commit` | Runs ruff, pyright, the web type check and the fast tests |
+| CI | GitHub Actions | Lint, types, tests, API-type drift, web build and e2e on every pull request |
+| Web app | TypeScript 6, React, Vite, `pnpm` | `tsc --noEmit` strict; Vitest + Testing Library; Playwright e2e, offline |
 
 Optional features are extras, so a basic install stays small:
 `scrapebot[browser]`, `scrapebot[llm]`, `scrapebot[ui]`, `scrapebot[db]`.
@@ -40,15 +41,18 @@ src/scrapebot/
     render.py          # Camoufox (gated, M4)
   extract/             # pure functions: text, prices, products, profile, pages, contacts, signals
   llm/                 # LiteLLM + instructor gateway, schemas, prompts (planned, M3)
-  api/                 # FastAPI service for the web app (planned, M3)
+  api/                 # FastAPI service for the web app; imports the pipeline, never the reverse
   outputs/             # writers: json, jsonl, csv, tsv, xlsx, parquet, sqlite, duckdb
   region.py            # pycountry, babel, phonenumbers (planned, M5)
   changes.py           # run-to-run comparison (planned, M5)
-web/                   # React + TypeScript + Vite frontend (planned, M3)
+web/                   # React + TypeScript + Vite; src/api/schema.d.ts generated from the API
+  e2e/                 # Playwright suite against tests/e2e_server.py
 tests/
   fakes.py             # FakeFetcher and other doubles
   fixtures/            # recorded responses from real sites; never edited
   contract/            # one suite per adapter type (writers today)
+  api/                 # the HTTP API end to end with a FakeFetcher
+  e2e_server.py        # real API + built web app over a fake network, for Playwright
   unit/
 ```
 
