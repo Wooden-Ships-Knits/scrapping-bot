@@ -14,7 +14,7 @@ jobs:
         with:
           enable-cache: true
       - name: Install
-        run: uv sync --locked
+        run: uv sync --locked --all-extras
       - name: Lint
         run: uv run ruff check
       - name: Format
@@ -23,3 +23,36 @@ jobs:
         run: uv run pyright
       - name: Tests
         run: uv run pytest
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: Install
+        run: |
+          uv sync --locked --all-extras
+          pnpm install --frozen-lockfile
+      - name: API types are up to date
+        run: pnpm gen:api && git diff --exit-code src/api/schema.d.ts
+      - name: Types
+        run: pnpm typecheck
+      - name: Unit tests
+        run: pnpm test
+      - name: Build
+        run: pnpm build
+      - name: End-to-end tests (offline)
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          pnpm e2e

@@ -31,6 +31,12 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
+      - id: web-typecheck
+        name: web typecheck
+        entry: pnpm --dir web typecheck
+        language: system
+        files: ^web/
+        pass_filenames: false
       - id: pytest
         name: pytest
         entry: uv run pytest -x
