@@ -93,14 +93,14 @@ it. No ScrapeGraph library or subscription is used — see
 | `price_min` / `price_max` / `price_median` | Store-wide range, for context |
 | `emails`, `phone`, `instagram`, `facebook` | Contacts |
 | `is_chain` | True for national chains — not wholesale prospects |
-| `scrape_status` | `ok`, `js_required`, `blocked`, `ssl_bypassed`, `no_website`, `social_only`, `error` |
+| `scrape_status` | `ok` (products found), `no_products` (readable, no catalogue found), `js_required`, `blocked`, `error`, `no_website`, `social_only` |
+| `ssl_bypassed` | True when the site's TLS certificate is broken and it was read with verification off |
 | `source_used` | `shopify_feed`, `sitemap`, or `crawl` |
 | `platform` | Detected platform, for example `shopify`, `wix`, `woocommerce` |
 | `wholesale_page` | Usually empty for retailers; brands sometimes publish one |
 | `about_snippet` | First ~300 chars of their About page |
 
-*Planned* columns: `currency`, `currency_mixed`, `layers_tried`, `needs_review`, and a
-`no_products` status for sites that were readable but had no catalogue we could find.
+*Planned* columns: `currency`, `currency_mixed`, `layers_tried`, `needs_review`.
 
 Read `knit_price_min`/`knit_price_max`, not the store-wide range. A boutique spanning
 $2–$545 tells you nothing; sweaters at $39–$698 tells you whether your price point fits.

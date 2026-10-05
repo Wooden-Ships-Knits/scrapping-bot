@@ -108,3 +108,10 @@ def test_every_record_has_exactly_the_output_columns():
     target = Target(domain="x.com", url="https://x.com", rows=[{"store_name": "X"}])
     rec = build_record(target, Acquired(domain="x.com"))
     assert set(rec) == set(OUTPUT_COLUMNS)
+
+
+def test_build_record_reports_ssl_bypassed_beside_the_status():
+    target = Target(domain="x.com", url="https://x.com", rows=[{"store_name": "X"}])
+    rec = build_record(target, Acquired(domain="x.com", status="no_products", ssl_bypassed=True))
+    assert rec["scrape_status"] == "no_products"
+    assert rec["ssl_bypassed"] is True

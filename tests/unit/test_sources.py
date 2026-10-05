@@ -140,8 +140,9 @@ def test_acquire_marks_js_required_when_pages_load_but_no_products_found():
     assert got.pages_fetched >= 1
 
 
-def test_acquire_preserves_ssl_bypassed_status():
-    """A site fetched with TLS verification disabled must stay visibly flagged."""
+def test_acquire_keeps_ssl_bypassed_as_a_flag_beside_the_read_status():
+    """A site fetched with TLS verification disabled must stay visibly flagged,
+    while the status still says what reading the site produced."""
 
     class SslFetcher(FakeFetcher):
         def get(self, url):
@@ -152,4 +153,26 @@ def test_acquire_preserves_ssl_bypassed_status():
 
     f = SslFetcher({"https://x.com": (200, "<html><body><div id='root'></div></body></html>")})
     got = acquire(Target(domain="x.com", url="https://x.com"), f)
-    assert got.status == "ssl_bypassed", "must not be overwritten by js_required/ok"
+    assert got.ssl_bypassed is True
+    assert got.status == "js_required"
+
+
+def test_acquire_marks_no_products_when_a_readable_site_has_no_catalogue():
+    """Issue 2: a readable site without products must not look like `ok`."""
+    home = "<html><body><h1>Welcome</h1><p>" + "A boutique in Naples. " * 30 + "</p></body></html>"
+    got = acquire(
+        Target(domain="x.com", url="https://x.com"), FakeFetcher({"https://x.com": (200, home)})
+    )
+    assert got.status == "no_products"
+    assert got.products == []
+
+
+def test_acquire_never_reports_ok_with_zero_products():
+    pages = {
+        "https://x.com": (
+            200,
+            "<html><body><p>" + "Hand-picked gifts. " * 40 + "</p></body></html>",
+        ),
+    }
+    got = acquire(Target(domain="x.com", url="https://x.com"), FakeFetcher(pages))
+    assert not (got.status == "ok" and not got.products)

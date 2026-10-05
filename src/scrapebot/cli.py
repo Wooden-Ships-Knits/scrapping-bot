@@ -31,6 +31,7 @@ def _write_raw(raw_dir: Path, target, acquired) -> None:
 def _write_report(out_dir: Path, records: list[dict], target_count: int) -> None:
     statuses = Counter(r["scrape_status"] for r in records)
     js_required = [r["domain"] for r in records if r["scrape_status"] == "js_required"]
+    no_products = [r["domain"] for r in records if r["scrape_status"] == "no_products"]
     errors = [
         (r["domain"], r["scrape_status"])
         for r in records
@@ -51,6 +52,8 @@ def _write_report(out_dir: Path, records: list[dict], target_count: int) -> None
     lines += [f"- `{status}`: {count}" for status, count in statuses.most_common()]
     lines += ["", "## Needs a headless browser (js_required)", ""]
     lines += [f"- {d}" for d in js_required] or ["- none"]
+    lines += ["", "## Readable, but no catalogue found (no_products)", ""]
+    lines += [f"- {d}" for d in no_products] or ["- none"]
     lines += ["", "## Errors and blocks", ""]
     lines += [f"- {d}: {s}" for d, s in errors] or ["- none"]
     (out_dir / "run-report.md").write_text("\n".join(lines) + "\n")

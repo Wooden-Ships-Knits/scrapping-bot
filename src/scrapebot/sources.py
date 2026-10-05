@@ -4,7 +4,6 @@ import json
 import re
 
 from .extract import (
-    detect_platform,
     html_to_text,
     internal_links,
     products_from_jsonld,
@@ -15,6 +14,10 @@ from .models import Acquired, Page, Product, Target
 FEED_PAGE_CAP = 8
 FEED_PAGE_SIZE = 250
 MAX_PAGES = 25
+
+# A homepage with less visible text than this is a JavaScript shell: the content
+# arrives only after scripts run, so an empty result says nothing about the catalogue.
+SHELL_TEXT_CHARS = 200
 
 # High-value, low-volume pages. These are collected FIRST so that a store with
 # thousands of product URLs cannot crowd its contact page out of the page budget.
@@ -113,8 +116,7 @@ def acquire(target: Target, fetcher) -> Acquired:
     got = Acquired(domain=target.domain)
 
     home = fetcher.get(target.url)
-    if home.ssl_bypassed:
-        got.status = "ssl_bypassed"
+    got.ssl_bypassed = home.ssl_bypassed
     if not home.ok:
         if home.status_code in (401, 403, 429):
             got.status = "blocked"
@@ -147,9 +149,13 @@ def acquire(target: Target, fetcher) -> Acquired:
         got.products.extend(products_from_jsonld(page.html))
 
     got.pages_fetched = len(got.pages)
-    # Only classify when nothing more specific was already recorded: an
-    # ssl_bypassed flag must survive and not be overwritten here.
-    if not got.products and got.status == "ok":
-        platform = detect_platform(home.body)
-        got.status = "js_required" if platform in ("wix", "custom/unknown") else "ok"
+    got.status = _read_status(got)
     return got
+
+
+def _read_status(got: Acquired) -> str:
+    """`ok` only with products; otherwise say why there are none."""
+    if got.products:
+        return "ok"
+    home_text = got.pages[0].text if got.pages else ""
+    return "js_required" if len(home_text) < SHELL_TEXT_CHARS else "no_products"

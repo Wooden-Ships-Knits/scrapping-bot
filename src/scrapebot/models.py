@@ -53,6 +53,7 @@ class Acquired:
     source_used: str = "none"  # shopify_feed | sitemap | crawl | none
     products: list[Product] = field(default_factory=list)
     pages: list[Page] = field(default_factory=list)
-    status: str = "ok"  # ok | blocked | ssl_bypassed | error | js_required
+    status: str = "ok"  # ok | no_products | js_required | blocked | error
     error: str = ""
+    ssl_bypassed: bool = False  # TLS verification was disabled to read the site
     pages_fetched: int = 0

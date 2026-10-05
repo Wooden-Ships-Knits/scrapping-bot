@@ -23,6 +23,7 @@ ORIGINAL_COLUMNS = [
 SCRAPED_COLUMNS = [
     "domain",
     "scrape_status",
+    "ssl_bypassed",
     "source_used",
     "platform",
     "is_chain",
@@ -87,6 +88,7 @@ def build_record(target: Target, acquired: Acquired) -> dict:
 
     rec["domain"] = target.domain
     rec["scrape_status"] = acquired.status
+    rec["ssl_bypassed"] = acquired.ssl_bypassed
     rec["source_used"] = acquired.source_used
     rec["platform"] = extract.detect_platform(all_html)
     rec["is_chain"] = extract.is_chain(primary.get("store_name", ""), all_html)

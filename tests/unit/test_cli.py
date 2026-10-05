@@ -71,4 +71,4 @@ def test_run_never_aborts_when_one_site_fails(tmp_path):
     rows = list(csv.DictReader((tmp_path / "out" / "in-enriched.csv").open()))
     statuses = {r["store_name"]: r["scrape_status"] for r in rows}
     assert statuses["Broken"] == "blocked"
-    assert statuses["Working"] in ("ok", "js_required")
+    assert statuses["Working"] in ("no_products", "js_required")
