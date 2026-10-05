@@ -1,6 +1,6 @@
 import pytest
 
-from scrapebot.fetch import Fetcher
+from scrapebot.fetch import HttpFetcher as Fetcher
 
 
 def make_transport(responses, calls=None):

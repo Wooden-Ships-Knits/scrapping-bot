@@ -4,7 +4,9 @@ import hashlib
 import json
 import time
 import urllib.robotparser
+from collections.abc import Callable
 from pathlib import Path
+from typing import Protocol
 from urllib.parse import urlparse
 
 from .models import FetchResult
@@ -30,23 +32,36 @@ SSL_MARKERS = ("SSL", "CERTIFICATE_VERIFY_FAILED", "HANDSHAKE")
 REQUEST_HEADERS = {"User-Agent": USER_AGENT}
 
 
-def _requests_transport(url, headers, verify, timeout):
+# (url, headers, verify_tls, timeout) -> (status_code, body, final_url). Raises on
+# network failure. Swapped for a fake in tests.
+Transport = Callable[[str, dict[str, str], bool, float], tuple[int, str, str]]
+
+
+class Fetcher(Protocol):
+    """Anything that can GET a URL. Acquisition depends on this, not on HTTP."""
+
+    def get(self, url: str) -> FetchResult: ...
+
+
+def _requests_transport(
+    url: str, headers: dict[str, str], verify: bool, timeout: float
+) -> tuple[int, str, str]:
     import requests
 
     r = requests.get(url, headers=headers, verify=verify, timeout=timeout, allow_redirects=True)
     return (r.status_code, r.text, r.url)
 
 
-class Fetcher:
+class HttpFetcher:
     """Polite, cached HTTP. Never raises for network conditions."""
 
     def __init__(
         self,
-        cache_dir,
+        cache_dir: str | Path,
         delay: float = 1.5,
-        timeout: int = 20,
+        timeout: float = 20,
         retries: int = 2,
-        transport=None,
+        transport: Transport | None = None,
         respect_robots: bool = True,
     ):
         self.cache_dir = Path(cache_dir)

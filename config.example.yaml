@@ -1,0 +1,19 @@
+# Example run config. Copy it, edit it, then: uv run scrapebot run -c my-run.yaml
+# Command-line flags override anything here. Never put API keys in this file.
+
+input:
+  source: data/prospects.csv   # .txt .csv .tsv .xlsx .json .jsonl .parquet
+  url_column: auto             # or the name of the column holding the links
+  max_links: 1000
+
+fetch:
+  cache_dir: data/.cache
+  delay_seconds: 1.5           # per domain
+  timeout_seconds: 20
+  retries: 2
+
+output:
+  runs_dir: data/runs
+  writers: [xlsx, csv]         # json, jsonl, csv, tsv, xlsx, parquet, sqlite, duckdb
+
+limit: 2                       # test mode: first 2 stores. Remove for a full run.

@@ -1,4 +1,4 @@
-from scrapebot.extract import extract_emails, extract_phones, extract_socials
+from scrapebot.extract.contacts import extract_emails, extract_phones, extract_socials
 
 HTML = """
 <html><body>
@@ -50,3 +50,13 @@ def test_extract_socials_missing_returns_empty_strings():
 def test_extract_socials_ignores_share_intent_links():
     html = '<a href="https://www.facebook.com/sharer/sharer.php?u=x">Share</a>'
     assert extract_socials(html)["facebook"] == ""
+
+
+def test_extract_emails_drops_placeholders_and_error_tracker_addresses():
+    """Seen on real stores: newsletter placeholders and Wix's Sentry addresses are not contacts."""
+    html = (
+        '<input placeholder="your-email@example.com">'
+        " 605a7baede844d278b89dc95ae0a9123@sentry-next.wixpress.com"
+        " name@domain.com hello@realshop.com"
+    )
+    assert extract_emails(html) == ["hello@realshop.com"]

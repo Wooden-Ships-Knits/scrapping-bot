@@ -1,4 +1,5 @@
-from scrapebot.extract import about_snippet, find_wholesale_page, html_to_text, internal_links
+from scrapebot.extract.pages import about_snippet, find_wholesale_page, internal_links
+from scrapebot.extract.text import html_to_text
 from scrapebot.models import Page
 
 
@@ -67,3 +68,11 @@ def test_internal_links_are_absolute_same_domain_and_deduped():
     """
     links = internal_links(html, base_url="https://x.com", domain="x.com")
     assert links == ["https://x.com/shop", "https://x.com/about"]
+
+
+def test_about_snippet_unescapes_entities_in_the_meta_description():
+    """Seen on a real store: "women&#39;s clothing" reached the summary as-is."""
+    pages = [
+        Page(url="https://x.com", html='<meta name="description" content="Women&#39;s &amp; kids">')
+    ]
+    assert about_snippet(pages) == "Women's & kids"

@@ -1,6 +1,7 @@
 import json
 
-from scrapebot.extract import detect_currency, products_from_jsonld
+from scrapebot.extract.products import products_from_jsonld
+from scrapebot.extract.profile import detect_currency
 
 SHOPIFY_HOME = """<html><head><script>
 Shopify.shop = "monkees.myshopify.com";

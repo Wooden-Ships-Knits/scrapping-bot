@@ -1,4 +1,5 @@
-from scrapebot.extract import detect_platform, is_chain
+from scrapebot.extract.profile import detect_platform
+from scrapebot.extract.signals import is_chain
 
 
 def test_detect_platform_recognises_each_stack():

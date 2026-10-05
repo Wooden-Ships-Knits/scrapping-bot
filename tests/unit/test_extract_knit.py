@@ -1,4 +1,4 @@
-from scrapebot.extract import knit_products, knit_terms_in, product_blob
+from scrapebot.extract.signals import knit_products, knit_terms_in, product_blob
 from scrapebot.models import Product
 
 

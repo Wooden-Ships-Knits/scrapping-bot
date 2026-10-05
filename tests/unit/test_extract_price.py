@@ -1,4 +1,4 @@
-from scrapebot.extract import parse_price, price_stats
+from scrapebot.extract.prices import parse_price, price_stats
 from scrapebot.models import Product
 
 
