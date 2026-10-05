@@ -22,7 +22,7 @@ def _write_raw(raw_dir: Path, target, acquired) -> None:
         "status": acquired.status,
         "source_used": acquired.source_used,
         "products": [asdict(p) for p in acquired.products],
-        "pages": [{"url": p.url, "text": p.text[:5000]} for p in acquired.pages],
+        "pages": [{"url": p.url, "text": p.text} for p in acquired.pages],
         "source_rows": target.rows,
     }
     (raw_dir / f"{target.domain}.json").write_text(json.dumps(payload, indent=1))

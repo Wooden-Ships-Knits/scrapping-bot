@@ -72,3 +72,15 @@ def test_run_never_aborts_when_one_site_fails(tmp_path):
     statuses = {r["store_name"]: r["scrape_status"] for r in rows}
     assert statuses["Broken"] == "blocked"
     assert statuses["Working"] in ("no_products", "js_required")
+
+
+def test_raw_json_keeps_the_full_page_text(tmp_path):
+    """Issue 6: later analysis must see whole pages, not the first 5,000 characters."""
+    src = tmp_path / "in.csv"
+    src.write_text("store_name,website\nLong,https://long.com\n")
+    body = "<html><body><p>" + "word " * 4000 + "END-MARKER</p></body></html>"
+    fetcher = FakeFetcher({"https://long.com": (200, body)})
+    run(str(src), str(tmp_path / "out"), str(tmp_path / "raw"), fetcher=fetcher)
+
+    raw = json.loads((tmp_path / "raw" / "long.com.json").read_text())
+    assert raw["pages"][0]["text"].endswith("END-MARKER")
