@@ -1,13 +1,20 @@
 """The only module that touches the network over HTTP.
 
-`HttpFetcher` is polite (robots.txt, a delay per host, backoff), cached (successful
+`HttpFetcher` is polite (robots.txt, a delay per server, backoff), cached (successful
 responses only) and thread-safe, so several stores can be visited at once while
-each host still sees one request at a time, `delay` seconds apart.
+each server still sees one request at a time, `delay` seconds apart.
+
+"Server" means the network a host resolves to (/24 for IPv4, /48 for IPv6), not the
+host name: hosted platforms put thousands of stores behind one edge. Measured on
+2026-10-05: six Shopify stores fetched in parallel, each politely by its own name,
+all hit 23.227.38.x, and Shopify answered with a challenge page.
 """
 
 import gzip
 import hashlib
+import ipaddress
 import json
+import socket
 import threading
 import time
 import urllib.robotparser
@@ -61,6 +68,22 @@ CHALLENGE_MAX_CHARS = 60_000
 # (url, headers, verify_tls, timeout) -> (status_code, body, final_url). Raises on
 # network failure. Swapped for a fake in tests.
 Transport = Callable[[str, dict[str, str], bool, float], tuple[int, str, str]]
+# host -> IP address, or None when it cannot be resolved.
+Resolver = Callable[[str], str | None]
+
+
+def _resolve(host: str) -> str | None:
+    try:
+        return str(socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)[0][4][0])
+    except (OSError, IndexError, UnicodeError):
+        return None
+
+
+def server_network(ip: str) -> str:
+    """The network an address belongs to, as the unit of politeness."""
+    addr = ipaddress.ip_address(ip)
+    prefix = 24 if addr.version == 4 else 48
+    return str(ipaddress.ip_network(f"{ip}/{prefix}", strict=False))
 
 
 class Fetcher(Protocol):
@@ -111,6 +134,7 @@ class HttpFetcher:
         transport: Transport | None = None,
         respect_robots: bool = True,
         backoff_seconds: float = 2.0,
+        resolver: Resolver | None = None,
     ):
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -122,8 +146,10 @@ class HttpFetcher:
         self._transport = transport or _requests_transport
         self._last_request: dict[str, float] = {}
         self._robots: dict[str, urllib.robotparser.RobotFileParser] = {}
+        self._resolver = resolver or _resolve
         self._lock = threading.Lock()
-        self._host_locks: dict[str, threading.Lock] = {}
+        self._locks: dict[str, threading.Lock] = {}
+        self._keys: dict[str, str] = {}
 
     # -- cache -------------------------------------------------------------
     def _cache_path(self, url: str) -> Path:
@@ -164,30 +190,42 @@ class HttpFetcher:
         tmp.replace(self._cache_path(res.url))  # atomic: a reader never sees half a file
 
     # -- politeness --------------------------------------------------------
-    def _host_lock(self, url: str) -> threading.Lock:
-        host = urlparse(url).netloc
+    def throttle_key(self, url: str) -> str:
+        """The server network of a URL's host (cached), or the host name if unresolvable."""
+        host = (urlparse(url).hostname or "").lower()
         with self._lock:
-            return self._host_locks.setdefault(host, threading.Lock())
+            if host in self._keys:
+                return self._keys[host]
+        ip = self._resolver(host) if host else None
+        key = server_network(ip) if ip else host
+        with self._lock:
+            return self._keys.setdefault(host, key)
+
+    def _server_lock(self, url: str) -> threading.Lock:
+        key = self.throttle_key(url)
+        with self._lock:
+            return self._locks.setdefault(key, threading.Lock())
 
     def throttle(self, url: str) -> None:
-        """Wait until `delay` seconds have passed since the last request to this host.
+        """Wait until `delay` seconds have passed since the last request to this server.
 
-        Callers hold the host lock, so requests to one host never overlap.
+        Callers hold the server lock, so requests to one server never overlap.
         """
-        host = urlparse(url).netloc
-        last = self._last_request.get(host)
+        key = self.throttle_key(url)
+        last = self._last_request.get(key)
         if last is not None:
             wait = self.delay - (time.monotonic() - last)
             if wait > 0:
                 time.sleep(wait)
-        self._last_request[host] = time.monotonic()
+        self._last_request[key] = time.monotonic()
 
     def _robots_for(self, url: str) -> urllib.robotparser.RobotFileParser:
         parts = urlparse(url)
         origin = f"{parts.scheme}://{parts.netloc}"
-        with self._host_lock(url):
+        with self._server_lock(url):
             if origin not in self._robots:
                 parser = urllib.robotparser.RobotFileParser()
+                self.throttle(url)
                 try:
                     status, body, _ = self._transport(
                         origin + "/robots.txt", {"User-Agent": USER_AGENT}, True, self.timeout
@@ -215,7 +253,7 @@ class HttpFetcher:
             return FetchResult(
                 url=url, status_code=None, body="", final_url=url, error="robots_disallowed"
             )
-        with self._host_lock(url):
+        with self._server_lock(url):
             res = self._fetch(url)
         self._write_cache(res)
         return res

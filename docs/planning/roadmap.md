@@ -45,7 +45,8 @@ boutiques publish no machine-readable product data, and v1 reads only JSON-LD.
 | 8 | Pages that fail to load are not recorded, only the stage in `layers_tried` | `acquire/discovery.py` | A broken contact or deep link is invisible in the output | M2 |
 | 9 | Export loads every table of a run into memory | `pipeline.py`, `store.py` | Fine for hundreds of stores; a 1,000-link run with long pages may need streaming writers | M2 |
 | 10 | Plain `logging` instead of `structlog`; config has no environment overrides | `cli.py`, `config.py` | Standards sections 4 and 7 not yet met; nothing needs secrets before M3 | M3 |
-| 11 | A running run cannot be stopped from the interface, and an interrupted run cannot resume | `api/manager.py`, `pipeline.py` | Stopping the server is the only way to stop; the run is then re-run from the start (PRD OP-03) | M2 |
+| 11 | ~~A running run cannot be stopped from the interface, and an interrupted run cannot resume~~ | `api/manager.py`, `pipeline.py` | ~~Stopping the server is the only way to stop~~ | M2 ✓ |
+| 12 | Shopify's shared edge (23.227.38.x) limits a client IP across all stores: after a burst on 2026-10-05 it answered every Python request with a 429 challenge for a while, while curl still got 200 | `fetch.py` | Shopify stores turn `blocked` until the limit lapses. Mitigated by per-network politeness (one request at a time to 23.227.38.0/24) and the cache; never worked around (ADR 0002). Run large lists in batches | M2 (mitigated) |
 
 ## Milestones
 
