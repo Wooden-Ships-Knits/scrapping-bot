@@ -63,10 +63,11 @@ def _on_domain(host: str, domain: str) -> bool:
     return host == domain or host.endswith("." + domain)
 
 
-def internal_links(html: str, base_url: str, domain: str) -> list[str]:
-    """Absolute, deduplicated http(s) links to `domain` or its subdomains."""
+def link_texts(html: str, base_url: str, domain: str) -> list[tuple[str, str]]:
+    """(absolute url, link text) for http(s) links to `domain` or its subdomains, first
+    occurrence of each url, in page order."""
     soup = BeautifulSoup(html or "", "lxml")
-    out: list[str] = []
+    out: dict[str, str] = {}
     for a in soup.find_all("a", href=True):
         href = str(a["href"]).strip()
         if not href or href.startswith(("#", "mailto:", "tel:", "javascript:")):
@@ -74,6 +75,11 @@ def internal_links(html: str, base_url: str, domain: str) -> list[str]:
         url = urljoin(base_url, href).split("#")[0].rstrip("/")
         if not url.startswith("http") or not _on_domain(urlparse(url).hostname or "", domain):
             continue
-        if url not in out:
-            out.append(url)
-    return out
+        text = " ".join(a.get_text(" ").split()) or str(a.get("title") or a.get("aria-label") or "")
+        out.setdefault(url, text)
+    return list(out.items())
+
+
+def internal_links(html: str, base_url: str, domain: str) -> list[str]:
+    """Absolute, deduplicated http(s) links to `domain` or its subdomains."""
+    return [url for url, _ in link_texts(html, base_url, domain)]

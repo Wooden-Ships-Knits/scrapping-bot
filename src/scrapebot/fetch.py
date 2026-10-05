@@ -1,7 +1,14 @@
-"""The only module that touches the network."""
+"""The only module that touches the network over HTTP.
 
+`HttpFetcher` is polite (robots.txt, a delay per host, backoff), cached (successful
+responses only) and thread-safe, so several stores can be visited at once while
+each host still sees one request at a time, `delay` seconds apart.
+"""
+
+import gzip
 import hashlib
 import json
+import threading
 import time
 import urllib.robotparser
 from collections.abc import Callable
@@ -16,6 +23,8 @@ USER_AGENT = (
     "(KHTML, like Gecko) Chrome/125.0 Safari/537.36"
 )
 SSL_MARKERS = ("SSL", "CERTIFICATE_VERIFY_FAILED", "HANDSHAKE")
+RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
+MAX_BACKOFF_SECONDS = 30.0
 
 # Deliberately NO Accept-Language header.
 #
@@ -31,6 +40,23 @@ SSL_MARKERS = ("SSL", "CERTIFICATE_VERIFY_FAILED", "HANDSHAKE")
 # (CAD, EUR) would corrupt the price columns invisibly rather than obviously.
 REQUEST_HEADERS = {"User-Agent": USER_AGENT}
 
+# Markers of anti-bot challenge pages, by vendor. Such a page is recorded as
+# `blocked` and never worked around (ADR 0002).
+CHALLENGE_MARKERS = {
+    "cloudflare": (
+        "cf-chl",
+        "challenge-platform",
+        "<title>just a moment",
+        "attention required! | cloudflare",
+    ),
+    "datadome": ("captcha-delivery.com", "datadome"),
+    "perimeterx": ("px-captcha", "_pxappid"),
+    "incapsula": ("_incapsula_resource", "incap_ses"),
+    "sucuri": ("sucuri website firewall", "sucuri_cloudproxy"),
+    "akamai": ("_abck", "bm-verify"),
+}
+# A real page can mention these words; a challenge page is short and little else.
+CHALLENGE_MAX_CHARS = 60_000
 
 # (url, headers, verify_tls, timeout) -> (status_code, body, final_url). Raises on
 # network failure. Swapped for a fake in tests.
@@ -42,6 +68,27 @@ class Fetcher(Protocol):
 
     def get(self, url: str) -> FetchResult: ...
 
+    def sitemaps(self, origin: str) -> list[str]:
+        """Sitemaps the site declares (robots.txt); [] when unknown."""
+        ...
+
+
+def detect_challenge(status: int | None, body: str) -> str:
+    """The vendor of an anti-bot challenge page, or "" for an ordinary response."""
+    if status not in (200, 403, 429, 503) or len(body) > CHALLENGE_MAX_CHARS:
+        return ""
+    lowered = body.lower()
+    for vendor, markers in CHALLENGE_MARKERS.items():
+        if any(m in lowered for m in markers):
+            return vendor
+    return ""
+
+
+def _decode(content: bytes, encoding: str | None) -> str:
+    if content[:2] == b"\x1f\x8b":  # a gzipped file such as sitemap.xml.gz
+        content = gzip.decompress(content)
+    return content.decode(encoding or "utf-8", errors="replace")
+
 
 def _requests_transport(
     url: str, headers: dict[str, str], verify: bool, timeout: float
@@ -49,11 +96,11 @@ def _requests_transport(
     import requests
 
     r = requests.get(url, headers=headers, verify=verify, timeout=timeout, allow_redirects=True)
-    return (r.status_code, r.text, r.url)
+    return (r.status_code, _decode(r.content, r.encoding or r.apparent_encoding), r.url)
 
 
 class HttpFetcher:
-    """Polite, cached HTTP. Never raises for network conditions."""
+    """Polite, cached, thread-safe HTTP. Never raises for network conditions."""
 
     def __init__(
         self,
@@ -63,6 +110,7 @@ class HttpFetcher:
         retries: int = 2,
         transport: Transport | None = None,
         respect_robots: bool = True,
+        backoff_seconds: float = 2.0,
     ):
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -70,9 +118,12 @@ class HttpFetcher:
         self.timeout = timeout
         self.retries = retries
         self.respect_robots = respect_robots
+        self.backoff_seconds = backoff_seconds
         self._transport = transport or _requests_transport
         self._last_request: dict[str, float] = {}
         self._robots: dict[str, urllib.robotparser.RobotFileParser] = {}
+        self._lock = threading.Lock()
+        self._host_locks: dict[str, threading.Lock] = {}
 
     # -- cache -------------------------------------------------------------
     def _cache_path(self, url: str) -> Path:
@@ -97,7 +148,8 @@ class HttpFetcher:
         """Store successful responses only, so a re-run retries every failure."""
         if not res.ok:
             return
-        self._cache_path(res.url).write_text(
+        tmp = self._cache_path(res.url).with_suffix(".part")
+        tmp.write_text(
             json.dumps(
                 {
                     "url": res.url,
@@ -109,9 +161,19 @@ class HttpFetcher:
                 }
             )
         )
+        tmp.replace(self._cache_path(res.url))  # atomic: a reader never sees half a file
 
     # -- politeness --------------------------------------------------------
-    def _throttle(self, url: str) -> None:
+    def _host_lock(self, url: str) -> threading.Lock:
+        host = urlparse(url).netloc
+        with self._lock:
+            return self._host_locks.setdefault(host, threading.Lock())
+
+    def throttle(self, url: str) -> None:
+        """Wait until `delay` seconds have passed since the last request to this host.
+
+        Callers hold the host lock, so requests to one host never overlap.
+        """
         host = urlparse(url).netloc
         last = self._last_request.get(host)
         if last is not None:
@@ -120,22 +182,28 @@ class HttpFetcher:
                 time.sleep(wait)
         self._last_request[host] = time.monotonic()
 
-    def _allowed(self, url: str) -> bool:
-        if not self.respect_robots:
-            return True
+    def _robots_for(self, url: str) -> urllib.robotparser.RobotFileParser:
         parts = urlparse(url)
         origin = f"{parts.scheme}://{parts.netloc}"
-        if origin not in self._robots:
-            parser = urllib.robotparser.RobotFileParser()
-            try:
-                status, body, _ = self._transport(
-                    origin + "/robots.txt", {"User-Agent": USER_AGENT}, True, self.timeout
-                )
-                parser.parse(body.splitlines() if status == 200 else [])
-            except Exception:
-                parser.parse([])  # unreachable robots.txt means allow
-            self._robots[origin] = parser
-        return self._robots[origin].can_fetch(USER_AGENT, url)
+        with self._host_lock(url):
+            if origin not in self._robots:
+                parser = urllib.robotparser.RobotFileParser()
+                try:
+                    status, body, _ = self._transport(
+                        origin + "/robots.txt", {"User-Agent": USER_AGENT}, True, self.timeout
+                    )
+                    parser.parse(body.splitlines() if status == 200 else [])
+                except Exception:
+                    parser.parse([])  # unreachable robots.txt means allow
+                self._robots[origin] = parser
+            return self._robots[origin]
+
+    def allowed(self, url: str) -> bool:
+        return not self.respect_robots or self._robots_for(url).can_fetch(USER_AGENT, url)
+
+    def sitemaps(self, origin: str) -> list[str]:
+        """Sitemaps the site declares in robots.txt."""
+        return list(self._robots_for(origin + "/").site_maps() or [])
 
     # -- public ------------------------------------------------------------
     def get(self, url: str) -> FetchResult:
@@ -143,37 +211,55 @@ class HttpFetcher:
         if cached is not None:
             return cached
 
-        if not self._allowed(url):
+        if not self.allowed(url):
             return FetchResult(
                 url=url, status_code=None, body="", final_url=url, error="robots_disallowed"
             )
+        with self._host_lock(url):
+            res = self._fetch(url)
+        self._write_cache(res)
+        return res
 
+    def _fetch(self, url: str) -> FetchResult:
         headers = dict(REQUEST_HEADERS)
         last_error = ""
         for attempt in range(self.retries + 1):
-            self._throttle(url)
+            self.throttle(url)
             try:
                 status, body, final = self._transport(url, headers, True, self.timeout)
-                res = FetchResult(url=url, status_code=status, body=body, final_url=final)
-                self._write_cache(res)
-                return res
             except Exception as exc:
                 last_error = f"{type(exc).__name__}: {exc}"[:200]
                 if any(m in str(exc).upper() for m in SSL_MARKERS):
                     break
-                if attempt < self.retries:
-                    time.sleep(0.5 * (2**attempt))
+                self._backoff(attempt)
+                continue
+            challenge = detect_challenge(status, body)
+            res = FetchResult(
+                url=url, status_code=status, body=body, final_url=final, challenge=challenge
+            )
+            # A challenge is never retried: retrying is a way of working around it.
+            if status in RETRY_STATUSES and not challenge and attempt < self.retries:
+                self._backoff(attempt)
+                continue
+            return res
 
         if any(m in last_error.upper() for m in SSL_MARKERS):
             try:
-                self._throttle(url)
+                self.throttle(url)
                 status, body, final = self._transport(url, headers, False, self.timeout)
-                res = FetchResult(
-                    url=url, status_code=status, body=body, final_url=final, ssl_bypassed=True
+                return FetchResult(
+                    url=url,
+                    status_code=status,
+                    body=body,
+                    final_url=final,
+                    ssl_bypassed=True,
+                    challenge=detect_challenge(status, body),
                 )
-                self._write_cache(res)
-                return res
             except Exception as exc:
                 last_error = f"{type(exc).__name__}: {exc}"[:200]
 
         return FetchResult(url=url, status_code=None, body="", final_url=url, error=last_error)
+
+    def _backoff(self, attempt: int) -> None:
+        if attempt < self.retries:
+            time.sleep(min(self.backoff_seconds * (2**attempt), MAX_BACKOFF_SECONDS))

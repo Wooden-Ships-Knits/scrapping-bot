@@ -59,7 +59,8 @@ class StoreRow(Row):
     source_used: str = ""
     layers_tried: list[str] = Field(default_factory=list)
     product_count: int = 0
-    page_count: int = 0
+    page_count: int = 0  # pages read
+    failed_page_count: int = 0  # pages that could not be read; see `pages.error`
     contact_count: int = 0
     ssl_bypassed: bool = False
     input_ids: list[int] = Field(default_factory=list)
@@ -93,6 +94,7 @@ class PageRow(Row):
     url: str
     page_kind: str
     http_status: int | None = None
+    error: str = ""  # why the page could not be read; "" when it was
     via: str = "http"
     language: str = ""
     text: str = ""

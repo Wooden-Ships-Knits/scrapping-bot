@@ -23,10 +23,11 @@ class FetchResult(_Record):
     error: str = ""
     ssl_bypassed: bool = False
     from_cache: bool = False
+    challenge: str = ""  # the anti-bot vendor whose challenge page came back, if any
 
     @property
     def ok(self) -> bool:
-        return self.status_code == 200 and not self.error
+        return self.status_code == 200 and not self.error and not self.challenge
 
 
 class Product(_Record):
@@ -41,8 +42,10 @@ class Product(_Record):
     tags: list[str] = Field(default_factory=list)
     description: str = ""  # plain text, never HTML
     url: str = ""
-    source: str = ""  # shopify_feed | jsonld
+    source: str = ""  # a feed (shopify_feed, ...) or a syntax (jsonld, microdata, ...)
     evidence_url: str = ""  # the page or feed response it was read from
+    needs_review: bool = False  # read by a heuristic or an LLM: check before use
+    confidence: float | None = None  # the LLM's own confidence, 0..1
     raw: dict[str, Any] = Field(default_factory=dict)  # the full source object
 
     @field_validator(
@@ -68,6 +71,11 @@ class Page(_Record):
     text: str = ""
     kind: str = "other"  # home | about | contact | wholesale | stockist | product | ...
     http_status: int | None = None
+    error: str = ""  # why the page could not be read; "" for a page that was read
+
+    @property
+    def ok(self) -> bool:
+        return not self.error
 
 
 class Contact(_Record):
@@ -96,12 +104,16 @@ class Acquired(_Record):
     platform: str = ""
     currency: str = ""  # store currency, ISO 4217; "" when the site does not declare one
     currency_source: str = ""  # shopify_js | meta | jsonld
-    source_used: str = "none"  # shopify_feed | sitemap | crawl | none
+    source_used: str = "none"  # a feed (shopify_feed, ...), sitemap, crawl, or none
     layers_tried: list[str] = Field(default_factory=list)
     products: list[Product] = Field(default_factory=list)
     pages: list[Page] = Field(default_factory=list)
     contacts: list[Contact] = Field(default_factory=list)
 
     @property
+    def read_pages(self) -> list[Page]:
+        return [p for p in self.pages if p.ok]
+
+    @property
     def pages_fetched(self) -> int:
-        return len(self.pages)
+        return len(self.read_pages)

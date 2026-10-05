@@ -21,3 +21,6 @@ class FakeFetcher:
             return FetchResult(url=url, status_code=404, body="", final_url=url)
         status, body = entry
         return FetchResult(url=url, status_code=status, body=body, final_url=url)
+
+    def sitemaps(self, origin: str) -> list[str]:
+        return []

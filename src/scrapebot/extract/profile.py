@@ -2,7 +2,8 @@
 
 import re
 
-from .products import currency_code, first_offer, jsonld_blocks
+from .jsonld import first_offer, jsonld_blocks
+from .values import currency_code
 
 # Ordered: the first match wins, so specific e-commerce platforms beat generic CMS markers.
 PLATFORM_MARKERS = (
@@ -11,7 +12,8 @@ PLATFORM_MARKERS = (
     ("wix", ("wixstatic.com", "wix.com", "_wixcssimportrule")),
     ("bigcommerce", ("bigcommerce.com", "bcdata", "var bcdata")),
     ("woocommerce", ("woocommerce", "wp-content/plugins/woocommerce")),
-    ("other-ecom", ("ecwid", "lightspeed", "shoplightspeed")),
+    ("lightspeed", ("shoplightspeed", "lightspeedhq", "webshopapp")),
+    ("ecwid", ("ecwid",)),
     ("wordpress", ("wp-content", "wp-includes")),
 )
 

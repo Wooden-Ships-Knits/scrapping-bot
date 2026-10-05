@@ -1,7 +1,7 @@
 import json
 
-from scrapebot.extract.products import products_from_jsonld
 from scrapebot.extract.profile import detect_currency
+from scrapebot.extract.structured import schema_products
 
 SHOPIFY_HOME = """<html><head><script>
 Shopify.shop = "monkees.myshopify.com";
@@ -38,5 +38,5 @@ def test_jsonld_products_carry_their_own_currency():
     html = jsonld(
         {"@type": "Product", "name": "Cardigan", "offers": {"price": "98", "priceCurrency": "GBP"}}
     )
-    [product] = products_from_jsonld(html)
+    [product] = schema_products(html, "https://x.com/p/1")
     assert product.currency == "GBP"

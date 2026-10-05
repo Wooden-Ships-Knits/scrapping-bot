@@ -95,7 +95,8 @@ def store_rows(run_id: str, target: Target, got: Acquired, fetched_at: str) -> I
         source_used=got.source_used,
         layers_tried=got.layers_tried,
         product_count=len(got.products),
-        page_count=len(got.pages),
+        page_count=len(got.read_pages),
+        failed_page_count=len(got.pages) - len(got.read_pages),
         contact_count=len(got.contacts),
         ssl_bypassed=got.ssl_bypassed,
         input_ids=target.input_ids,
@@ -114,6 +115,7 @@ def store_rows(run_id: str, target: Target, got: Acquired, fetched_at: str) -> I
             url=page.url,
             page_kind=page.kind,
             http_status=page.http_status,
+            error=page.error,
             text=page.text,
         )
     for c in got.contacts:

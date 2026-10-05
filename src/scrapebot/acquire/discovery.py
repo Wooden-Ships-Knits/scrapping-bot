@@ -1,30 +1,46 @@
-"""Finding which pages of a store to fetch, within a fixed budget."""
+"""Finding which pages of a store to fetch, within a fixed budget (PRD AQ-07).
+
+Order of the budget: contact/about/wholesale/stockist pages first (always, even for
+stores with a feed), then deep links from the input, then product pages, then
+collection pages. Sitemaps are preferred over crawling; crawling goes two levels.
+"""
 
 import re
+from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
-from ..extract.pages import internal_links, page_kind
+from ..extract.pages import link_texts, page_kind
 from ..extract.text import html_to_text
 from ..fetch import Fetcher
-from ..models import Page
+from ..models import FetchResult, Page
 
 MAX_PAGES = 25
-SITEMAP_INDEX_CHILDREN = 5
+PRIORITY_CAP = 8
+MAX_SITEMAP_DOCUMENTS = 6
 
-# High-value, low-volume pages. These are collected FIRST so that a store with
-# thousands of product URLs cannot crowd its contact page out of the page budget.
+# High-value, low-volume pages, found by URL or by link text. Collected FIRST so a
+# store with thousands of product URLs cannot crowd its contact page out.
 PRIORITY_RE = re.compile(
-    r"/(pages?/)?(about|our-story|contact|wholesale|stockist|brands?|designers?)", re.I
+    r"/(pages?/)?(about|our-story|contact|wholesale|stockist|retailers?|brands?|designers?|trade)",
+    re.I,
 )
-RELEVANT_RE = re.compile(
-    r"/(product|collection|shop|catalog|pages?/about|about|contact|"
-    r"brands?|designers?|wholesale|stockist)",
+PRIORITY_TEXT_RE = re.compile(
+    r"\b(contact|about|our story|wholesale|stockists?|retailers?|trade|brands|designers)\b", re.I
+)
+PRODUCT_RE = re.compile(r"/(products?|p|item|items|dp)/[^/?#]+|-p\d{3,}(\.html)?$|\.html$", re.I)
+COLLECTION_RE = re.compile(
+    r"/(collections?|shop|store|catalog|category|categories|products|womens?|mens?|new|sale|"
+    r"clothing|knitwear|sweaters?|accessories)(/|$)",
     re.I,
 )
 IRRELEVANT_RE = re.compile(
-    r"/(blog|news|policies|privacy|terms|refund|shipping|cart|account|login|search)", re.I
+    r"/(blogs?|news|journal|policies|privacy|terms|refund|returns|shipping|cart|checkout|"
+    r"account|login|register|search|wishlist|tags?|author|feed|wp-admin|wp-login|cdn-cgi)(/|$)"
+    r"|\.(jpe?g|png|gif|webp|svg|pdf|zip|mp4)$",
+    re.I,
 )
-LOC_RE = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>", re.I)
+LOC_RE = re.compile(r"<loc>\s*(?:<!\[CDATA\[)?\s*([^<\s\]]+)", re.I)
+SITEMAP_SKIP_RE = re.compile(r"post|blog|news|article|image|video|author|tag", re.I)
 
 
 def url_key(url: str) -> str:
@@ -47,55 +63,111 @@ def dedupe(urls: list[str], seen: set[str] | None = None) -> list[str]:
     return out
 
 
-def prioritise(urls: list[str]) -> list[str]:
-    """Contact/about/wholesale pages first, then everything else in order."""
-    priority = [u for u in urls if PRIORITY_RE.search(u)]
-    rest = [u for u in urls if u not in priority]
-    return priority + rest
+def link_role(url: str, text: str = "") -> str:
+    """priority | product | collection | other | skip"""
+    path = urlparse(url).path
+    if IRRELEVANT_RE.search(path):
+        return "skip"
+    if PRIORITY_RE.search(path) or PRIORITY_TEXT_RE.search(text):
+        return "priority"
+    if PRODUCT_RE.search(path):
+        return "product"
+    if COLLECTION_RE.search(path):
+        return "collection"
+    return "other"
 
 
-def sitemap_urls(origin: str, fetcher: Fetcher, limit: int = MAX_PAGES) -> list[str]:
-    """Relevant URLs from sitemap.xml, following a sitemap index one level down."""
-    res = fetcher.get(f"{origin}/sitemap.xml")
-    if not res.ok:
-        return []
-    locs = LOC_RE.findall(res.body)
+@dataclass
+class RankedLinks:
+    priority: list[str] = field(default_factory=list)
+    product: list[str] = field(default_factory=list)
+    collection: list[str] = field(default_factory=list)
+    other: list[str] = field(default_factory=list)
 
-    if "<sitemapindex" in res.body.lower():
-        child_locs: list[str] = []
-        for child in locs[:SITEMAP_INDEX_CHILDREN]:
-            child_res = fetcher.get(child)
-            if child_res.ok:
-                child_locs.extend(LOC_RE.findall(child_res.body))
-        locs = child_locs
-
-    keep = [u for u in locs if RELEVANT_RE.search(u) and not IRRELEVANT_RE.search(u)]
-    return prioritise(dedupe(keep))[:limit]
+    def add(self, url: str, text: str = "") -> None:
+        role = link_role(url, text)
+        if role != "skip":
+            getattr(self, role).append(url)
 
 
-def crawl_urls(home_html: str, start_url: str, domain: str) -> list[str]:
-    """The homepage's internal links: relevant ones first (prioritised), then the rest."""
-    links = [u for u in internal_links(home_html, start_url, domain) if not IRRELEVANT_RE.search(u)]
-    relevant = [u for u in links if RELEVANT_RE.search(u)]
-    other = [u for u in links if u not in relevant]
-    return prioritise(relevant) + other
+def rank_links(html: str, base_url: str, domain: str) -> RankedLinks:
+    ranked = RankedLinks()
+    for url, text in link_texts(html, base_url, domain):
+        if url_key(url) != url_key(base_url):
+            ranked.add(url, text)
+    return ranked
 
 
-def to_page(url: str, html: str, status: int | None, home_url: str) -> Page:
-    return Page(
-        url=url,
-        html=html,
-        text=html_to_text(html),
-        kind=page_kind(url, home_url),
-        http_status=status,
-    )
+def _looks_like_sitemap(body: str) -> bool:
+    head = body.lstrip()[:2000].lower()
+    return "<urlset" in head or "<sitemapindex" in head
+
+
+def _is_sitemap_url(url: str) -> bool:
+    return bool(re.search(r"\.xml(\.gz)?($|\?)", url, re.I))
+
+
+@dataclass
+class SitemapUrls:
+    products: list[str] = field(default_factory=list)
+    pages: RankedLinks = field(default_factory=RankedLinks)
+    found: bool = False
+
+
+def sitemap_urls(origin: str, fetcher: Fetcher, declared: list[str] | None = None) -> SitemapUrls:
+    """Page URLs from the store's sitemaps.
+
+    Tolerates what real stores serve: sitemap indexes, plain urlsets that list other
+    sitemaps, gzipped sitemaps, and an HTML page with status 200 instead of a sitemap.
+    Product sitemaps are read first; blog and image sitemaps are skipped.
+    """
+    out = SitemapUrls()
+    queue: list[str] = list(dict.fromkeys([*(declared or []), f"{origin}/sitemap.xml"]))
+    fetched = 0
+    while queue and fetched < MAX_SITEMAP_DOCUMENTS:
+        url = queue.pop(0)
+        fetched += 1
+        res = fetcher.get(url)
+        if not res.ok or not _looks_like_sitemap(res.body):
+            continue
+        out.found = True
+        locs: list[str] = LOC_RE.findall(res.body)
+        children = [loc for loc in locs if _is_sitemap_url(loc)]
+        if children and (len(children) == len(locs) or "<sitemapindex" in res.body[:2000].lower()):
+            children = [c for c in children if not SITEMAP_SKIP_RE.search(urlparse(c).path)]
+            children.sort(key=lambda c: 0 if "product" in c.lower() else 1)
+            queue = list(dict.fromkeys([*children, *queue]))
+            continue
+        product_sitemap = "product" in url.lower()
+        for loc in locs:
+            if product_sitemap and link_role(loc) not in ("skip", "priority"):
+                out.products.append(loc)
+            else:
+                out.pages.add(loc)
+    out.products = dedupe(out.products)
+    return out
+
+
+def failure_reason(res: FetchResult) -> str:
+    """Why a response is not a readable page."""
+    if res.error:
+        return res.error
+    if res.challenge:
+        return f"challenge page ({res.challenge})"
+    if res.status_code != 200:
+        return f"HTTP {res.status_code}"
+    return "empty page"
+
+
+def to_page(url: str, res: FetchResult, home_url: str) -> Page:
+    kind = page_kind(url, home_url)
+    if res.ok and res.body:
+        text = html_to_text(res.body)
+        return Page(url=url, html=res.body, text=text, kind=kind, http_status=res.status_code)
+    return Page(url=url, kind=kind, http_status=res.status_code, error=failure_reason(res))
 
 
 def fetch_pages(urls: list[str], fetcher: Fetcher, limit: int, home_url: str) -> list[Page]:
-    """Fetch up to `limit` pages; failed or empty responses are skipped."""
-    pages: list[Page] = []
-    for url in urls[: max(limit, 0)]:
-        res = fetcher.get(url)
-        if res.ok and res.body:
-            pages.append(to_page(url, res.body, res.status_code, home_url))
-    return pages
+    """Fetch up to `limit` pages. Pages that fail are kept, with the reason, so a broken
+    contact or deep link is visible in the output."""
+    return [to_page(url, fetcher.get(url), home_url) for url in urls[: max(limit, 0)]]

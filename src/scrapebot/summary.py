@@ -80,8 +80,8 @@ def summary_row(item: ResolvedInput, acquired: Acquired | None) -> dict[str, Any
         phone="; ".join([c.value for c in acquired.contacts if c.type == "phone"][:3]),
         instagram=first.get("instagram", ""),
         facebook=first.get("facebook", ""),
-        wholesale_page=find_wholesale_page(acquired.pages),
-        about_snippet=about_snippet(acquired.pages),
+        wholesale_page=find_wholesale_page(acquired.read_pages),
+        about_snippet=about_snippet(acquired.read_pages),
     )
     return row
 
