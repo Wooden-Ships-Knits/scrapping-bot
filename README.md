@@ -23,22 +23,24 @@ it says *planned*.
 
 ## Setup
 
+Needs [uv](https://docs.astral.sh/uv/) (`brew install uv`). uv installs the right
+Python version itself.
+
 ```bash
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
+make install        # uv sync + git hooks
 ```
 
 ## Run
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m scrapebot data/fl-prospects.csv
+uv run scrapebot data/fl-prospects.csv
 ```
 
 The input CSV needs a `website` column. Every other column is passed through to the
 output untouched, so the same command works on a list for any city.
 
-Input lists are not in the repo — `data/*.csv` is gitignored because those files hold
-prospect and account records. Supply your own.
+Input lists are not in the repo: everything in `data/` is gitignored because those
+files hold prospect and account records. Supply your own.
 
 Options: `--out` (default `data/out`), `--raw` (default `data/raw`).
 
@@ -133,14 +135,17 @@ overlapping yours is a strong prospect. Ignore rows where `is_chain` is True.
 knitwear signal is the word "wool" or "shawl" is excluded when its title names a clearly
 woven garment (coat, trousers, vest). That keeps wool coats out of the sweater price band.
 
-## Tests
+## Development
 
 ```bash
-.venv/bin/pytest
+make check          # lint, types and tests: the same checks CI runs
+make fmt            # format and apply safe lint fixes
+make help           # every task
 ```
 
 All tests run offline against fixtures saved from real prospect sites. No test makes a
-network call.
+network call. How code is written, tested and reviewed is in the
+[engineering standards](docs/engineering/standards.md).
 
 ## Documentation
 
