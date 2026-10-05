@@ -48,6 +48,14 @@ def _parser() -> argparse.ArgumentParser:
     r.add_argument("--cache-dir", type=Path, help="HTTP cache (default data/.cache)")
     r.add_argument("-v", "--verbose", action="store_true", help="log every request decision")
 
+    sv = sub.add_parser("survey", help="measure which stage can read which store (read-only)")
+    sv.add_argument("input", nargs="?", help="links file, or '-' for pasted text on stdin")
+    sv.add_argument("-c", "--config", type=Path, help="YAML run config; flags override it")
+    sv.add_argument("--out", type=Path, help="folder for survey.csv and survey.md")
+    sv.add_argument("--url-column", help="column holding the links")
+    sv.add_argument("--cache-dir", type=Path, help="HTTP cache (default data/.cache)")
+    sv.add_argument("-v", "--verbose", action="store_true", help="debug logging")
+
     res = sub.add_parser("resume", help="continue a stopped or interrupted run")
     res.add_argument("run", type=Path, help="the run folder, e.g. data/runs/<run_id>")
     res.add_argument("-v", "--verbose", action="store_true", help="debug logging")
@@ -118,6 +126,29 @@ def serve(args: argparse.Namespace) -> int:
     return 0
 
 
+def survey(args: argparse.Namespace) -> int:
+    from datetime import UTC, datetime
+
+    from .survey import run_survey
+
+    for flag in ("limit", "format", "max_links", "runs_dir"):
+        setattr(args, flag, None)
+    try:
+        config = build_config(args)
+    except ValidationError as exc:
+        print(f"scrapebot: {exc}", file=sys.stderr)
+        return 2
+    out = args.out or Path("data/surveys") / datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    try:
+        result = run_survey(config, out)
+    except InputError as exc:
+        print(f"scrapebot: {exc}", file=sys.stderr)
+        return 2
+    print(f"\nSurvey of {len(result.rows)} stores: {result.report_path}")
+    print(f"Browser candidates: {len(result.browser_candidates)}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     logging.basicConfig(
@@ -127,6 +158,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     if args.command == "serve":
         return serve(args)
+    if args.command == "survey":
+        return survey(args)
     try:
         resuming = args.command == "resume"
         result = execute(resume(args.run)) if resuming else run(build_config(args))
