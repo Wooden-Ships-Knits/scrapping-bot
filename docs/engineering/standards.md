@@ -20,36 +20,35 @@ Optional features are extras, so a basic install stays small:
 
 ## 2. Project layout
 
-The target layout. Existing v1 modules move into it step by step, one stage per pull
-request, with tests passing at every step. No big-bang rewrite.
+Modules marked *(planned)* arrive with the milestone that needs them. Moves happen
+one stage per pull request, with tests passing at every step.
 
 ```
 src/scrapebot/
-  config.py            # pydantic-settings models for a run
-  models.py            # Pydantic records: Store, Product, Page, Contact, Change
-  pipeline.py          # orchestration (asyncio), stage order, resume
-  region.py            # pycountry, babel, phonenumbers helpers
-  inputs/              # input adapters: text, csv, tsv, xlsx, json, jsonl, parquet, sheets
-  fetch/               # HTTP client, robots, cache, per-domain rate limit
-  acquire/
-    feeds/             # shopify, woocommerce, squarespace, ...
-    discovery.py       # sitemaps, links, URL queue
-    structured.py      # extruct, app state
-    render.py          # Camoufox (optional extra)
-  llm/
-    gateway.py         # LiteLLM + instructor
-    schemas.py         # extraction schemas
-    prompts/           # versioned prompt files
-  outputs/             # writers: json, jsonl, csv, tsv, xlsx, parquet, sqlite, duckdb, sheets, postgres
-  changes.py           # run-to-run comparison
-  report.py            # run report and reconciliation
-  api/                 # FastAPI service for the web app; imports the pipeline, never the reverse
-  cli.py
-web/                   # React + TypeScript + Vite frontend (pnpm); API types generated from OpenAPI
+  cli.py               # `scrapebot run`: flags -> RunConfig -> pipeline
+  config.py            # RunConfig (Pydantic + YAML)
+  pipeline.py          # orchestration of one run, stage order
+  models.py            # in-memory records between stages: Product, Page, Acquired, ...
+  tables.py            # the seven output tables; writers derive columns from them
+  store.py             # canonical JSONL tables for a run
+  summary.py           # v1-layout summary.csv (until the analysis phase)
+  report.py            # run report, reconciliation, manifest
+  fetch.py             # Fetcher protocol + HttpFetcher: robots, cache, delay (fetch/ in M2)
+  inputs/              # readers (text, txt, csv, tsv, xlsx, json, jsonl, parquet) + resolve
+  acquire/             # stage order for one store; feeds.py, discovery.py
+    structured.py      # extruct, app state (planned, M2)
+    render.py          # Camoufox (gated, M4)
+  extract/             # pure functions: text, prices, products, profile, pages, contacts, signals
+  llm/                 # LiteLLM + instructor gateway, schemas, prompts (planned, M3)
+  api/                 # FastAPI service for the web app (planned, M3)
+  outputs/             # writers: json, jsonl, csv, tsv, xlsx, parquet, sqlite, duckdb
+  region.py            # pycountry, babel, phonenumbers (planned, M5)
+  changes.py           # run-to-run comparison (planned, M5)
+web/                   # React + TypeScript + Vite frontend (planned, M3)
 tests/
-  fixtures/http/       # recorded responses, named by site and date
-  fixtures/llm/        # recorded LLM responses per provider
-  contract/            # one suite per adapter type
+  fakes.py             # FakeFetcher and other doubles
+  fixtures/            # recorded responses from real sites; never edited
+  contract/            # one suite per adapter type (writers today)
   unit/
 ```
 

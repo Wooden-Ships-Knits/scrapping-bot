@@ -16,7 +16,7 @@ competitors and which are potential wholesale partners. The bot collects; people
 
 Each part below is marked:
 
-- **Built**: in the code today (v1).
+- **Built**: in the code today (v1 and milestone M0).
 - **Planned**: in the [roadmap](../planning/roadmap.md).
 - **Gated**: built only if the M1 survey shows enough stores need it.
 
@@ -75,7 +75,7 @@ flowchart TD
 
 | Entry point | Role | Status |
 |---|---|---|
-| CLI | Runs a config file. Used directly and by automation (n8n, cron) | Built (v1 form), extended in M0 |
+| CLI | `scrapebot run <input>`, optionally with a YAML config. Used directly and by automation (n8n, cron) | Built |
 | Web app + local API | React + TypeScript frontend over a local FastAPI service. Paste or upload links, choose settings, test mode, progress (SSE), downloads. Thin layer over the same pipeline ([ADR 0007](../decisions/0007-typescript-web-ui-local-api.md)) | Planned (M3) |
 
 Both build the same `RunConfig`. The pipeline runs in a background worker and writes
@@ -103,16 +103,17 @@ limit: 2                           # test mode; null for a full run
 
 ## 4. Stages
 
-### 4.1 Input and resolve — Partly built
+### 4.1 Input and resolve — Built (Google Sheets planned)
 
-- **Built:** CSV with a `website` column; `www.` duplicates collapsed; `no_website` and
-  `social_only` skips.
-- **Planned:** input adapters for pasted free text and `.txt`, `.csv`, `.tsv`,
-  `.xlsx`, `.json`, `.jsonl`, `.parquet` and Google Sheets. URLs are extracted from any
-  text (`urlextract`), grouped by registrable domain (`tldextract`), and every other
-  input field is kept as metadata. Deep links (a product or collection page) mark the
-  store and are fetched as priority pages. New skip reasons: `marketplace`,
-  `invalid_url`, `duplicate`.
+- **Built** (`inputs/`): pasted free text and `.txt`, `.csv`, `.tsv`, `.xlsx`,
+  `.json`, `.jsonl`, `.parquet`. URLs are extracted from any text (`urlextract`) and
+  grouped by registrable domain (`tldextract` with its bundled Public Suffix List, so
+  no network call; private suffixes on, so `a.myshopify.com` and `b.myshopify.com`
+  stay apart). The URL column is found by name or content; every input field is kept
+  as metadata. Deep links mark the store and are fetched as priority pages. Skip
+  reasons: `duplicate`, `over_limit`, `no_website`, `invalid_url`, `social_only`,
+  `marketplace`. Inputs over `max_links` are refused before any fetch.
+- **Planned:** Google Sheets input (M5).
 
 ### 4.2 Region settings — Planned
 
@@ -128,8 +129,9 @@ currency. When the browser is used, its locale and timezone follow the chosen re
 
 `Fetcher` is the only code that touches the network: `robots.txt` per URL, 1.5 s delay
 per domain, cache, retries with backoff, broken TLS retried once without verification
-and flagged `ssl_bypassed`. **Planned:** cache only successful responses; move to
-`httpx` with `hishel`, `tenacity`, `aiolimiter` and `protego` so several domains run in
+and flagged `ssl_bypassed`. Only successful responses are cached, so a re-run retries
+every failure. `Fetcher` is a Protocol; `HttpFetcher` is the HTTP implementation.
+**Planned:** move to `httpx` with `hishel`, `tenacity`, `aiolimiter` and `protego` so several domains run in
 parallel while each keeps its own delay.
 
 ### 4.4 Site profile — Partly built
@@ -138,8 +140,9 @@ parallel while each keeps its own delay.
   **Built.**
 - Challenge pages (Cloudflare "Just a moment…", `cf-chl`) set `blocked`. **Planned.**
 - Platform from homepage markers. **Built.**
-- Currency, with its source: Shopify `Shopify.currency.active`, JSON-LD
-  `priceCurrency`, or the feed. **Planned.**
+- Currency, with its source: Shopify `Shopify.currency.active`, OpenGraph
+  `og:price:currency`, or JSON-LD `priceCurrency`. A currency symbol alone is never
+  used. **Built.**
 
 ### 4.5 Platform feeds — Partly built
 
@@ -190,27 +193,35 @@ For a store that still has no products after every earlier stage
   recorded. A per-run budget stops LLM calls when reached; an optional fallback order
   covers provider failures.
 
-### 4.10 Raw records — Planned
+### 4.10 Raw records — Built
 
 Acquisition stores values as found. No price conversion, no currency normalisation,
 no deduplication across sources. HTML is never stored; page text is.
 
-### 4.11 Canonical tables and writers — Partly built
+### 4.11 Canonical tables and writers — Built (Sheets and PostgreSQL planned)
 
-v1 writes one CSV row per input row, one raw JSON per domain, and a Markdown report.
-**Planned** ([ADR 0006](../decisions/0006-tidy-tables-multiformat-writers.md)): seven
-tables (`runs`, `inputs`, `stores`, `products`, `pages`, `contacts`, `changes`) stored
-as JSONL per table under `data/runs/<run_id>/`, then converted by the chosen writers:
+Seven tables ([ADR 0006](../decisions/0006-tidy-tables-multiformat-writers.md)):
+`runs`, `inputs`, `stores`, `products`, `pages`, `contacts`, `changes`. Each is a
+Pydantic model in `tables.py`; writers derive column types from it. Rows are appended
+as JSONL per table under `data/runs/<run_id>/tables/` store by store, then converted
+by the chosen writers into `data/runs/<run_id>/export/`:
 
-| Writer | Library | Notes |
-|---|---|---|
-| JSON, JSONL | standard library | Nested fields kept |
-| CSV, TSV | `pandas` | Nested fields as JSON text |
-| Excel | `pandas` + `openpyxl` | One sheet per table; splits above 1,048,576 rows |
-| Parquet | `pyarrow` | Best for analysis at scale |
-| SQLite, DuckDB | `sqlite3`, `duckdb` | Query without importing |
-| Google Sheets | `gspread` | New tab per run, never overwrites |
-| PostgreSQL | SQLAlchemy + `psycopg` | Append with `run_id`, never deletes |
+| Writer | Library | Notes | Status |
+|---|---|---|---|
+| JSON, JSONL | standard library | Nested fields kept | Built |
+| CSV, TSV | `csv` | Nested fields as JSON text; booleans `true`/`false` | Built |
+| Excel | `openpyxl` | One sheet per table; splits above 1,048,576 rows; cells over 32,767 characters truncated with a marker and logged; text never becomes a formula | Built |
+| Parquet | `pyarrow` | Typed schema, so empty tables keep their columns | Built |
+| SQLite, DuckDB | `sqlite3`, `duckdb` | One database file per run; `domain` indexed in SQLite | Built |
+| Google Sheets | `gspread` | New tab per run, never overwrites | Planned (M5) |
+| PostgreSQL | SQLAlchemy + `psycopg` | Append with `run_id`, never deletes | Planned (M5) |
+
+Every writer has a round-trip contract test (`tests/contract/test_writers.py`). A
+failing writer is logged and reported; the other formats are still written.
+
+`summary.csv` keeps v1's one-row-per-link qualification view (knitwear share, price
+band, contacts). It is derived while page HTML is in memory and will be replaced by
+the analysis phase.
 
 ### 4.12 Change detection — Planned
 
@@ -218,27 +229,27 @@ Compares a run with the previous run for the same domains: new products, removed
 products, price changes and status changes, written to the `changes` table and
 summarised in the run report.
 
-### 4.13 Run report and manifest — Built, extended
+### 4.13 Run report and manifest — Built (LLM cost and changes planned)
 
-v1 reports status counts and failures. **Planned:** reconciliation line (links in =
-processed + skipped), coverage by source, `needs_review` and `no_products` lists,
-skipped stages, durations, LLM tokens and cost, change summary; plus a manifest with
-the config (without secrets) and package versions.
+`report.md`: reconciliation line (links in = processed + skipped), skip reasons,
+store statuses, products by source, contacts by type, the `no_products`,
+`js_required`, blocked and `ssl_bypassed` lists, the stages this build cannot run,
+and the files written. `manifest.json`: config (never secrets), package versions,
+duration and row counts. **Planned:** LLM tokens and cost (M3), change summary (M5).
 
 ## 5. Statuses
 
 | Status | Meaning | Status in code |
 |---|---|---|
 | `ok` | At least one product found | Built |
-| `no_products` | Readable, but no stage found a catalogue | Planned |
-| `js_required` | Needs a browser that is not installed or not built | Built |
+| `no_products` | Readable, but no stage found a catalogue | Built |
+| `js_required` | Homepage has under 200 characters of visible text: a JavaScript shell that needs a browser | Built |
 | `blocked` | 401/403/429 or a challenge page; not bypassed | Built (challenge detection planned) |
 | `error` | Network failure, other HTTP error, or `robots.txt` disallow | Built |
-| `no_website`, `social_only` | Skipped at input | Built |
-| `marketplace`, `invalid_url`, `duplicate` | Skipped at input | Planned |
+| `no_website`, `invalid_url`, `social_only`, `marketplace`, `duplicate`, `over_limit` | Skipped at input | Built |
 
-`ssl_bypassed` becomes a flag on the store rather than a status, so the status always
-describes the read result.
+`ssl_bypassed` is a flag on the store, not a status, so the status always describes
+the read result.
 
 ## 6. Conduct
 

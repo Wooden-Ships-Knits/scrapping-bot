@@ -5,8 +5,13 @@
 
 ## Where we are
 
-v1 is built and in use for one US city list. For Shopify stores it answers the
-question exactly and for free.
+**M0 (foundation) is built** on branch `feat/m0-foundation`: bulk input in any format,
+seven tables, eight writers, test mode, reconciled report, and v1 issues 1, 2, 3 and 6
+fixed. Its gate is half met: all tests pass and LIMIT runs on five real Naples stores
+were checked by reading the output; the full v1 city list still has to be run (the
+list is not in the repo).
+
+v1 answered the question exactly and for free for Shopify stores.
 
 The recon run on 2026-08-12 covered 67 store domains in Naples, FL:
 
@@ -21,16 +26,20 @@ The recon run on 2026-08-12 covered 67 store domains in Naples, FL:
 **No real prospect was lost to bot detection.** The gap is coverage: most non-Shopify
 boutiques publish no machine-readable product data, and v1 reads only JSON-LD.
 
-## Known v1 issues
+## Known issues
 
 | # | Issue | Where | Effect | Fixed in |
 |---|---|---|---|---|
-| 1 | Failed fetches (timeouts, 429, 5xx) are cached | `fetch.py`, `get()` | A re-run never retries a temporary failure unless `data/.cache` is deleted | M0 |
-| 2 | Sites with no JSON-LD get `ok` with 0 products | `sources.py`, end of `acquire()` | An unreadable catalogue looks like "no knitwear" | M0 |
-| 3 | Prices have no currency | `models.Product` | A localised price enters the data silently | M0 |
-| 4 | v1 design gaps: OpenGraph price, depth-2 crawl, link-text ranking, parallel domains | `sources.py`, `extract.py` | Lower coverage than designed | M2 |
-| 5 | Phone regex matches US formats only | `extract.py` | No phones outside the US | M5 |
-| 6 | Only 5,000 characters of text kept per page | `cli.py`, `_write_raw()` | Later analysis sees truncated pages | M0 |
+| 1 | ~~Failed fetches (timeouts, 429, 5xx) are cached~~ | `fetch.py` | ~~A re-run never retries a temporary failure~~ | M0 ✓ |
+| 2 | ~~Sites with no JSON-LD get `ok` with 0 products~~ | `acquire/` | ~~An unreadable catalogue looks like "no knitwear"~~; now `no_products` | M0 ✓ |
+| 3 | ~~Prices have no currency~~ | `models.Product` | ~~A localised price enters the data silently~~ | M0 ✓ |
+| 4 | v1 design gaps: OpenGraph price, depth-2 crawl, link-text ranking, parallel domains | `acquire/`, `extract/` | Lower coverage than designed | M2 |
+| 5 | Phone regex matches US formats only | `extract/contacts.py` | No phones outside the US | M5 |
+| 6 | ~~Only 5,000 characters of text kept per page~~ | `pages` table | ~~Later analysis sees truncated pages~~ | M0 ✓ |
+| 7 | For Shopify stores only the homepage (and input deep links) is fetched | `acquire/__init__.py` | Contacts, about and wholesale pages of feed stores are missed (PRD AQ-07) | M2 |
+| 8 | Pages that fail to load are not recorded, only the stage in `layers_tried` | `acquire/discovery.py` | A broken contact or deep link is invisible in the output | M2 |
+| 9 | Export loads every table of a run into memory | `pipeline.py`, `store.py` | Fine for hundreds of stores; a 1,000-link run with long pages may need streaming writers | M2 |
+| 10 | Plain `logging` instead of `structlog`; config has no environment overrides | `cli.py`, `config.py` | Standards sections 4 and 7 not yet met; nothing needs secrets before M3 | M3 |
 
 ## Milestones
 
@@ -39,7 +48,7 @@ the actual output. A later milestone starts only when the gate is met.
 
 | Milestone | Work | Gate |
 |---|---|---|
-| **M0. Foundation** | Fix issues 1–3 and 6. Data model with seven tables. Input adapters (text and files). Writers: JSON, JSONL, CSV, TSV, Excel, Parquet, SQLite, DuckDB. LIMIT mode. Reconciliation in the report. Move to `pyproject.toml` + `uv` | All tests pass; the v1 city list gives equivalent data in every format |
+| **M0. Foundation** ✓ built | Fix issues 1–3 and 6. Data model with seven tables. Input adapters (text and files). Writers: JSON, JSONL, CSV, TSV, Excel, Parquet, SQLite, DuckDB. LIMIT mode. Reconciliation in the report. Move to `pyproject.toml` + `uv` | All tests pass ✓; the v1 city list gives equivalent data in every format (pending: run the full list) |
 | **M1. Survey and benchmark** | Read-only run over the non-Shopify stores; record which stage would succeed. Gold set of 20 sites checked by hand. Benchmark LLM providers and extraction libraries (instructor, ScrapeGraphAI, Crawl4AI) | Coverage matrix and benchmark reviewed; decides M4 |
 | **M2. Non-Shopify acquisition** | WooCommerce and Squarespace feeds (Lightspeed if confirmed), `extruct` and app state, product sitemaps, depth-2 crawl, parallel domains, challenge detection | Non-Shopify coverage re-measured against the PRD target |
 | **M3. LLM and interface** | LiteLLM + instructor gateway with all listed providers, evidence rule, budget, fallback. TypeScript web app (React + Vite) over a local FastAPI service, with test mode, progress and downloads | A non-technical operator completes the main scenario unaided |

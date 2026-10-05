@@ -11,14 +11,15 @@ from the judgment part, and lets you re-judge without re-scraping.
 
 ## Status
 
-**v1 is built and in use.** It reads Shopify stores exactly through their product
-feed, and other sites through JSON-LD only.
+**v2 milestone M0 (foundation) is built.** Bulk links in any format, seven tidy
+tables, eight output formats, test mode and a reconciled run report. Shopify stores
+are read exactly through their product feed; other sites through JSON-LD only, until
+M2 adds more ways to read them.
 
-**v2 is in progress.** Bulk links in any format, a local web interface, more ways to
-read non-Shopify sites, any LLM provider, region settings, and output in many formats
-(Excel, Parquet, JSON, SQLite, DuckDB and more). See the [PRD](docs/product/prd.md),
-the [architecture](docs/architecture/overview.md) and the
-[roadmap](docs/planning/roadmap.md). Everything below describes what runs today unless
+**Still to come:** more ways to read non-Shopify sites, any LLM provider, a local web
+interface, region settings, Google Sheets and PostgreSQL output, and change detection.
+See the [PRD](docs/product/prd.md), the [architecture](docs/architecture/overview.md)
+and the [roadmap](docs/planning/roadmap.md). Everything below describes what runs today unless
 it says *planned*.
 
 ## Setup
@@ -33,27 +34,44 @@ make install        # uv sync + git hooks
 ## Run
 
 ```bash
-uv run scrapebot data/fl-prospects.csv
+uv run scrapebot run data/prospects.xlsx --limit 2      # test mode: first 2 stores
+uv run scrapebot run data/prospects.xlsx -f xlsx,parquet # full run, chosen formats
+pbpaste | uv run scrapebot run -                         # links pasted as free text
+uv run scrapebot run -c config.example.yaml              # settings from a file
 ```
 
-The input CSV needs a `website` column. Every other column is passed through to the
-output untouched, so the same command works on a list for any city.
+**Input** can be pasted text (links in any sentence) or a `.txt`, `.csv`, `.tsv`,
+`.xlsx`, `.json`, `.jsonl` or `.parquet` file. In a table, the column holding the
+links is found automatically (or name it with `--url-column`), and every column is
+kept untouched as metadata. Links on the same domain are visited once; a product or
+page link is fetched as a priority page. Social profiles, marketplaces (Etsy, Amazon,
+...), empty and broken links are skipped with a reason, never dropped silently.
+
+**Always start with `--limit 2`**, read the output, then run the full list.
+
+| Option | Default | |
+|---|---|---|
+| `-l, --limit N` | full run | Test mode: visit only the first N stores |
+| `-f, --format` | `xlsx,csv` | Any of `json,jsonl,csv,tsv,xlsx,parquet,sqlite,duckdb` |
+| `-c, --config` | none | YAML settings; see `config.example.yaml`. Flags override it |
+| `--url-column` | auto | Column holding the links |
+| `--max-links` | 1000 | Inputs with more links are refused before anything is fetched |
+| `--runs-dir` | `data/runs` | Where run folders go |
 
 Input lists are not in the repo: everything in `data/` is gitignored because those
 files hold prospect and account records. Supply your own.
 
-Options: `--out` (default `data/out`), `--raw` (default `data/raw`).
-
 ## How it gets the data
 
 ```
-input CSV → resolve → fetch homepage → site profile (platform, currency*)
+links (text or file) → resolve (domain, skip reasons) → fetch homepage
+  → site profile (platform, currency) → deep links from the input
   → platform feed ──────────────────────────────────────────┐
   → or: discover pages → URL queue → fetch each page        │
         → content OK? no → browser render*                  │
         → structured extraction → enough? no → LLM*         │
-  → raw products ←──────────────────────────────────────────┘
-  → normalise* → validate* → knitwear, prices, contacts → CSV + JSON + report
+  → products, pages, contacts ←─────────────────────────────┘
+  → seven tables (JSONL) → writers → summary + report
 
 * planned or gated: see docs/architecture/overview.md
 ```
@@ -82,7 +100,30 @@ it. No ScrapeGraph library or subscription is used — see
 
 ## Output
 
-**`data/out/<input>-enriched.csv`** — one row per input row, original columns plus:
+Each run gets its own folder, `data/runs/<run_id>/`, so earlier runs are never
+overwritten:
+
+| Path | What |
+|---|---|
+| `report.md` | Read this first. Reconciliation (links in = processed + skipped), status counts, coverage by source, and the stores that need a look |
+| `summary.csv` | One row per input link, original columns first: the qualification view (below) |
+| `export/` | The seven tables in every format you chose |
+| `tables/` | The canonical copy of the seven tables (JSONL), from which every export is made |
+| `manifest.json` | Config, package versions, durations and counts, for reproducing the run |
+
+**The seven tables** join on `run_id` and `domain`:
+
+| Table | One row per | Highlights |
+|---|---|---|
+| `runs` | run | config, version, mode |
+| `inputs` | input link | link as supplied, status or skip reason, the whole input row in `meta` |
+| `stores` | store | `status`, `platform`, `currency` and its source, `layers_tried`, `ssl_bypassed` |
+| `products` | product | `title`, `price_raw` as found, `price`, `currency`, `vendor`, `url`, `source`, `evidence_url`, full source object in `raw` |
+| `pages` | fetched page | `page_kind` (home, about, contact, wholesale, stockist, product, ...), full `text`. Never HTML |
+| `contacts` | contact | `email`, `phone`, `instagram`, `facebook`, `tiktok`, `linkedin`, `pinterest`, with the `source_url` it was found on |
+| `changes` | change between runs | empty until change detection lands (M5) |
+
+**`summary.csv`** keeps the v1 one-row-per-link view:
 
 | Column | What it tells you |
 |---|---|
@@ -94,32 +135,25 @@ it. No ScrapeGraph library or subscription is used — see
 | `currency` / `currency_mixed` | Currency the store declares (ISO 4217), and whether products use more than one. Empty when the site does not say; a "$" alone is never trusted |
 | `emails`, `phone`, `instagram`, `facebook` | Contacts |
 | `is_chain` | True for national chains — not wholesale prospects |
-| `scrape_status` | `ok` (products found), `no_products` (readable, no catalogue found), `js_required`, `blocked`, `error`, `no_website`, `social_only` |
+| `scrape_status` | Store: `ok` (products found), `no_products` (readable, no catalogue found), `js_required`, `blocked`, `error`. Skipped link: `duplicate`, `over_limit`, `no_website`, `invalid_url`, `social_only`, `marketplace` |
 | `ssl_bypassed` | True when the site's TLS certificate is broken and it was read with verification off |
 | `source_used` | `shopify_feed`, `sitemap`, or `crawl` |
 | `platform` | Detected platform, for example `shopify`, `wix`, `woocommerce` |
 | `wholesale_page` | Usually empty for retailers; brands sometimes publish one |
 | `about_snippet` | First ~300 chars of their About page |
 
-*Planned* columns: `layers_tried`, `needs_review`.
-
 Read `knit_price_min`/`knit_price_max`, not the store-wide range. A boutique spanning
 $2–$545 tells you nothing; sweaters at $39–$698 tells you whether your price point fits.
 
-**`data/raw/<domain>.json`** — everything captured: full product list, page text,
-all contacts. Re-judging later never requires re-scraping.
-
-**`data/out/run-report.md`** — status counts, plus the list of sites that returned
-nothing and would need a headless browser.
-
 ## Behaviour
 
-Responses are cached in `data/.cache`, so re-runs are near-instant. Delete that
-directory to force a fresh fetch. Failed fetches are currently cached too, so a site
-that failed temporarily is only retried after the cache is cleared (*planned fix*).
+Successful responses are cached in `data/.cache`, so re-runs are near-instant.
+Failures (timeouts, 429, 5xx) are never cached, so a re-run retries them. Delete the
+cache to force fresh fetches.
 
-Every input row always produces an output row. A site that fails is recorded with a
-status, never dropped — one dead site cannot abort a 65-site run.
+Every input link is accounted for: the report checks that links in = processed +
+skipped. A site that fails is recorded with a status, never dropped — one dead site
+cannot abort a run. A writer that fails does not stop the other formats.
 
 The bot respects `robots.txt`, waits 1.5s between requests to the same domain, reads
 only public pages, and logs in nowhere. A site that answers 401, 403 or 429 is
