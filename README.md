@@ -9,6 +9,18 @@ prospect — that is a human decision made against the collected data. That spli
 deliberate: it keeps the fragile part (network, unpredictable site layouts) separate
 from the judgment part, and lets you re-judge without re-scraping.
 
+## Status
+
+**v1 is built and in use.** It reads Shopify stores exactly through their product
+feed, and other sites through JSON-LD only.
+
+**v2 is in progress.** Bulk links in any format, a local web interface, more ways to
+read non-Shopify sites, any LLM provider, region settings, and output in many formats
+(Excel, Parquet, JSON, SQLite, DuckDB and more). See the [PRD](docs/product/prd.md),
+the [architecture](docs/architecture/overview.md) and the
+[roadmap](docs/planning/roadmap.md). Everything below describes what runs today unless
+it says *planned*.
+
 ## Setup
 
 ```bash
@@ -30,6 +42,42 @@ prospect and account records. Supply your own.
 
 Options: `--out` (default `data/out`), `--raw` (default `data/raw`).
 
+## How it gets the data
+
+```
+input CSV → resolve → fetch homepage → site profile (platform, currency*)
+  → platform feed ──────────────────────────────────────────┐
+  → or: discover pages → URL queue → fetch each page        │
+        → content OK? no → browser render*                  │
+        → structured extraction → enough? no → LLM*         │
+  → raw products ←──────────────────────────────────────────┘
+  → normalise* → validate* → knitwear, prices, contacts → CSV + JSON + report
+
+* planned or gated: see docs/architecture/overview.md
+```
+
+The cheapest and most exact source is tried first, and the run stops at the first
+one that yields products:
+
+1. **Platform feed.** Shopify `/products.json` gives titles, prices, tags and
+   descriptions for free. It covers ~40% of the prospect list and needs no HTML
+   parsing. *Planned:* WooCommerce Store API and Squarespace JSON.
+2. **Page discovery.** `sitemap.xml` for non-Shopify sites, or a crawl of the
+   homepage's internal links one level deep. About, contact and wholesale pages are
+   collected *first*, so a store with thousands of product URLs cannot crowd its own
+   contact page out of the 25-page budget.
+3. **Structured extraction.** JSON-LD product data on each page. *Planned:*
+   Microdata, OpenGraph prices and embedded app state.
+4. **Browser render** (*gated*). Camoufox renders only the pages that come back empty
+   or JavaScript-only, and captures the product JSON they load.
+5. **LLM extraction** (*planned*). For a store still at zero products, any LLM
+   provider (Gemini, GPT, Claude, Ollama and others, through LiteLLM) reads the page
+   text against a fixed schema. These rows are flagged `needs_review`.
+
+Stage 4 is built only if a probe of the non-Shopify sites shows enough stores need
+it. No ScrapeGraph library or subscription is used — see
+[docs/decisions/](docs/README.md).
+
 ## Output
 
 **`data/out/<input>-enriched.csv`** — one row per input row, original columns plus:
@@ -45,8 +93,12 @@ Options: `--out` (default `data/out`), `--raw` (default `data/raw`).
 | `is_chain` | True for national chains — not wholesale prospects |
 | `scrape_status` | `ok`, `js_required`, `blocked`, `ssl_bypassed`, `no_website`, `social_only`, `error` |
 | `source_used` | `shopify_feed`, `sitemap`, or `crawl` |
+| `platform` | Detected platform, for example `shopify`, `wix`, `woocommerce` |
 | `wholesale_page` | Usually empty for retailers; brands sometimes publish one |
 | `about_snippet` | First ~300 chars of their About page |
+
+*Planned* columns: `currency`, `currency_mixed`, `layers_tried`, `needs_review`, and a
+`no_products` status for sites that were readable but had no catalogue we could find.
 
 Read `knit_price_min`/`knit_price_max`, not the store-wide range. A boutique spanning
 $2–$545 tells you nothing; sweaters at $39–$698 tells you whether your price point fits.
@@ -57,29 +109,20 @@ all contacts. Re-judging later never requires re-scraping.
 **`data/out/run-report.md`** — status counts, plus the list of sites that returned
 nothing and would need a headless browser.
 
-## How it gets the data
-
-Three strategies, tried in order, stopping at the first that yields products:
-
-1. **Shopify `/products.json`** — a free, structured feed with titles, prices, tags and
-   descriptions. Covers ~40% of the prospect list and needs no HTML parsing at all.
-2. **`sitemap.xml`** — for non-Shopify sites, to find product/about/contact pages
-   directly. Contact and about pages are collected *first*, so a store with thousands
-   of product URLs cannot crowd its own contact page out of the page budget.
-3. **Crawl** — homepage, then prioritised internal links, one level deep.
-
 ## Behaviour
 
 Responses are cached in `data/.cache`, so re-runs are near-instant. Delete that
-directory to force a fresh fetch.
+directory to force a fresh fetch. Failed fetches are currently cached too, so a site
+that failed temporarily is only retried after the cache is cleared (*planned fix*).
 
 Every input row always produces an output row. A site that fails is recorded with a
 status, never dropped — one dead site cannot abort a 65-site run.
 
 The bot respects `robots.txt`, waits 1.5s between requests to the same domain, reads
-only public pages, and logs in nowhere. Sites with broken TLS certificates are retried
-with verification disabled and flagged `ssl_bypassed`, so the weakened check is visible
-in the output rather than silent.
+only public pages, and logs in nowhere. A site that answers 401, 403 or 429 is
+recorded as `blocked` and is not bypassed — no CAPTCHA solving, no proxy rotation.
+Sites with broken TLS certificates are retried with verification disabled and flagged
+`ssl_bypassed`, so the weakened check is visible in the output rather than silent.
 
 ## Judging the results
 
@@ -98,3 +141,11 @@ woven garment (coat, trousers, vest). That keeps wool coats out of the sweater p
 
 All tests run offline against fixtures saved from real prospect sites. No test makes a
 network call.
+
+## Documentation
+
+- [docs/product/prd.md](docs/product/prd.md) — what v2 does and why (Indonesian)
+- [docs/architecture/overview.md](docs/architecture/overview.md) — the pipeline, stage by stage
+- [docs/engineering/standards.md](docs/engineering/standards.md) — how code is written and tested
+- [docs/planning/roadmap.md](docs/planning/roadmap.md) — milestones, gates, known issues
+- [docs/README.md](docs/README.md) — index, including design decisions and the archive

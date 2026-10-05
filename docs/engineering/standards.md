@@ -1,0 +1,144 @@
+# Engineering standards
+
+How code in this repo is written, tested and shipped. The [PRD](../product/prd.md)
+says what to build; this page says how.
+
+## 1. Tooling
+
+| Concern | Tool | Rule |
+|---|---|---|
+| Python | 3.11+ | One version, pinned in `pyproject.toml` |
+| Environment and lock | `uv` | `pyproject.toml` + `uv.lock` replace `requirements.txt` (migrate in M0) |
+| Lint and format | `ruff` | `ruff check` and `ruff format` pass before every commit |
+| Types | `pyright` | Basic mode for existing modules, strict for new ones |
+| Tests | `pytest` | Offline only; see section 5 |
+| Hooks | `pre-commit` | Runs ruff, pyright and the fast tests |
+| CI | GitHub Actions | Lint, types and tests on every pull request |
+
+Optional features are extras, so a basic install stays small:
+`scrapebot[browser]`, `scrapebot[llm]`, `scrapebot[ui]`, `scrapebot[db]`.
+
+## 2. Project layout
+
+The target layout. Existing v1 modules move into it step by step, one stage per pull
+request, with tests passing at every step. No big-bang rewrite.
+
+```
+src/scrapebot/
+  config.py            # pydantic-settings models for a run
+  models.py            # Pydantic records: Store, Product, Page, Contact, Change
+  pipeline.py          # orchestration (asyncio), stage order, resume
+  region.py            # pycountry, babel, phonenumbers helpers
+  inputs/              # input adapters: text, csv, tsv, xlsx, json, jsonl, parquet, sheets
+  fetch/               # HTTP client, robots, cache, per-domain rate limit
+  acquire/
+    feeds/             # shopify, woocommerce, squarespace, ...
+    discovery.py       # sitemaps, links, URL queue
+    structured.py      # extruct, app state
+    render.py          # Camoufox (optional extra)
+  llm/
+    gateway.py         # LiteLLM + instructor
+    schemas.py         # extraction schemas
+    prompts/           # versioned prompt files
+  outputs/             # writers: json, jsonl, csv, tsv, xlsx, parquet, sqlite, duckdb, sheets, postgres
+  changes.py           # run-to-run comparison
+  report.py            # run report and reconciliation
+  api/                 # FastAPI service for the web app; imports the pipeline, never the reverse
+  cli.py
+web/                   # React + TypeScript + Vite frontend (pnpm); API types generated from OpenAPI
+tests/
+  fixtures/http/       # recorded responses, named by site and date
+  fixtures/llm/        # recorded LLM responses per provider
+  contract/            # one suite per adapter type
+  unit/
+```
+
+## 3. Design rules
+
+1. **Ports and adapters.** Each stage depends on a `Protocol` (`Fetcher`, `Renderer`,
+   `FeedAdapter`, `LLMExtractor`, `InputReader`, `OutputWriter`). Implementations
+   register by name and are picked from config.
+2. **Pydantic at every boundary.** Stage inputs and outputs are models, not dicts.
+   Raw source objects travel in a typed `raw: dict` field.
+3. **Stages are plain functions or small classes with injected dependencies.** No
+   module-level clients, no hidden globals. Tests inject fakes.
+4. **Network conditions never raise past the fetch layer.** They become a status
+   (`blocked`, `error`, ...) on the record.
+5. **Append-only, idempotent writes.** Re-running a finished store produces the same
+   rows; writers never delete earlier runs.
+6. **The API and UI import the pipeline, never the reverse.**
+7. **Raw means raw.** Acquisition does not clean, convert or drop values, except the
+   LLM evidence rule.
+
+## 4. Configuration and secrets
+
+- Run settings live in YAML, validated by `pydantic-settings`. Environment variables
+  override files.
+- API keys and DSNs are `SecretStr`, read from the UI session or `.env`. They never
+  appear in config files, logs, outputs, reports, cache or exceptions.
+- `.env` and `data/` are in `.gitignore`. `.env.example` lists variable names with
+  empty values.
+- A redaction filter on the logger masks anything that looks like a key, as a second
+  line of defence.
+
+## 5. Testing
+
+- **No test touches the network.** HTTP is replayed from recorded cassettes
+  (`pytest-recording`); LLM calls are replayed from recorded responses.
+- **Fixtures come from real sites.** Each fixture file name carries the site and the
+  date it was recorded.
+- **Contract tests per adapter type.** Every writer round-trips the same tables. Every
+  LLM provider parses its recorded response into the same schema. Every input reader
+  yields the same URLs for the same list.
+- **Every status has a test**: `ok`, `no_products`, `blocked`, `error`, and each skip
+  reason.
+- A bug fix starts with a failing test that reproduces it.
+
+## 6. Verifying real runs
+
+Passing tests are not enough. Before a stage counts as done:
+
+1. Run it in **LIMIT mode** on 2 real stores and read the actual output files.
+2. Spot-check edge rows: empty prices, duplicate products, non-ASCII titles.
+3. Check the reconciliation line: links in = processed + skipped.
+4. Only then run the full list.
+
+## 7. Logging and observability
+
+- `structlog`, JSON output, with `run_id` and `domain` bound to every line.
+- Log events and counts, not page text or product payloads.
+- Each run writes a manifest: config (without secrets), package versions, durations,
+  token use and cost.
+
+## 8. Dependencies
+
+- Prefer small, single-purpose libraries. A new dependency needs a one-line reason in
+  the pull request.
+- Versions are locked. Fast-moving packages (LiteLLM, Camoufox) are upgraded on purpose,
+  with the contract tests run against the new version.
+
+## 9. Git and review
+
+- One branch per change. No direct commits to `main`.
+- Conventional commit messages (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`).
+- A pull request states what changed, how it was verified (test names, LIMIT run
+  output), and any follow-up.
+- Never commit input lists, run outputs or `.env`.
+
+## 10. Documentation and writing
+
+- A decision that is hard to reverse gets an ADR in [decisions/](../decisions/).
+- A change in behaviour updates the PRD or the architecture page in the same pull
+  request.
+- Write plainly. Lead with the point, use numbers with their source, cut filler and
+  hype. Every claim in a document should be checkable against code, data or a test.
+
+## 11. Definition of done
+
+A change is done when:
+
+- [ ] lint, types and tests pass in CI;
+- [ ] a LIMIT run on real stores was checked by reading the output;
+- [ ] docs and, if needed, an ADR are updated;
+- [ ] for a release: the five handover documents exist in `docs/operations/`
+  ([PRD section 14](../product/prd.md#14-serah-terima)).

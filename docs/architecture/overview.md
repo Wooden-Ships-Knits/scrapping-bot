@@ -1,0 +1,256 @@
+# Architecture
+
+**Updated:** 2026-10-05
+**Requirements:** [PRD](../product/prd.md)
+**Decisions:** [0001](../decisions/0001-layered-acquisition-llm-last.md) ·
+[0002](../decisions/0002-camoufox-for-rendering-only.md) ·
+[0003](../decisions/0003-plain-python-orchestration-file-output.md) ·
+[0004](../decisions/0004-llm-gateway-litellm-instructor.md) ·
+[0006](../decisions/0006-tidy-tables-multiformat-writers.md) ·
+[0007](../decisions/0007-typescript-web-ui-local-api.md)
+
+`scrapebot` takes a bulk list of store links in any format, collects raw data from each
+store (products, prices, vendors, wholesale pages, page text, contacts), and writes it
+to the formats the operator picks. The data feeds a later analysis: which stores are
+competitors and which are potential wholesale partners. The bot collects; people decide.
+
+Each part below is marked:
+
+- **Built**: in the code today (v1).
+- **Planned**: in the [roadmap](../planning/roadmap.md).
+- **Gated**: built only if the M1 survey shows enough stores need it.
+
+---
+
+## 1. Principles
+
+1. **Cheapest and most exact source first.** Feed, then structured data, then browser,
+   then LLM.
+2. **Every input link is accounted for.** Links in = processed + skipped, with a reason
+   for every skip.
+3. **Raw means raw.** Values are stored as found, with their source and evidence URL.
+4. **No access control is bypassed.** See
+   [ADR 0002](../decisions/0002-camoufox-for-rendering-only.md).
+5. **Everything is an adapter.** Inputs, feeds, renderer, LLM provider and outputs are
+   chosen in config.
+6. **Tests never touch the network.**
+
+## 2. System view
+
+```mermaid
+flowchart TD
+    UI[Web app<br/>React + TypeScript] --> API[Local API<br/>FastAPI]
+    API --> CFG[Run config<br/>YAML + per-run secrets]
+    CLI[CLI / n8n / cron] --> CFG
+    CFG --> IN[Input adapters<br/>text, csv, tsv, xlsx, json, jsonl, parquet, sheets]
+    IN --> RS[Resolve<br/>extract URLs, registrable domain, dedupe, skip reasons]
+    RS --> RG[Region settings<br/>country, language, currency]
+    RG --> HP[Fetch homepage<br/>robots, rate limit, cache]
+    HP -->|401/403/429/challenge| BL[blocked]
+    HP -->|network/TLS| ER[error]
+    HP --> PR[Site profile<br/>platform + currency]
+    PR --> FD{Platform feed?}
+    FD -->|yes| RAW[Raw records]
+    FD -->|no| DQ[Discovery + URL queue]
+    DQ --> F[Fetch page]
+    F --> OK{Content OK?}
+    OK -->|no| CF[Camoufox render<br/>text + XHR JSON]
+    OK -->|yes| SX[Structured extraction]
+    CF --> SX
+    SX --> EN{Store has products?}
+    EN -->|yes| RAW
+    EN -->|no| LLM[LLM extractor<br/>LiteLLM + instructor]
+    LLM -->|products, needs_review| RAW
+    LLM -->|nothing| NP[no_products]
+    RAW --> CAN[Canonical tables<br/>JSONL per table, per run]
+    BL --> CAN
+    ER --> CAN
+    NP --> CAN
+    CAN --> CH[Change detection<br/>vs previous run]
+    CH --> W[Writers<br/>json, jsonl, csv, tsv, xlsx, parquet,<br/>sqlite, duckdb, sheets, postgres]
+    W --> REP[Run report + manifest]
+```
+
+## 3. Entry points
+
+| Entry point | Role | Status |
+|---|---|---|
+| CLI | Runs a config file. Used directly and by automation (n8n, cron) | Built (v1 form), extended in M0 |
+| Web app + local API | React + TypeScript frontend over a local FastAPI service. Paste or upload links, choose settings, test mode, progress (SSE), downloads. Thin layer over the same pipeline ([ADR 0007](../decisions/0007-typescript-web-ui-local-api.md)) | Planned (M3) |
+
+Both build the same `RunConfig`. The pipeline runs in a background worker and writes
+progress into the run directory, so a closed browser does not lose a run.
+
+```yaml
+# config.yaml (example)
+input:
+  source: data/prospects.xlsx      # or pasted text from the UI
+  url_column: auto                 # or a column name
+  max_links: 1000
+region:
+  country: US                      # ISO 3166-1 alpha-2
+  language: en                     # ISO 639-1
+  currency: auto                   # from the country via babel, or a code
+llm:
+  model: gemini/<model-name>       # any LiteLLM provider/model
+  fallback: [openai/<model-name>, ollama/<model-name>]
+  budget_usd: 5
+render: none                       # camoufox | none
+output:
+  writers: [xlsx, parquet, sqlite]
+limit: 2                           # test mode; null for a full run
+```
+
+## 4. Stages
+
+### 4.1 Input and resolve — Partly built
+
+- **Built:** CSV with a `website` column; `www.` duplicates collapsed; `no_website` and
+  `social_only` skips.
+- **Planned:** input adapters for pasted free text and `.txt`, `.csv`, `.tsv`,
+  `.xlsx`, `.json`, `.jsonl`, `.parquet` and Google Sheets. URLs are extracted from any
+  text (`urlextract`), grouped by registrable domain (`tldextract`), and every other
+  input field is kept as metadata. Deep links (a product or collection page) mark the
+  store and are fetched as priority pages. New skip reasons: `marketplace`,
+  `invalid_url`, `duplicate`.
+
+### 4.2 Region settings — Planned
+
+Country and language come from ISO lists (`pycountry`). The expected currency follows
+the country (`babel`) unless set. Phone numbers are parsed with the chosen default
+region (`phonenumbers`). Page language is detected and recorded
+(`lingua-language-detector`). An input row may carry its own `country` or `language`.
+
+HTTP requests still send no `Accept-Language` header, so stores answer in their base
+currency. When the browser is used, its locale and timezone follow the chosen region.
+
+### 4.3 Fetch — Built, extended
+
+`Fetcher` is the only code that touches the network: `robots.txt` per URL, 1.5 s delay
+per domain, cache, retries with backoff, broken TLS retried once without verification
+and flagged `ssl_bypassed`. **Planned:** cache only successful responses; move to
+`httpx` with `hishel`, `tenacity`, `aiolimiter` and `protego` so several domains run in
+parallel while each keeps its own delay.
+
+### 4.4 Site profile — Partly built
+
+- A 401, 403 or 429 response sets `blocked`; a network or TLS failure sets `error`.
+  **Built.**
+- Challenge pages (Cloudflare "Just a moment…", `cf-chl`) set `blocked`. **Planned.**
+- Platform from homepage markers. **Built.**
+- Currency, with its source: Shopify `Shopify.currency.active`, JSON-LD
+  `priceCurrency`, or the feed. **Planned.**
+
+### 4.5 Platform feeds — Partly built
+
+Feeds return products directly; product pages are not fetched one by one.
+
+| Feed | Endpoint | Status |
+|---|---|---|
+| Shopify | `/products.json`, 250 per page, up to 8 pages | Built |
+| WooCommerce Store API | `/wp-json/wc/store/v1/products` (prices in minor units, stored raw) | Planned |
+| Squarespace | `?format=json` | Planned |
+| Lightspeed eCom | `?format=json`, to verify in M1 | Planned |
+
+Shopify's `vendor` field is kept: it is the main signal for "own brand or multi-brand
+store" in the later analysis.
+
+### 4.6 Discovery and URL queue — Partly built
+
+`sitemap.xml` with one level of index (**Built**), product sitemaps via
+`ultimate-sitemap-parser` (**Planned**), internal links one level deep (**Built**,
+depth 2 **Planned**). URLs are filtered, canonicalised (`w3lib`), deduplicated and
+prioritised: contact, about, wholesale and stockist pages first, then deep links from
+the input, then products. Cap: 25 pages per store.
+
+### 4.7 Content check and render — Gated
+
+Per page: if the page is empty or a JavaScript shell, render it with Camoufox, keep
+the rendered text and capture product-like JSON responses with their URL. At most 10
+pages per store; same robots check and delay as HTTP. Built only if M1 finds at least 5
+stores that only a browser can read.
+
+### 4.8 Structured extraction — Partly built
+
+JSON-LD `Product` (**Built**). Microdata, OpenGraph, RDFa via `extruct`; app state
+(`__NEXT_DATA__`, `__NUXT__`, `window.__INITIAL_STATE__`) via `chompjs`; captured XHR
+JSON (**Planned**).
+
+### 4.9 LLM extractor — Planned
+
+For a store that still has no products after every earlier stage
+([ADR 0004](../decisions/0004-llm-gateway-litellm-instructor.md)):
+
+- LiteLLM reaches any provider; instructor returns validated Pydantic objects.
+- Input: the page text the bot already holds, condensed with `trafilatura`.
+- Schema: `store_type`, `products[{title, price, currency, vendor, source_url}]`,
+  `brands_carried`, `has_wholesale_page`, `confidence`.
+- Evidence rule: a product whose `source_url` is not one of the pages sent is dropped.
+- Every row gets `needs_review = true`. Model, prompt version, tokens and cost are
+  recorded. A per-run budget stops LLM calls when reached; an optional fallback order
+  covers provider failures.
+
+### 4.10 Raw records — Planned
+
+Acquisition stores values as found. No price conversion, no currency normalisation,
+no deduplication across sources. HTML is never stored; page text is.
+
+### 4.11 Canonical tables and writers — Partly built
+
+v1 writes one CSV row per input row, one raw JSON per domain, and a Markdown report.
+**Planned** ([ADR 0006](../decisions/0006-tidy-tables-multiformat-writers.md)): seven
+tables (`runs`, `inputs`, `stores`, `products`, `pages`, `contacts`, `changes`) stored
+as JSONL per table under `data/runs/<run_id>/`, then converted by the chosen writers:
+
+| Writer | Library | Notes |
+|---|---|---|
+| JSON, JSONL | standard library | Nested fields kept |
+| CSV, TSV | `pandas` | Nested fields as JSON text |
+| Excel | `pandas` + `openpyxl` | One sheet per table; splits above 1,048,576 rows |
+| Parquet | `pyarrow` | Best for analysis at scale |
+| SQLite, DuckDB | `sqlite3`, `duckdb` | Query without importing |
+| Google Sheets | `gspread` | New tab per run, never overwrites |
+| PostgreSQL | SQLAlchemy + `psycopg` | Append with `run_id`, never deletes |
+
+### 4.12 Change detection — Planned
+
+Compares a run with the previous run for the same domains: new products, removed
+products, price changes and status changes, written to the `changes` table and
+summarised in the run report.
+
+### 4.13 Run report and manifest — Built, extended
+
+v1 reports status counts and failures. **Planned:** reconciliation line (links in =
+processed + skipped), coverage by source, `needs_review` and `no_products` lists,
+skipped stages, durations, LLM tokens and cost, change summary; plus a manifest with
+the config (without secrets) and package versions.
+
+## 5. Statuses
+
+| Status | Meaning | Status in code |
+|---|---|---|
+| `ok` | At least one product found | Built |
+| `no_products` | Readable, but no stage found a catalogue | Planned |
+| `js_required` | Needs a browser that is not installed or not built | Built |
+| `blocked` | 401/403/429 or a challenge page; not bypassed | Built (challenge detection planned) |
+| `error` | Network failure, other HTTP error, or `robots.txt` disallow | Built |
+| `no_website`, `social_only` | Skipped at input | Built |
+| `marketplace`, `invalid_url`, `duplicate` | Skipped at input | Planned |
+
+`ssl_bypassed` becomes a flag on the store rather than a status, so the status always
+describes the read result.
+
+## 6. Conduct
+
+- `robots.txt` respected, per-domain delay, public pages only, no login, for HTTP and
+  the browser alike.
+- Camoufox renders JavaScript; it is not used to get past challenges. No CAPTCHA
+  solving, no proxy rotation.
+- Only public page text goes to LLM providers. Keys stay in the session or `.env`.
+- Contacting stores is outside this tool and is a commercial and CAN-SPAM decision for
+  the operator.
+
+## 7. Code
+
+Layout, design rules, testing and the definition of done are in
+[engineering standards](../engineering/standards.md).

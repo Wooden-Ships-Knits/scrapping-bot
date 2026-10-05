@@ -3,6 +3,7 @@
 **Date:** 2026-08-12
 **Status:** Approved
 **Project:** `/Users/webadmin/Automation/scrapping-bot`
+**Extended by:** [v2 — Non-Shopify Coverage (2026-10-05)](2026-10-05-non-shopify-coverage-design.md)
 
 ## Purpose
 
