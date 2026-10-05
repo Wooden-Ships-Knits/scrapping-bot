@@ -1,5 +1,5 @@
+from scrapebot.extract import knit_products, knit_terms_in, product_blob
 from scrapebot.models import Product
-from scrapebot.extract import knit_terms_in, product_blob, knit_products
 
 
 def test_knit_terms_matches_whole_words_case_insensitively():
@@ -33,13 +33,15 @@ def test_product_blob_combines_fields_and_truncates_description():
         description="x" * 900,
     )
     blob = product_blob(p)
-    assert "Kailyn Dress" in blob and "Dresses" in blob and "knitwear" in blob
+    assert "Kailyn Dress" in blob
+    assert "Dresses" in blob
+    assert "knitwear" in blob
     assert len(blob) < 700, "description is truncated to 400 chars"
 
 
 def test_product_blob_survives_none_fields():
     # Shopify feeds return null body_html — this crashed during reconnaissance.
-    p = Product(title="Tee", price=20.0, description=None, tags=None, product_type=None)
+    p = Product(title="Tee", price=20.0, description=None, tags=None, product_type=None)  # pyright: ignore[reportArgumentType]
     assert product_blob(p) == "Tee"
 
 
@@ -75,6 +77,7 @@ def test_knit_terms_does_not_match_substrings_after_plural_fix():
 
 
 # --- Fix A: description is raw body_html; strip markup before truncating ---
+
 
 def test_product_blob_strips_html_tags_from_description():
     p = Product(title="Tee", price=None, description="<p>A soft <b>merino</b> blend.</p>")
@@ -120,6 +123,7 @@ def test_product_blob_still_truncates_plain_text_description_to_400():
 
 # --- Fix B: weak terms ("wool", "shawl") alone on a woven-garment title don't count ---
 
+
 def test_knit_products_rejects_weak_term_on_woven_coat():
     items = [Product(title="Wool Blend Plaid Reversible Coat", price=None)]
     assert knit_products(items) == []
@@ -149,6 +153,7 @@ def test_knit_products_keeps_weak_term_when_title_is_not_woven():
 
 
 # --- Fix A (round 2): "hat", "glove(s)", "sock(s)" were over-suppressing knit accessories ---
+
 
 def test_knit_products_keeps_wool_gloves():
     items = [Product(title="Wool Gloves", price=None)]
@@ -184,6 +189,7 @@ def test_knit_products_still_keeps_genuine_knitwear_regression():
 
 # --- Fix B: <script>/<style> CONTENT must not leak into the searchable blob ---
 
+
 def test_product_blob_excludes_script_content():
     p = Product(
         title="Plain Cotton Tee",
@@ -215,7 +221,9 @@ def test_product_blob_multiple_script_blocks_dont_swallow_real_text():
 
 
 def test_product_blob_still_cleans_genuine_description_text():
-    p = Product(title="Tee", price=None, description="<p>A soft <b>merino</b> blend &amp; more.</p>")
+    p = Product(
+        title="Tee", price=None, description="<p>A soft <b>merino</b> blend &amp; more.</p>"
+    )
     blob = product_blob(p)
     assert "merino" in knit_terms_in(blob)
     assert "&" in blob

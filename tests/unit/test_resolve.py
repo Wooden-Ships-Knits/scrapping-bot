@@ -1,4 +1,4 @@
-from scrapebot.resolve import canonical_domain, normalize_url, classify_row, load_targets
+from scrapebot.resolve import canonical_domain, classify_row, load_targets, normalize_url
 
 
 def test_canonical_domain_strips_www_and_lowercases():

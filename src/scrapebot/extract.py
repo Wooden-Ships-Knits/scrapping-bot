@@ -1,4 +1,5 @@
 """Pure extraction functions. No network, no file I/O, no global state."""
+
 import html
 import json
 import re
@@ -10,9 +11,20 @@ from bs4 import BeautifulSoup
 from .models import Page, Product
 
 KNIT_TERMS = (
-    "knit", "knitwear", "sweater", "cardigan", "pullover", "jumper",
-    "cashmere", "merino", "wool", "crewneck", "turtleneck", "sweatshirt",
-    "poncho", "shawl",
+    "knit",
+    "knitwear",
+    "sweater",
+    "cardigan",
+    "pullover",
+    "jumper",
+    "cashmere",
+    "merino",
+    "wool",
+    "crewneck",
+    "turtleneck",
+    "sweatshirt",
+    "poncho",
+    "shawl",
 )
 KNIT_RE = re.compile(r"\b(" + "|".join(KNIT_TERMS) + r")s?\b", re.I)
 
@@ -21,9 +33,23 @@ KNIT_RE = re.compile(r"\b(" + "|".join(KNIT_TERMS) + r")s?\b", re.I)
 WEAK_KNIT_TERMS = frozenset({"wool", "shawl"})
 
 WOVEN_GARMENT_TERMS = (
-    "coat", "jacket", "blazer", "trouser", "trousers", "pant", "pants",
-    "bag", "blanket", "rug", "skirt", "short", "shorts", "jean", "jeans",
-    "denim", "vest",
+    "coat",
+    "jacket",
+    "blazer",
+    "trouser",
+    "trousers",
+    "pant",
+    "pants",
+    "bag",
+    "blanket",
+    "rug",
+    "skirt",
+    "short",
+    "shorts",
+    "jean",
+    "jeans",
+    "denim",
+    "vest",
 )
 WOVEN_GARMENT_RE = re.compile(r"\b(" + "|".join(WOVEN_GARMENT_TERMS) + r")\b", re.I)
 
@@ -120,7 +146,7 @@ def price_stats(products: list[Product]) -> tuple[float | None, float | None, fl
 
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 MAILTO_RE = re.compile(r'mailto:([^"\'?>\s]+)', re.I)
-TEL_RE = re.compile(r'tel:([+\d][\d\-().\s]{6,})', re.I)
+TEL_RE = re.compile(r"tel:([+\d][\d\-().\s]{6,})", re.I)
 PHONE_TEXT_RE = re.compile(r"\(?\b\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}\b")
 ASSET_SUFFIX_RE = re.compile(r"\.(png|jpe?g|gif|svg|webp|css|js)$", re.I)
 
@@ -175,9 +201,19 @@ PLATFORM_MARKERS = (
 )
 
 KNOWN_CHAINS = (
-    "h m", "macys", "charlotte russe", "windsor", "bealls",
-    "brandy melville", "four seasons", "nordstrom", "dillards",
-    "talbots", "chicos", "anthropologie", "j crew",
+    "h m",
+    "macys",
+    "charlotte russe",
+    "windsor",
+    "bealls",
+    "brandy melville",
+    "four seasons",
+    "nordstrom",
+    "dillards",
+    "talbots",
+    "chicos",
+    "anthropologie",
+    "j crew",
 )
 _STORE_LOCATOR_RE = re.compile(r"find a store|store locator|all locations|our stores", re.I)
 
@@ -214,27 +250,25 @@ def is_chain(store_name: str, html: str) -> bool:
             return True
         if len(chain_compact) >= 6 and compact.startswith(chain_compact):
             return True
-    if _STORE_LOCATOR_RE.search(html or "") and (html or "").lower().count("<li") > 30:
-        return True
-    return False
+    return bool(_STORE_LOCATOR_RE.search(html or "") and (html or "").lower().count("<li") > 30)
 
 
 def products_from_shopify_feed(data: dict) -> list[Product]:
     """Parse a Shopify /products.json payload. Tolerates null fields throughout."""
     out = []
     for raw in (data or {}).get("products") or []:
-        variant_prices = [
-            parse_price(v.get("price")) for v in (raw.get("variants") or [])
-        ]
+        variant_prices = [parse_price(v.get("price")) for v in (raw.get("variants") or [])]
         prices = [p for p in variant_prices if p]
         tags = raw.get("tags")
-        out.append(Product(
-            title=raw.get("title") or "",
-            price=min(prices) if prices else None,
-            product_type=raw.get("product_type") or "",
-            tags=tags if isinstance(tags, list) else [],
-            description=raw.get("body_html") or "",
-        ))
+        out.append(
+            Product(
+                title=raw.get("title") or "",
+                price=min(prices) if prices else None,
+                product_type=raw.get("product_type") or "",
+                tags=tags if isinstance(tags, list) else [],
+                description=raw.get("body_html") or "",
+            )
+        )
     return out
 
 
@@ -243,7 +277,8 @@ def _jsonld_blocks(html: str) -> list:
     blocks = []
     for raw in re.findall(
         r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
-        html or "", re.S | re.I,
+        html or "",
+        re.S | re.I,
     ):
         try:
             parsed = json.loads(raw.strip())
@@ -267,11 +302,13 @@ def products_from_jsonld(html: str) -> list[Product]:
         offers = block.get("offers") or {}
         if isinstance(offers, list):
             offers = offers[0] if offers else {}
-        out.append(Product(
-            title=block.get("name") or "",
-            price=parse_price(offers.get("price") if isinstance(offers, dict) else None),
-            description=block.get("description") or "",
-        ))
+        out.append(
+            Product(
+                title=block.get("name") or "",
+                price=parse_price(offers.get("price") if isinstance(offers, dict) else None),
+                description=block.get("description") or "",
+            )
+        )
     return out
 
 
@@ -315,7 +352,7 @@ def internal_links(html: str, base_url: str, domain: str) -> list[str]:
     soup = BeautifulSoup(html or "", "lxml")
     out: list[str] = []
     for a in soup.find_all("a", href=True):
-        href = a["href"].strip()
+        href = str(a["href"]).strip()
         if not href or href.startswith(("#", "mailto:", "tel:", "javascript:")):
             continue
         url = urljoin(base_url, href).split("#")[0].rstrip("/")

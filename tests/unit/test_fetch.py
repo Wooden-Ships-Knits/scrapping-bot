@@ -1,10 +1,9 @@
-import pytest
-
 from scrapebot.fetch import Fetcher
 
 
 def make_transport(responses, calls=None):
     """responses: {url: (status, body)} or an Exception to raise."""
+
     def transport(url, headers, verify, timeout):
         if calls is not None:
             calls.append((url, verify))
@@ -12,20 +11,29 @@ def make_transport(responses, calls=None):
         if isinstance(r, Exception):
             raise r
         return (r[0], r[1], url)
+
     return transport
 
 
 def test_get_returns_body_on_success(tmp_path):
-    f = Fetcher(cache_dir=tmp_path, delay=0,
-                transport=make_transport({"https://x.com": (200, "<html>hi</html>")}))
+    f = Fetcher(
+        cache_dir=tmp_path,
+        delay=0,
+        transport=make_transport({"https://x.com": (200, "<html>hi</html>")}),
+    )
     res = f.get("https://x.com")
-    assert res.ok and res.body == "<html>hi</html>" and res.status_code == 200
+    assert res.ok
+    assert res.body == "<html>hi</html>"
+    assert res.status_code == 200
 
 
 def test_get_caches_and_does_not_refetch(tmp_path):
     calls = []
-    f = Fetcher(cache_dir=tmp_path, delay=0,
-                transport=make_transport({"https://x.com": (200, "body")}, calls))
+    f = Fetcher(
+        cache_dir=tmp_path,
+        delay=0,
+        transport=make_transport({"https://x.com": (200, "body")}, calls),
+    )
     f.get("https://x.com")
     second = f.get("https://x.com")
     # Filtered to the page URL: a robots.txt probe is expected once per
@@ -33,20 +41,25 @@ def test_get_caches_and_does_not_refetch(tmp_path):
     # this test is about.
     page_calls = [c for c in calls if c[0] == "https://x.com"]
     assert len(page_calls) == 1, "second call must be served from cache"
-    assert second.from_cache is True and second.body == "body"
+    assert second.from_cache is True
+    assert second.body == "body"
 
 
 def test_get_records_403_without_raising(tmp_path):
-    f = Fetcher(cache_dir=tmp_path, delay=0,
-                transport=make_transport({"https://x.com": (403, "")}))
+    f = Fetcher(cache_dir=tmp_path, delay=0, transport=make_transport({"https://x.com": (403, "")}))
     res = f.get("https://x.com")
-    assert res.ok is False and res.status_code == 403
+    assert res.ok is False
+    assert res.status_code == 403
 
 
 def test_get_retries_then_records_error(tmp_path):
     calls = []
-    f = Fetcher(cache_dir=tmp_path, delay=0, retries=2,
-                transport=make_transport({"https://x.com": TimeoutError("timed out")}, calls))
+    f = Fetcher(
+        cache_dir=tmp_path,
+        delay=0,
+        retries=2,
+        transport=make_transport({"https://x.com": TimeoutError("timed out")}, calls),
+    )
     res = f.get("https://x.com")
     assert res.ok is False
     assert "TimeoutError" in res.error
@@ -67,7 +80,8 @@ def test_ssl_failure_retries_with_verification_disabled(tmp_path):
 
     f = Fetcher(cache_dir=tmp_path, delay=0, retries=0, transport=transport)
     res = f.get("https://badssl.com")
-    assert res.ok and res.body == "insecure body"
+    assert res.ok
+    assert res.body == "insecure body"
     assert res.ssl_bypassed is True, "the weakened check must be visible in the result"
     assert calls[-1][1] is False
 
@@ -79,12 +93,14 @@ def test_robots_disallow_blocks_the_request(tmp_path):
     }
     f = Fetcher(cache_dir=tmp_path, delay=0, transport=make_transport(responses))
     res = f.get("https://x.com/private/page")
-    assert res.ok is False and res.error == "robots_disallowed"
+    assert res.ok is False
+    assert res.error == "robots_disallowed"
 
 
 def test_robots_allows_when_file_is_missing(tmp_path):
-    f = Fetcher(cache_dir=tmp_path, delay=0,
-                transport=make_transport({"https://x.com/page": (200, "fine")}))
+    f = Fetcher(
+        cache_dir=tmp_path, delay=0, transport=make_transport({"https://x.com/page": (200, "fine")})
+    )
     assert f.get("https://x.com/page").ok is True
 
 

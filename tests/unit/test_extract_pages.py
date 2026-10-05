@@ -1,5 +1,5 @@
+from scrapebot.extract import about_snippet, find_wholesale_page, html_to_text, internal_links
 from scrapebot.models import Page
-from scrapebot.extract import html_to_text, about_snippet, find_wholesale_page, internal_links
 
 
 def test_html_to_text_strips_tags_scripts_and_styles():
@@ -8,24 +8,29 @@ def test_html_to_text_strips_tags_scripts_and_styles():
       <body><h1>Hello</h1><p>World  of   knits</p></body></html>
     """
     text = html_to_text(html)
-    assert "Hello World of knits" == text
-    assert "var x" not in text and "color:red" not in text
+    assert text == "Hello World of knits"
+    assert "var x" not in text
+    assert "color:red" not in text
 
 
 def test_about_snippet_prefers_an_about_page():
     pages = [
         Page(url="https://x.com", html="", text="Home page text"),
-        Page(url="https://x.com/pages/about-us", html="", text="We are a family boutique in Naples."),
+        Page(
+            url="https://x.com/pages/about-us", html="", text="We are a family boutique in Naples."
+        ),
     ]
     assert about_snippet(pages).startswith("We are a family boutique")
 
 
 def test_about_snippet_falls_back_to_meta_description():
-    pages = [Page(
-        url="https://x.com",
-        html='<meta name="description" content="Curated womenswear since 1998.">',
-        text="nav home shop",
-    )]
+    pages = [
+        Page(
+            url="https://x.com",
+            html='<meta name="description" content="Curated womenswear since 1998.">',
+            text="nav home shop",
+        )
+    ]
     assert about_snippet(pages) == "Curated womenswear since 1998."
 
 
@@ -47,7 +52,10 @@ def test_find_wholesale_page_matches_path_or_link_text():
 
 
 def test_find_wholesale_page_returns_empty_when_absent():
-    assert find_wholesale_page([Page(url="https://x.com", html="<a href='/cart'>Cart</a>", text="")]) == ""
+    assert (
+        find_wholesale_page([Page(url="https://x.com", html="<a href='/cart'>Cart</a>", text="")])
+        == ""
+    )
 
 
 def test_internal_links_are_absolute_same_domain_and_deduped():

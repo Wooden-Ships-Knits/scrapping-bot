@@ -6,7 +6,7 @@ def test_detect_platform_recognises_each_stack():
     assert detect_platform('<div id="siteWrapper" data-squarespace>') == "squarespace"
     assert detect_platform('<img src="https://static.wixstatic.com/a.png">') == "wix"
     assert detect_platform('<link href="/wp-content/plugins/woocommerce/x.css">') == "woocommerce"
-    assert detect_platform('<script>var BCData={};</script> bigcommerce') == "bigcommerce"
+    assert detect_platform("<script>var BCData={};</script> bigcommerce") == "bigcommerce"
 
 
 def test_detect_platform_prefers_shopify_over_generic_wordpress():

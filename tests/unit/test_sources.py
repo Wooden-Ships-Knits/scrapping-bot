@@ -1,35 +1,28 @@
 import json
 
-from scrapebot.models import FetchResult, Target
-from scrapebot.sources import shopify_products, sitemap_urls, crawl_pages, acquire
-
-
-class FakeFetcher:
-    def __init__(self, responses):
-        self.responses = responses
-        self.calls = []
-
-    def get(self, url):
-        self.calls.append(url)
-        entry = self.responses.get(url)
-        if entry is None:
-            return FetchResult(url=url, status_code=404, body="", final_url=url)
-        status, body = entry
-        return FetchResult(url=url, status_code=status, body=body, final_url=url)
+from scrapebot.models import Target
+from scrapebot.sources import acquire, crawl_pages, shopify_products, sitemap_urls
+from tests.fakes import FakeFetcher
 
 
 def feed_page(n, start=0):
-    return json.dumps({"products": [
-        {"title": f"Item {start+i}", "variants": [{"price": "10.00"}]} for i in range(n)
-    ]})
+    return json.dumps(
+        {
+            "products": [
+                {"title": f"Item {start + i}", "variants": [{"price": "10.00"}]} for i in range(n)
+            ]
+        }
+    )
 
 
 def test_shopify_products_paginates_until_empty():
-    f = FakeFetcher({
-        "https://x.com/products.json?limit=250&page=1": (200, feed_page(250)),
-        "https://x.com/products.json?limit=250&page=2": (200, feed_page(40, 250)),
-        "https://x.com/products.json?limit=250&page=3": (200, json.dumps({"products": []})),
-    })
+    f = FakeFetcher(
+        {
+            "https://x.com/products.json?limit=250&page=1": (200, feed_page(250)),
+            "https://x.com/products.json?limit=250&page=2": (200, feed_page(40, 250)),
+            "https://x.com/products.json?limit=250&page=3": (200, json.dumps({"products": []})),
+        }
+    )
     products = shopify_products("x.com", f)
     assert len(products) == 290
     assert products[0].title == "Item 0"
@@ -62,10 +55,12 @@ def test_sitemap_urls_follows_a_sitemap_index_one_level():
       <url><loc>https://x.com/pages/about</loc></url>
       <url><loc>https://x.com/blogs/news/post</loc></url>
     </urlset>"""
-    f = FakeFetcher({
-        "https://x.com/sitemap.xml": (200, index),
-        "https://x.com/sitemap_products_1.xml": (200, child),
-    })
+    f = FakeFetcher(
+        {
+            "https://x.com/sitemap.xml": (200, index),
+            "https://x.com/sitemap_products_1.xml": (200, child),
+        }
+    )
     urls = sitemap_urls("x.com", f)
     assert "https://x.com/products/knit-top" in urls
     assert "https://x.com/pages/about" in urls
@@ -73,9 +68,11 @@ def test_sitemap_urls_follows_a_sitemap_index_one_level():
 
 
 def test_sitemap_urls_caps_the_result():
-    body = "<urlset>" + "".join(
-        f"<url><loc>https://x.com/products/p{i}</loc></url>" for i in range(200)
-    ) + "</urlset>"
+    body = (
+        "<urlset>"
+        + "".join(f"<url><loc>https://x.com/products/p{i}</loc></url>" for i in range(200))
+        + "</urlset>"
+    )
     urls = sitemap_urls("x.com", FakeFetcher({"https://x.com/sitemap.xml": (200, body)}))
     assert len(urls) <= 25
 
@@ -99,13 +96,15 @@ def test_crawl_pages_prioritises_relevant_links_and_caps_pages():
       <a href="/blogs/news/hello">Blog</a>
       <a href="/pages/contact">Contact</a>
     </body></html>"""
-    f = FakeFetcher({
-        "https://x.com": (200, home),
-        "https://x.com/pages/about": (200, "<p>About us</p>"),
-        "https://x.com/collections/sweaters": (200, "<p>Sweaters</p>"),
-        "https://x.com/pages/contact": (200, "<p>Contact</p>"),
-        "https://x.com/blogs/news/hello": (200, "<p>Blog</p>"),
-    })
+    f = FakeFetcher(
+        {
+            "https://x.com": (200, home),
+            "https://x.com/pages/about": (200, "<p>About us</p>"),
+            "https://x.com/collections/sweaters": (200, "<p>Sweaters</p>"),
+            "https://x.com/pages/contact": (200, "<p>Contact</p>"),
+            "https://x.com/blogs/news/hello": (200, "<p>Blog</p>"),
+        }
+    )
     pages = crawl_pages("x.com", "https://x.com", f, max_pages=4)
     urls = [p.url for p in pages]
     assert len(pages) == 4
@@ -115,11 +114,13 @@ def test_crawl_pages_prioritises_relevant_links_and_caps_pages():
 
 
 def test_acquire_prefers_the_shopify_feed_and_skips_crawling():
-    f = FakeFetcher({
-        "https://x.com": (200, "<html>cdn.shopify.com</html>"),
-        "https://x.com/products.json?limit=250&page=1": (200, feed_page(3)),
-        "https://x.com/products.json?limit=250&page=2": (200, json.dumps({"products": []})),
-    })
+    f = FakeFetcher(
+        {
+            "https://x.com": (200, "<html>cdn.shopify.com</html>"),
+            "https://x.com/products.json?limit=250&page=1": (200, feed_page(3)),
+            "https://x.com/products.json?limit=250&page=2": (200, json.dumps({"products": []})),
+        }
+    )
     got = acquire(Target(domain="x.com", url="https://x.com"), f)
     assert got.source_used == "shopify_feed"
     assert len(got.products) == 3
@@ -141,6 +142,7 @@ def test_acquire_marks_js_required_when_pages_load_but_no_products_found():
 
 def test_acquire_preserves_ssl_bypassed_status():
     """A site fetched with TLS verification disabled must stay visibly flagged."""
+
     class SslFetcher(FakeFetcher):
         def get(self, url):
             res = super().get(url)

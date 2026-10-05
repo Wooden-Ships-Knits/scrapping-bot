@@ -1,5 +1,5 @@
-from scrapebot.models import Product
 from scrapebot.extract import parse_price, price_stats
+from scrapebot.models import Product
 
 
 def test_parse_price_handles_common_formats():

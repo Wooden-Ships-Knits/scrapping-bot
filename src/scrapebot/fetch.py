@@ -1,4 +1,5 @@
 """The only module that touches the network."""
+
 import hashlib
 import json
 import time
@@ -31,16 +32,23 @@ REQUEST_HEADERS = {"User-Agent": USER_AGENT}
 
 def _requests_transport(url, headers, verify, timeout):
     import requests
-    r = requests.get(url, headers=headers, verify=verify, timeout=timeout,
-                     allow_redirects=True)
+
+    r = requests.get(url, headers=headers, verify=verify, timeout=timeout, allow_redirects=True)
     return (r.status_code, r.text, r.url)
 
 
 class Fetcher:
     """Polite, cached HTTP. Never raises for network conditions."""
 
-    def __init__(self, cache_dir, delay: float = 1.5, timeout: int = 20,
-                 retries: int = 2, transport=None, respect_robots: bool = True):
+    def __init__(
+        self,
+        cache_dir,
+        delay: float = 1.5,
+        timeout: int = 20,
+        retries: int = 2,
+        transport=None,
+        respect_robots: bool = True,
+    ):
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.delay = delay
@@ -49,7 +57,7 @@ class Fetcher:
         self.respect_robots = respect_robots
         self._transport = transport or _requests_transport
         self._last_request: dict[str, float] = {}
-        self._robots: dict[str, object] = {}
+        self._robots: dict[str, urllib.robotparser.RobotFileParser] = {}
 
     # -- cache -------------------------------------------------------------
     def _cache_path(self, url: str) -> Path:
@@ -70,11 +78,18 @@ class Fetcher:
         return FetchResult(**data, from_cache=True)
 
     def _write_cache(self, res: FetchResult) -> None:
-        self._cache_path(res.url).write_text(json.dumps({
-            "url": res.url, "status_code": res.status_code, "body": res.body,
-            "final_url": res.final_url, "error": res.error,
-            "ssl_bypassed": res.ssl_bypassed,
-        }))
+        self._cache_path(res.url).write_text(
+            json.dumps(
+                {
+                    "url": res.url,
+                    "status_code": res.status_code,
+                    "body": res.body,
+                    "final_url": res.final_url,
+                    "error": res.error,
+                    "ssl_bypassed": res.ssl_bypassed,
+                }
+            )
+        )
 
     # -- politeness --------------------------------------------------------
     def _throttle(self, url: str) -> None:
@@ -99,7 +114,7 @@ class Fetcher:
                 )
                 parser.parse(body.splitlines() if status == 200 else [])
             except Exception:
-                parser.parse([])          # unreachable robots.txt means allow
+                parser.parse([])  # unreachable robots.txt means allow
             self._robots[origin] = parser
         return self._robots[origin].can_fetch(USER_AGENT, url)
 
@@ -110,8 +125,9 @@ class Fetcher:
             return cached
 
         if not self._allowed(url):
-            return FetchResult(url=url, status_code=None, body="",
-                               final_url=url, error="robots_disallowed")
+            return FetchResult(
+                url=url, status_code=None, body="", final_url=url, error="robots_disallowed"
+            )
 
         headers = dict(REQUEST_HEADERS)
         last_error = ""
@@ -127,14 +143,15 @@ class Fetcher:
                 if any(m in str(exc).upper() for m in SSL_MARKERS):
                     break
                 if attempt < self.retries:
-                    time.sleep(0.5 * (2 ** attempt))
+                    time.sleep(0.5 * (2**attempt))
 
         if any(m in last_error.upper() for m in SSL_MARKERS):
             try:
                 self._throttle(url)
                 status, body, final = self._transport(url, headers, False, self.timeout)
-                res = FetchResult(url=url, status_code=status, body=body,
-                                  final_url=final, ssl_bypassed=True)
+                res = FetchResult(
+                    url=url, status_code=status, body=body, final_url=final, ssl_bypassed=True
+                )
                 self._write_cache(res)
                 return res
             except Exception as exc:

@@ -1,21 +1,48 @@
 """Roll one store's acquired data into a single flat CSV row."""
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 
 from . import extract
 from .models import Acquired, Target
 
 ORIGINAL_COLUMNS = [
-    "store_name", "latitude", "longitude", "website", "potential_conflict",
-    "nearest_stockist", "drive_minutes", "distance_miles", "address",
-    "found_near", "types", "place_id",
+    "store_name",
+    "latitude",
+    "longitude",
+    "website",
+    "potential_conflict",
+    "nearest_stockist",
+    "drive_minutes",
+    "distance_miles",
+    "address",
+    "found_near",
+    "types",
+    "place_id",
 ]
 
 SCRAPED_COLUMNS = [
-    "domain", "scrape_status", "source_used", "platform", "is_chain",
-    "pages_fetched", "product_count", "knit_count", "knit_share", "knit_examples",
-    "knit_price_min", "knit_price_max", "price_min", "price_max", "price_median",
-    "emails", "phone", "instagram", "facebook", "wholesale_page",
-    "about_snippet", "fetched_at",
+    "domain",
+    "scrape_status",
+    "source_used",
+    "platform",
+    "is_chain",
+    "pages_fetched",
+    "product_count",
+    "knit_count",
+    "knit_share",
+    "knit_examples",
+    "knit_price_min",
+    "knit_price_max",
+    "price_min",
+    "price_max",
+    "price_median",
+    "emails",
+    "phone",
+    "instagram",
+    "facebook",
+    "wholesale_page",
+    "about_snippet",
+    "fetched_at",
 ]
 
 OUTPUT_COLUMNS = ORIGINAL_COLUMNS + SCRAPED_COLUMNS
@@ -28,7 +55,7 @@ def _blank_record() -> dict:
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def build_skipped_record(row: dict, reason: str) -> dict:

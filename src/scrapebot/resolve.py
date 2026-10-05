@@ -1,4 +1,5 @@
 """Turn raw CSV rows into a deduplicated list of scrape targets."""
+
 import csv
 import re
 from urllib.parse import urlparse

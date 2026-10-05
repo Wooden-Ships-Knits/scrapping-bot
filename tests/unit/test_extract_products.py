@@ -1,9 +1,9 @@
 import json
 from pathlib import Path
 
-from scrapebot.extract import products_from_shopify_feed, products_from_jsonld
+from scrapebot.extract import products_from_jsonld, products_from_shopify_feed
 
-FIXTURES = Path(__file__).parent / "fixtures"
+FIXTURES = Path(__file__).parents[1] / "fixtures"
 
 
 def test_products_from_shopify_feed_parses_real_response():
@@ -13,28 +13,38 @@ def test_products_from_shopify_feed_parses_real_response():
     assert len(products) == len(data["products"])
     first = products[0]
     assert first.title == data["products"][0]["title"]
-    assert first.price is not None and first.price > 0
+    assert first.price is not None
+    assert first.price > 0
     assert isinstance(first.tags, list)
 
 
 def test_products_from_shopify_feed_uses_lowest_variant_price():
-    data = {"products": [{
-        "title": "Sweater", "product_type": "Knitwear", "tags": ["fall"],
-        "body_html": "<p>Warm</p>",
-        "variants": [{"price": "180.00"}, {"price": "120.00"}],
-    }]}
+    data = {
+        "products": [
+            {
+                "title": "Sweater",
+                "product_type": "Knitwear",
+                "tags": ["fall"],
+                "body_html": "<p>Warm</p>",
+                "variants": [{"price": "180.00"}, {"price": "120.00"}],
+            }
+        ]
+    }
     p = products_from_shopify_feed(data)[0]
     assert p.price == 120.0
     assert p.description == "<p>Warm</p>"
 
 
 def test_products_from_shopify_feed_tolerates_nulls_and_no_variants():
-    data = {"products": [
-        {"title": "No body", "body_html": None, "tags": None, "variants": []},
-        {"title": None, "variants": [{"price": "10.00"}]},
-    ]}
+    data = {
+        "products": [
+            {"title": "No body", "body_html": None, "tags": None, "variants": []},
+            {"title": None, "variants": [{"price": "10.00"}]},
+        ]
+    }
     products = products_from_shopify_feed(data)
-    assert products[0].title == "No body" and products[0].price is None
+    assert products[0].title == "No body"
+    assert products[0].price is None
     assert products[1].title == ""
 
 

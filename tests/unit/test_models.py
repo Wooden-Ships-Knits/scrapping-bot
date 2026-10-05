@@ -1,4 +1,4 @@
-from scrapebot.models import FetchResult, Product, Page, Target, Acquired
+from scrapebot.models import Acquired, FetchResult, Page, Product, Target
 
 
 def test_fetch_result_ok_requires_200_and_no_error():
@@ -19,7 +19,8 @@ def test_target_and_acquired_defaults():
     assert t.rows[0]["a"] == 1
     a = Acquired(domain=t.domain)
     assert a.source_used == "none"
-    assert a.products == [] and a.pages == []
+    assert a.products == []
+    assert a.pages == []
     assert a.status == "ok"
 
 

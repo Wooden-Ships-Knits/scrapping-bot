@@ -1,4 +1,5 @@
 """Orchestration: read CSV, scrape each store, write CSV + JSON + report."""
+
 import argparse
 import csv
 import json
@@ -30,16 +31,22 @@ def _write_raw(raw_dir: Path, target, acquired) -> None:
 def _write_report(out_dir: Path, records: list[dict], target_count: int) -> None:
     statuses = Counter(r["scrape_status"] for r in records)
     js_required = [r["domain"] for r in records if r["scrape_status"] == "js_required"]
-    errors = [(r["domain"], r["scrape_status"]) for r in records
-              if r["scrape_status"] in ("error", "blocked")]
+    errors = [
+        (r["domain"], r["scrape_status"])
+        for r in records
+        if r["scrape_status"] in ("error", "blocked")
+    ]
     with_knits = sum(1 for r in records if r["knit_count"] > 0)  # always an int here
 
     lines = [
-        "# Scrape Run Report", "",
+        "# Scrape Run Report",
+        "",
         f"- Total input rows: {len(records)}",
         f"- Stores fetched: {target_count}",
-        f"- Stores showing knitwear: {with_knits}", "",
-        "## Status counts", "",
+        f"- Stores showing knitwear: {with_knits}",
+        "",
+        "## Status counts",
+        "",
     ]
     lines += [f"- `{status}`: {count}" for status, count in statuses.most_common()]
     lines += ["", "## Needs a headless browser (js_required)", ""]

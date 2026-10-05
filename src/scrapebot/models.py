@@ -1,10 +1,12 @@
 """Shared data structures. No logic beyond trivial derived properties."""
+
 from dataclasses import dataclass, field
 
 
 @dataclass
 class FetchResult:
     """One HTTP response, or the record of why there wasn't one."""
+
     url: str
     status_code: int | None
     body: str
@@ -37,6 +39,7 @@ class Page:
 @dataclass
 class Target:
     """One store to scrape. `rows` are the original CSV rows sharing this domain."""
+
     domain: str
     url: str
     rows: list[dict] = field(default_factory=list)
@@ -45,10 +48,11 @@ class Target:
 @dataclass
 class Acquired:
     """Everything gathered for one store."""
+
     domain: str
-    source_used: str = "none"          # shopify_feed | sitemap | crawl | none
+    source_used: str = "none"  # shopify_feed | sitemap | crawl | none
     products: list[Product] = field(default_factory=list)
     pages: list[Page] = field(default_factory=list)
-    status: str = "ok"                 # ok | blocked | ssl_bypassed | error | js_required
+    status: str = "ok"  # ok | blocked | ssl_bypassed | error | js_required
     error: str = ""
     pages_fetched: int = 0

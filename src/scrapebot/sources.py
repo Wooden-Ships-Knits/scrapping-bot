@@ -1,10 +1,14 @@
 """Three acquisition strategies, tried in order until one yields products."""
+
 import json
 import re
 
 from .extract import (
-    detect_platform, html_to_text, internal_links,
-    products_from_jsonld, products_from_shopify_feed,
+    detect_platform,
+    html_to_text,
+    internal_links,
+    products_from_jsonld,
+    products_from_shopify_feed,
 )
 from .models import Acquired, Page, Product, Target
 
@@ -19,7 +23,8 @@ PRIORITY_RE = re.compile(
 )
 RELEVANT_RE = re.compile(
     r"/(product|collection|shop|catalog|pages?/about|about|contact|"
-    r"brands?|designers?|wholesale|stockist)", re.I
+    r"brands?|designers?|wholesale|stockist)",
+    re.I,
 )
 IRRELEVANT_RE = re.compile(
     r"/(blog|news|policies|privacy|terms|refund|shipping|cart|account|login|search)", re.I

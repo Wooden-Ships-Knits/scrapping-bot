@@ -14,19 +14,24 @@ def sample_acquired():
             Product(title="Leather Handbag", price=450.0),
             Product(title="Silk Scarf", price=39.0),
         ],
-        pages=[Page(
-            url="https://monkeesofnaples.com",
-            html='<a href="mailto:hi@monkeesofnaples.com">Mail</a>'
-                 '<a href="https://www.instagram.com/monkeesofnaples/">IG</a>'
-                 '<script src="https://cdn.shopify.com/x.js"></script>',
-            text="Boutique in Naples",
-        )],
+        pages=[
+            Page(
+                url="https://monkeesofnaples.com",
+                html='<a href="mailto:hi@monkeesofnaples.com">Mail</a>'
+                '<a href="https://www.instagram.com/monkeesofnaples/">IG</a>'
+                '<script src="https://cdn.shopify.com/x.js"></script>',
+                text="Boutique in Naples",
+            )
+        ],
     )
 
 
 def test_build_record_computes_knit_signals():
-    target = Target(domain="monkeesofnaples.com", url="https://monkeesofnaples.com",
-                    rows=[{"store_name": "Monkee's of Naples", "website": "https://monkeesofnaples.com"}])
+    target = Target(
+        domain="monkeesofnaples.com",
+        url="https://monkeesofnaples.com",
+        rows=[{"store_name": "Monkee's of Naples", "website": "https://monkeesofnaples.com"}],
+    )
     rec = build_record(target, sample_acquired())
 
     assert rec["knit_count"] == 2
@@ -35,13 +40,22 @@ def test_build_record_computes_knit_signals():
     assert "Cher Sweater in Eggnog" in rec["knit_examples"]
     assert rec["knit_price_min"] == 139.0
     assert rec["knit_price_max"] == 698.0
-    assert rec["price_min"] == 39.0 and rec["price_max"] == 698.0
+    assert rec["price_min"] == 39.0
+    assert rec["price_max"] == 698.0
 
 
 def test_build_record_carries_original_columns_and_contacts():
-    target = Target(domain="monkeesofnaples.com", url="https://monkeesofnaples.com",
-                    rows=[{"store_name": "Monkee's of Naples", "address": "Naples FL",
-                           "website": "https://monkeesofnaples.com"}])
+    target = Target(
+        domain="monkeesofnaples.com",
+        url="https://monkeesofnaples.com",
+        rows=[
+            {
+                "store_name": "Monkee's of Naples",
+                "address": "Naples FL",
+                "website": "https://monkeesofnaples.com",
+            }
+        ],
+    )
     rec = build_record(target, sample_acquired())
 
     assert rec["store_name"] == "Monkee's of Naples"
@@ -62,7 +76,8 @@ def test_build_record_handles_a_store_with_no_products():
     assert rec["knit_count"] == 0
     assert rec["knit_share"] == ""
     assert rec["knit_examples"] == ""
-    assert rec["price_min"] == "" and rec["knit_price_min"] == ""
+    assert rec["price_min"] == ""
+    assert rec["knit_price_min"] == ""
 
 
 def test_build_record_flags_chains():
@@ -74,9 +89,9 @@ def test_build_record_flags_chains():
 
 def test_build_record_caps_knit_examples_at_five():
     target = Target(domain="x.com", url="https://x.com", rows=[{"store_name": "X"}])
-    acq = Acquired(domain="x.com", products=[
-        Product(title=f"Sweater {i}", price=10.0) for i in range(9)
-    ])
+    acq = Acquired(
+        domain="x.com", products=[Product(title=f"Sweater {i}", price=10.0) for i in range(9)]
+    )
     rec = build_record(target, acq)
     assert rec["knit_count"] == 9
     assert len(rec["knit_examples"].split("; ")) == 5
