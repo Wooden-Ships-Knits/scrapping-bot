@@ -380,6 +380,53 @@ def test_llm_run_through_the_interface_never_leaks_the_key(tmp_path, caplog):
     assert SECRET not in caplog.text
 
 
+def test_llm_switched_on_in_the_server_config_uses_the_env_key(tmp_path):
+    """`scrapebot serve -c llm.yaml`: the interface sends no LLM settings, so the run
+    takes them from the config, and the key from .env. It used to run with no key."""
+    import respx
+
+    answer = {
+        "store_type": "multi_brand",
+        "products": [
+            {"title": "Cable Knit Cardigan", "price": "$129.00", "source_url": "https://rose.com"}
+        ],
+        "confidence": 0.8,
+    }
+    completion = {
+        "id": "x", "object": "chat.completion", "created": 1, "model": "gpt-4o-mini",
+        "choices": [{"index": 0, "message": {"role": "assistant", "content": json.dumps(answer)}, "finish_reason": "stop"}],
+        "usage": {"prompt_tokens": 500, "completion_tokens": 40, "total_tokens": 540},
+    }  # fmt: skip
+    grid = (
+        "<html><body>"
+        + "<p>Boutique.</p>" * 30
+        + "<div>Cable Knit Cardigan $129.00</div></body></html>"
+    )
+    env = tmp_path / ".env"
+    env.write_text(f"OPENAI_API_KEY={SECRET}\n")
+    base = RunConfig.model_validate(
+        {
+            "output": {"runs_dir": tmp_path / "runs"},
+            "fetch": {"cache_dir": tmp_path / "c"},
+            "llm": {"enabled": True, "model": "openai/gpt-4o-mini"},
+        }
+    )
+    settings = ApiSettings(base=base, poll_seconds=0.01, env_file=env)
+    app = create_app(
+        settings, fetcher_factory=lambda: FakeFetcher({"https://rose.com": (200, grid)})
+    )
+    with respx.mock(assert_all_called=False) as mock, TestClient(app) as c:
+        route = mock.post("https://api.openai.com/v1/chat/completions").respond(
+            200, json=completion
+        )
+        body = {"source": {"text": "rose.com"}, "writers": ["json"], "test_mode": True}
+        run = wait_until_finished(c, c.post("/api/runs", json=body).json()["run_id"])
+
+    assert route.called
+    assert route.calls[0].request.headers["authorization"] == f"Bearer {SECRET}"
+    assert run["products"] == 1
+
+
 def test_llm_providers_report_env_keys_without_revealing_them(tmp_path):
     env = tmp_path / ".env"
     env.write_text(f"GEMINI_API_KEY={SECRET}\n")

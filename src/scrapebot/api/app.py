@@ -209,6 +209,8 @@ def create_app(
             cfg = RunConfig.model_validate(data)
         except ValidationError as exc:
             raise ApiError(422, "bad_settings", exc.errors()[0]["msg"]) from exc
+        if cfg.llm.enabled and not keys:  # switched on in the server's config file
+            keys = run_keys(cfg.llm.model, None)
         return start(cfg, keys)
 
     @app.post("/api/runs/{run_id}/full", status_code=202)
