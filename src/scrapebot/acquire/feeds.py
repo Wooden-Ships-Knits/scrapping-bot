@@ -7,7 +7,7 @@ first page that is not a feed, so a store without one costs a single request.
 import json
 from collections.abc import Callable
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 from ..extract import feeds as parse
 from ..extract.pages import internal_links
@@ -18,6 +18,15 @@ MAX_FEED_PRODUCTS = 2000
 SHOPIFY_PAGE_SIZE = 250
 WOO_PAGE_SIZE = 100
 LIGHTSPEED_PAGE_SIZE = 100
+MAGENTO_PAGE_SIZE = 100
+# Fields every Magento 2.3+ GraphQL schema has. One unknown field fails the whole query,
+# so nothing newer (url_suffix, brand attributes) is asked for; `raw` keeps the answer.
+MAGENTO_QUERY = (
+    '{products(search:"",pageSize:%d,currentPage:%d){total_count '
+    "page_info{current_page total_pages} items{__typename name sku url_key canonical_url "
+    "categories{name} description{html} "
+    "price_range{minimum_price{final_price{value currency}}}}}}"
+)
 MAX_FEED_PAGES = 20
 SQUARESPACE_COLLECTIONS = ("/shop", "/store", "/shop-all")
 MAX_SQUARESPACE_COLLECTIONS = 4
@@ -95,6 +104,20 @@ def squarespace_feed(origin: str, fetcher: Fetcher, home_html: str = "") -> list
     return unique[:MAX_FEED_PRODUCTS]
 
 
+def magento_feed(origin: str, fetcher: Fetcher, home_html: str = "") -> list[Product]:
+    """The storefront's own GraphQL API, the one a Magento PWA reads its catalogue from."""
+    out: list[Product] = []
+    for page in range(1, MAX_FEED_PAGES + 1):
+        query = MAGENTO_QUERY % (MAGENTO_PAGE_SIZE, page)
+        url = f"{origin}/graphql?{urlencode({'query': query})}"
+        data = _json(fetcher, url)
+        batch = parse.magento_products(data, origin, evidence_url=url)
+        out.extend(batch)
+        if not batch or len(out) >= MAX_FEED_PRODUCTS or page >= parse.magento_total_pages(data):
+            break
+    return out[:MAX_FEED_PRODUCTS]
+
+
 def lightspeed_feed(origin: str, fetcher: Fetcher, home_html: str = "") -> list[Product]:
     out: list[Product] = []
     url = f"{origin}/collection/?format=json&limit={LIGHTSPEED_PAGE_SIZE}"
@@ -119,6 +142,7 @@ FEEDS: dict[str, Feed] = {
     "woocommerce_feed": woocommerce_feed,
     "squarespace_feed": squarespace_feed,
     "lightspeed_feed": lightspeed_feed,
+    "magento_feed": magento_feed,
 }
 
 # Which feeds a detected platform makes worth a request, in order.
@@ -129,6 +153,7 @@ FEEDS_FOR_PLATFORM: dict[str, tuple[str, ...]] = {
     "wordpress": ("woocommerce_feed",),
     "squarespace": ("squarespace_feed",),
     "lightspeed": ("lightspeed_feed",),
+    "magento": ("magento_feed",),
     "custom/unknown": ("shopify_feed",),  # headless or rebranded Shopify still answers
 }
 

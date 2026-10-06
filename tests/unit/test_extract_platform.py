@@ -9,6 +9,7 @@ def test_detect_platform_recognises_each_stack():
     assert detect_platform('<link href="/wp-content/plugins/woocommerce/x.css">') == "woocommerce"
     assert detect_platform("<script>var BCData={};</script> bigcommerce") == "bigcommerce"
     assert detect_platform('<meta name="generator" content="Big Cartel" />') == "bigcartel"
+    assert detect_platform('<script src="/static/frontend/Vendor/theme/x.js">') == "magento"
 
 
 def test_detect_platform_prefers_shopify_over_generic_wordpress():

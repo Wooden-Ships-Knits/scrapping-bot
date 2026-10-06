@@ -5,6 +5,8 @@ from scrapebot.extract.feeds import (
     bigcartel_products,
     lightspeed_next_page,
     lightspeed_products,
+    magento_products,
+    magento_total_pages,
     squarespace_products,
     woocommerce_products,
 )
@@ -159,6 +161,37 @@ def test_shopify_parser_ignores_a_list_payload():
     assert products_from_shopify_feed(data) == []
 
 
+def test_magento_graphql_real_response():
+    """plazafashionstore.com (ScandiPWA): the catalogue only exists behind /graphql."""
+    data = json.loads((HTTP / "plazafashionstore.com-2026-10-06-magento-graphql.json").read_text())
+    products = magento_products(data, "https://plazafashionstore.com", evidence_url="x")
+    assert len(products) == 100
+    first = products[0]
+    assert (first.title, first.price, first.price_raw, first.currency) == (
+        "wool turtleneck pullover",
+        1045.0,
+        "1045",
+        "EUR",
+    )
+    assert first.url == "https://plazafashionstore.com/wool-turtleneck-pullover"
+    assert first.tags[:3] == ["Women", "Clothing", "Knitwear"]
+    assert first.source == "magento_feed"
+    assert magento_total_pages(data) == 13
+
+
+def test_magento_keeps_items_from_a_partial_answer():
+    data = {
+        "errors": [{"message": "Internal server error"}],
+        "data": {"products": {"items": [{"name": "Scarf", "url_key": "scarf"}]}},
+    }
+    (product,) = magento_products(data, "https://m.com")
+    assert (product.title, product.price, product.url) == (
+        "Scarf",
+        None,
+        "https://m.com/scarf.html",
+    )
+
+
 def test_every_feed_tolerates_garbage():
     for parse in (woocommerce_products,):
         assert parse(None) == []
@@ -167,3 +200,6 @@ def test_every_feed_tolerates_garbage():
     assert lightspeed_products({"collection": {"products": None}}, "o") == []
     assert bigcartel_products({"not": "a list"}, "o") == []
     assert bigcartel_products([None, {"price": 1}], "o") == []
+    assert magento_products({"data": None}, "o") == []
+    assert magento_products({"errors": [{"message": "x"}]}, "o") == []
+    assert magento_total_pages(None) == 1

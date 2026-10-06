@@ -374,6 +374,29 @@ def test_a_list_at_the_shopify_feed_path_is_not_an_error():
     assert "shopify_feed" in got.layers_tried
 
 
+def test_acquire_reads_a_magento_pwa_through_its_graphql_api():
+    """plazafashionstore.com was `js_required`: its pages are an empty React shell."""
+    from urllib.parse import urlencode
+
+    from scrapebot.acquire.feeds import MAGENTO_PAGE_SIZE, MAGENTO_QUERY
+
+    origin = "https://plazafashionstore.com"
+    page1 = f"{origin}/graphql?" + urlencode({"query": MAGENTO_QUERY % (MAGENTO_PAGE_SIZE, 1)})
+    f = FakeFetcher(
+        {
+            origin: (200, (FIXTURES / "plazafashionstore.com-2026-10-06-home.html").read_text()),
+            page1: (
+                200,
+                (FIXTURES / "plazafashionstore.com-2026-10-06-magento-graphql.json").read_text(),
+            ),
+        }
+    )
+    got = acquire(Target(domain="plazafashionstore.com", url=origin), f)
+    assert (got.platform, got.source_used, got.status) == ("magento", "magento_feed", "ok")
+    assert len(got.products) == 100, "page 2 is missing here, so the feed stops after page 1"
+    assert got.currency == "EUR"
+
+
 def test_feed_stores_still_get_their_contact_and_wholesale_pages():
     """Issue 7: v1 visited only the homepage of a Shopify store."""
     home = (

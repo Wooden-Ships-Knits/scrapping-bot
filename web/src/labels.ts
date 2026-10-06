@@ -32,6 +32,7 @@ const SOURCE: Record<string, string> = {
   woocommerce_feed: "Feed WooCommerce",
   squarespace_feed: "Feed Squarespace",
   lightspeed_feed: "Feed Lightspeed",
+  magento_feed: "API Magento",
   sitemap: "Sitemap",
   crawl: "Crawl tautan",
   llm: "LLM",

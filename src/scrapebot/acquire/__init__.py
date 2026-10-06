@@ -4,7 +4,8 @@ Stage order for one store (ADR 0001):
 
 1. Homepage. A failure or a challenge page ends the visit as `error` or `blocked`.
 2. Platform feed for the detected platform (Shopify, Big Cartel, WooCommerce,
-   Squarespace, Lightspeed). Exact and cheap; when it yields products, discovery is skipped.
+   Squarespace, Lightspeed, Magento GraphQL). Exact and cheap; when it yields
+   products, discovery is skipped.
 3. Priority pages (contact, about, wholesale, stockist) and deep links from the
    input. Always fetched, feed or not, so contacts are never missed.
 4. Discovery: product sitemaps, else the homepage's links two levels deep.

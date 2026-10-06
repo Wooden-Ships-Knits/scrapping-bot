@@ -168,6 +168,7 @@ Feeds return products directly; product pages are not fetched one by one.
 | WooCommerce Store API | `/wp-json/wc/store/v1/products` (prices in minor units, stored raw) | Built |
 | Squarespace | `?format=json` | Built |
 | Lightspeed eCom | `/collection/?format=json` | Built |
+| Magento 2 GraphQL | `/graphql` `products` query, 100 per page; the API a Magento PWA (ScandiPWA, PWA Studio) reads its catalogue from, so such a store needs no browser | Built |
 
 Shopify's `vendor` field is kept: it is the main signal for "own brand or multi-brand
 store" in the later analysis.

@@ -12,6 +12,7 @@ PLATFORM_MARKERS = (
     ("squarespace", ("squarespace.com", "static1.squarespace", "data-squarespace")),
     ("wix", ("wixstatic.com", "wix.com", "_wixcssimportrule")),
     ("bigcommerce", ("bigcommerce.com", "bcdata", "var bcdata")),
+    ("magento", ("/static/frontend/", "x-magento-init", "mage/cookies", "scandipwa")),
     ("woocommerce", ("woocommerce", "wp-content/plugins/woocommerce")),
     ("lightspeed", ("shoplightspeed", "lightspeedhq", "webshopapp")),
     ("ecwid", ("ecwid",)),

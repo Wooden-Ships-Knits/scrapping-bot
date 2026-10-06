@@ -81,6 +81,65 @@ def bigcartel_products(data: Any, origin: str, evidence_url: str = "") -> list[P
     return out
 
 
+def magento_products(data: Any, origin: str, evidence_url: str = "") -> list[Product]:
+    """Magento 2 GraphQL `products` query: `{"data": {"products": {"items": [...]}}}`.
+
+    `price` is the minimum final price, with the currency the API states. A partial
+    answer (GraphQL `errors` next to `data`) still yields the items it has.
+    """
+    items = _magento_items(data)
+    out = []
+    for raw in items:
+        if not isinstance(raw, dict) or not raw.get("name"):
+            continue
+        final = (
+            ((raw.get("price_range") or {}).get("minimum_price") or {}).get("final_price")
+        ) or {}
+        value = final.get("value") if isinstance(final, dict) else None
+        categories = [
+            html_lib.unescape(as_text(c.get("name")))
+            for c in raw.get("categories") or []
+            if isinstance(c, dict)
+        ]
+        path = as_text(raw.get("canonical_url")) or (
+            f"{as_text(raw.get('url_key'))}.html" if raw.get("url_key") else ""
+        )
+        description = raw.get("description")
+        out.append(
+            Product(
+                title=html_lib.unescape(as_text(raw.get("name"))),
+                price=parse_price(value) or None,
+                price_raw=as_text(value),
+                currency=currency_code(final.get("currency") if isinstance(final, dict) else None),
+                product_type=categories[0] if categories else "",
+                tags=list(dict.fromkeys(categories)),
+                description=clean_html(
+                    as_text(description.get("html") if isinstance(description, dict) else "")
+                ),
+                url=path
+                if path.startswith("http")
+                else (f"{origin}/{path.lstrip('/')}" if path else ""),
+                source="magento_feed",
+                evidence_url=evidence_url,
+                raw=raw,
+            )
+        )
+    return out
+
+
+def _magento_items(data: Any) -> list[Any]:
+    products = ((data or {}).get("data") or {}).get("products") if isinstance(data, dict) else None
+    items = products.get("items") if isinstance(products, dict) else None
+    return items if isinstance(items, list) else []
+
+
+def magento_total_pages(data: Any) -> int:
+    products = ((data or {}).get("data") or {}).get("products") if isinstance(data, dict) else None
+    info = products.get("page_info") if isinstance(products, dict) else None
+    total = info.get("total_pages") if isinstance(info, dict) else None
+    return total if isinstance(total, int) else 1
+
+
 def woocommerce_products(data: Any, evidence_url: str = "") -> list[Product]:
     """WooCommerce Store API (/wp-json/wc/store/v1/products).
 
