@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import { parseRoute } from "./router";
-import { skipReason, storeStatus, tone } from "./labels";
+import { skipReason, sourceLabel, storeStatus, tone } from "./labels";
 
 describe("labels", () => {
   it("translates known codes and passes unknown ones through", () => {
     expect(storeStatus("no_products")).toBe("Tanpa katalog");
     expect(skipReason("over_limit")).toBe("Di luar mode uji");
     expect(storeStatus("something_new")).toBe("something_new");
+    expect(sourceLabel("bigcartel_feed")).toBe("Feed Big Cartel");
   });
 
   it("gives every store status a tone", () => {

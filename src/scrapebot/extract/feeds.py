@@ -12,16 +12,15 @@ from .text import clean_html
 from .values import as_text, currency_code
 
 
-def shopify_products(
-    data: dict[str, Any] | None, base_url: str = "", evidence_url: str = ""
-) -> list[Product]:
+def shopify_products(data: Any, base_url: str = "", evidence_url: str = "") -> list[Product]:
     """Parse a Shopify /products.json payload. Tolerates null fields throughout.
 
     The price is the lowest variant price. The feed carries no currency: the caller
-    stamps the store currency on the products.
+    stamps the store currency on the products. Anything that is not a Shopify payload
+    (Big Cartel answers the same path with a list) yields no products.
     """
     out = []
-    for raw in (data or {}).get("products") or []:
+    for raw in (data.get("products") if isinstance(data, dict) else None) or []:
         if not isinstance(raw, dict):
             continue
         variants = [v for v in raw.get("variants") or [] if isinstance(v, dict)]
@@ -41,6 +40,40 @@ def shopify_products(
                 description=clean_html(raw.get("body_html") or ""),
                 url=f"{base_url}/products/{handle}" if base_url and handle else "",
                 source="shopify_feed",
+                evidence_url=evidence_url,
+                raw=raw,
+            )
+        )
+    return out
+
+
+def bigcartel_products(data: Any, origin: str, evidence_url: str = "") -> list[Product]:
+    """Big Cartel storefront feed (`/products.json`): a list of every product, unpaged.
+
+    `price` is the lowest option price. The feed carries no currency: the caller stamps
+    the store currency on the products.
+    """
+    out = []
+    for raw in data if isinstance(data, list) else []:
+        if not isinstance(raw, dict) or not raw.get("name"):
+            continue
+        price = parse_price(raw.get("price"))
+        categories = [
+            as_text(c.get("name")) for c in raw.get("categories") or [] if isinstance(c, dict)
+        ]
+        artists = [as_text(a.get("name")) for a in raw.get("artists") or [] if isinstance(a, dict)]
+        path = as_text(raw.get("url"))
+        out.append(
+            Product(
+                title=as_text(raw.get("name")),
+                price=price or None,
+                price_raw=as_text(raw.get("price")),
+                vendor=", ".join(artists),
+                product_type=categories[0] if categories else "",
+                tags=categories,
+                description=clean_html(as_text(raw.get("description"))),
+                url=origin + path if path.startswith("/") else path,
+                source="bigcartel_feed",
                 evidence_url=evidence_url,
                 raw=raw,
             )

@@ -35,6 +35,14 @@ MARKETPLACE_NAMES = frozenset({
     "vinted", "aliexpress", "alibaba", "shopee", "lazada", "tokopedia",
 })  # fmt: skip
 
+# Hosts where each subdomain is a separate store but that the Public Suffix List does
+# not list as private suffixes (myshopify.com, wixsite.com, square.site already are).
+HOSTED_STORE_DOMAINS = frozenset({
+    "bigcartel.com", "squarespace.com", "mybigcommerce.com", "shoplightspeed.com",
+    "webshopapp.com", "storenvy.com", "myshopline.com", "weebly.com", "godaddysites.com",
+    "jimdosite.com", "company.site", "business.site", "wordpress.com",
+})  # fmt: skip
+
 _SCHEME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*://")
 
 
@@ -93,9 +101,18 @@ def _tld_extractor():
 
 
 def registrable_domain(host: str) -> str:
-    """The domain a store owns ("shop.example.co.uk" -> "example.co.uk"), or "" if none."""
+    """The domain a store owns ("shop.example.co.uk" -> "example.co.uk"), or "" if none.
+
+    On a shared store host the store owns its subdomain ("brand.bigcartel.com").
+    """
     parts = _tld_extractor()(host)
-    return parts.top_domain_under_public_suffix.lower() if parts.suffix and parts.domain else ""
+    if not (parts.suffix and parts.domain):
+        return ""
+    domain = parts.top_domain_under_public_suffix.lower()
+    store = parts.subdomain.lower().split(".")[-1] if parts.subdomain else ""
+    if domain in HOSTED_STORE_DOMAINS and store not in ("", "www"):
+        return f"{store}.{domain}"
+    return domain
 
 
 def canonical_domain(raw: str) -> str:

@@ -341,6 +341,39 @@ def test_acquire_uses_the_lightspeed_collection_json():
     assert len(got.products) == 16
 
 
+BIGCARTEL_FEED = FIXTURES / "saysayboutique.bigcartel.com-2026-10-06-products.json"
+
+
+def test_acquire_uses_the_bigcartel_feed_with_the_store_currency():
+    home = (
+        '<meta name="generator" content="Big Cartel" /><script>'
+        'bigcartel.account.currency = window.bigcartel.account.currency || "USD"</script>'
+    )
+    origin = "https://saysayboutique.bigcartel.com"
+    f = FakeFetcher(
+        {origin: (200, home), f"{origin}/products.json": (200, BIGCARTEL_FEED.read_text())}
+    )
+    got = acquire(Target(domain="saysayboutique.bigcartel.com", url=origin), f)
+    assert (got.platform, got.source_used, got.status) == ("bigcartel", "bigcartel_feed", "ok")
+    assert len(got.products) == 320
+    assert (got.currency, got.currency_source) == ("USD", "bigcartel_js")
+    assert {p.currency for p in got.products} == {"USD"}
+
+
+def test_a_list_at_the_shopify_feed_path_is_not_an_error():
+    """An undetected Big Cartel store gets the Shopify probe; it must not crash."""
+    origin = "https://shop.example.com"
+    f = FakeFetcher(
+        {
+            origin: (200, "<html><body>" + "words " * 100 + "</body></html>"),
+            f"{origin}/products.json?limit=250&page=1": (200, BIGCARTEL_FEED.read_text()),
+        }
+    )
+    got = acquire(Target(domain="example.com", url=origin), f)
+    assert got.status != "error"
+    assert "shopify_feed" in got.layers_tried
+
+
 def test_feed_stores_still_get_their_contact_and_wholesale_pages():
     """Issue 7: v1 visited only the homepage of a Shopify store."""
     home = (

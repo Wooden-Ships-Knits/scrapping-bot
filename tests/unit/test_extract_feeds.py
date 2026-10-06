@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from scrapebot.extract.feeds import (
+    bigcartel_products,
     lightspeed_next_page,
     lightspeed_products,
     squarespace_products,
@@ -135,9 +136,34 @@ def test_lightspeed_collection_real_response():
     assert lightspeed_next_page(data) == 2
 
 
+def test_bigcartel_products_real_response():
+    """saysayboutique.bigcartel.com: one unpaged list, numeric prices, relative URLs."""
+    data = json.loads((HTTP / "saysayboutique.bigcartel.com-2026-10-06-products.json").read_text())
+    products = bigcartel_products(data, "https://saysayboutique.bigcartel.com", evidence_url="x")
+    assert len(products) == len(data) == 320
+    first = products[0]
+    assert (first.title, first.price, first.price_raw) == (
+        "Leopard Print Sheer Tights",
+        24.0,
+        "24.0",
+    )
+    assert first.url == "https://saysayboutique.bigcartel.com/product/leopard-print-sheer-tights"
+    assert first.product_type == "Socks / Tights"
+    assert first.currency == "", "the feed has no currency; the store's is stamped later"
+    assert first.source == "bigcartel_feed"
+
+
+def test_shopify_parser_ignores_a_list_payload():
+    """bigcartel.com crashed the run: Big Cartel answers /products.json with a list."""
+    data = json.loads((HTTP / "saysayboutique.bigcartel.com-2026-10-06-products.json").read_text())
+    assert products_from_shopify_feed(data) == []
+
+
 def test_every_feed_tolerates_garbage():
     for parse in (woocommerce_products,):
         assert parse(None) == []
         assert parse({"not": "a list"}) == []
     assert squarespace_products(None, "o") == []
     assert lightspeed_products({"collection": {"products": None}}, "o") == []
+    assert bigcartel_products({"not": "a list"}, "o") == []
+    assert bigcartel_products([None, {"price": 1}], "o") == []

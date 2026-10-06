@@ -8,6 +8,7 @@ from .values import currency_code
 # Ordered: the first match wins, so specific e-commerce platforms beat generic CMS markers.
 PLATFORM_MARKERS = (
     ("shopify", ("cdn.shopify.com", "shopify.theme", "myshopify.com")),
+    ("bigcartel", ('content="big cartel"', "bigcartel.account")),
     ("squarespace", ("squarespace.com", "static1.squarespace", "data-squarespace")),
     ("wix", ("wixstatic.com", "wix.com", "_wixcssimportrule")),
     ("bigcommerce", ("bigcommerce.com", "bcdata", "var bcdata")),
@@ -18,6 +19,8 @@ PLATFORM_MARKERS = (
 )
 
 _SHOPIFY_CURRENCY_RE = re.compile(r'Shopify\.currency\s*=\s*\{[^}]*"active"\s*:\s*"([A-Za-z]{3})"')
+# Big Cartel's theme script: bigcartel.account.currency = ... || "USD"
+_BIGCARTEL_CURRENCY_RE = re.compile(r'bigcartel\.account\.currency\s*=[^;\n]*?"([A-Za-z]{3})"')
 _META_CURRENCY_RES = (
     re.compile(
         r'<meta[^>]+property=["\'](?:og|product):price:currency["\'][^>]+content=["\']([^"\']+)',
@@ -42,14 +45,17 @@ def detect_platform(html: str) -> str:
 def detect_currency(html: str) -> tuple[str, str]:
     """(currency, source) declared by a page, or ("", "") when it declares none.
 
-    Sources, most reliable first: Shopify's theme script (the currency prices are
-    shown in), OpenGraph price meta tags, then JSON-LD offers. A currency symbol
+    Sources, most reliable first: the Shopify or Big Cartel theme script (the currency
+    prices are shown in), OpenGraph price meta tags, then JSON-LD offers. A currency symbol
     in text is never used: "$" alone does not say which dollar.
     """
     html = html or ""
     m = _SHOPIFY_CURRENCY_RE.search(html)
     if m:
         return m.group(1).upper(), "shopify_js"
+    m = _BIGCARTEL_CURRENCY_RE.search(html)
+    if m:
+        return m.group(1).upper(), "bigcartel_js"
     for rx in _META_CURRENCY_RES:
         m = rx.search(html)
         if m and currency_code(m.group(1)):

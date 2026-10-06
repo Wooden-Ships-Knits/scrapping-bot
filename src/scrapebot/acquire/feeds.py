@@ -46,6 +46,13 @@ def shopify_feed(origin: str, fetcher: Fetcher, home_html: str = "") -> list[Pro
     return out[:MAX_FEED_PRODUCTS]
 
 
+def bigcartel_feed(origin: str, fetcher: Fetcher, home_html: str = "") -> list[Product]:
+    url = f"{origin}/products.json"  # every product in one response; no paging
+    return parse.bigcartel_products(_json(fetcher, url), origin, evidence_url=url)[
+        :MAX_FEED_PRODUCTS
+    ]
+
+
 def woocommerce_feed(origin: str, fetcher: Fetcher, home_html: str = "") -> list[Product]:
     out: list[Product] = []
     for page in range(1, MAX_FEED_PAGES + 1):
@@ -108,6 +115,7 @@ Feed = Callable[[str, Fetcher, str], list[Product]]
 
 FEEDS: dict[str, Feed] = {
     "shopify_feed": shopify_feed,
+    "bigcartel_feed": bigcartel_feed,
     "woocommerce_feed": woocommerce_feed,
     "squarespace_feed": squarespace_feed,
     "lightspeed_feed": lightspeed_feed,
@@ -116,6 +124,7 @@ FEEDS: dict[str, Feed] = {
 # Which feeds a detected platform makes worth a request, in order.
 FEEDS_FOR_PLATFORM: dict[str, tuple[str, ...]] = {
     "shopify": ("shopify_feed",),
+    "bigcartel": ("bigcartel_feed",),
     "woocommerce": ("woocommerce_feed",),
     "wordpress": ("woocommerce_feed",),
     "squarespace": ("squarespace_feed",),

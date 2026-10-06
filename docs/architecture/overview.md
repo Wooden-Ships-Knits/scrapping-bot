@@ -120,10 +120,12 @@ limit: 2                           # test mode; null for a full run
   `.json`, `.jsonl`, `.parquet`. URLs are extracted from any text (`urlextract`) and
   grouped by registrable domain (`tldextract` with its bundled Public Suffix List, so
   no network call; private suffixes on, so `a.myshopify.com` and `b.myshopify.com`
-  stay apart). The URL column is found by name or content; every input field is kept
-  as metadata. Deep links mark the store and are fetched as priority pages. Skip
-  reasons: `duplicate`, `over_limit`, `no_website`, `invalid_url`, `social_only`,
-  `marketplace`. Inputs over `max_links` are refused before any fetch.
+  stay apart; store hosts the list misses, such as `bigcartel.com` and
+  `squarespace.com`, are kept apart by `HOSTED_STORE_DOMAINS`). The URL column is
+  found by name or content; every input field is kept as metadata. Deep links mark
+  the store and are fetched as priority pages. Skip reasons: `duplicate`,
+  `over_limit`, `no_website`, `invalid_url`, `social_only`, `marketplace`. Inputs
+  over `max_links` are refused before any fetch.
 - **Planned:** Google Sheets input (M5).
 
 ### 4.2 Region settings — Planned
@@ -161,10 +163,11 @@ Feeds return products directly; product pages are not fetched one by one.
 
 | Feed | Endpoint | Status |
 |---|---|---|
-| Shopify | `/products.json`, 250 per page, up to 8 pages | Built |
-| WooCommerce Store API | `/wp-json/wc/store/v1/products` (prices in minor units, stored raw) | Planned |
-| Squarespace | `?format=json` | Planned |
-| Lightspeed eCom | `?format=json`, to verify in M1 | Planned |
+| Shopify | `/products.json`, 250 per page, up to 20 pages | Built |
+| Big Cartel | `/products.json`, one unpaged list; currency from `bigcartel.account.currency` | Built |
+| WooCommerce Store API | `/wp-json/wc/store/v1/products` (prices in minor units, stored raw) | Built |
+| Squarespace | `?format=json` | Built |
+| Lightspeed eCom | `/collection/?format=json` | Built |
 
 Shopify's `vendor` field is kept: it is the main signal for "own brand or multi-brand
 store" in the later analysis.

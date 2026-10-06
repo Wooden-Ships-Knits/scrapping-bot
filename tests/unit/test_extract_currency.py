@@ -9,6 +9,13 @@ Shopify.locale = "en";
 Shopify.currency = {"active":"USD","rate":"1.0"};
 </script></head><body></body></html>"""
 
+BIGCARTEL_HOME = """<html><head><meta name="generator" content="Big Cartel" />
+<script>
+bigcartel.account = window.bigcartel.account || {}
+bigcartel.account.currency = window.bigcartel.account.currency || "USD"
+bigcartel.account.moneyFormat = "sign"
+</script></head><body></body></html>"""
+
 
 def jsonld(block):
     return f'<script type="application/ld+json">{json.dumps(block)}</script>'
@@ -16,6 +23,10 @@ def jsonld(block):
 
 def test_shopify_active_currency_is_read_from_the_theme_script():
     assert detect_currency(SHOPIFY_HOME) == ("USD", "shopify_js")
+
+
+def test_bigcartel_account_currency_is_read_from_the_theme_script():
+    assert detect_currency(BIGCARTEL_HOME) == ("USD", "bigcartel_js")
 
 
 def test_opengraph_price_currency_meta():

@@ -37,6 +37,17 @@ def test_canonical_domain_keeps_stores_on_shared_platform_hosts_apart():
     assert canonical_domain("https://brand-b.wixsite.com/shop") == "brand-b.wixsite.com"
 
 
+def test_canonical_domain_keeps_stores_on_hosts_the_suffix_list_misses_apart():
+    """saysayboutique.bigcartel.com was grouped as bigcartel.com: a second Big Cartel
+    store in the same list would have been skipped as a duplicate."""
+    assert (
+        canonical_domain("https://saysayboutique.bigcartel.com") == "saysayboutique.bigcartel.com"
+    )
+    assert canonical_domain("https://shop.brand.bigcartel.com/x") == "brand.bigcartel.com"
+    assert canonical_domain("https://brand.squarespace.com") == "brand.squarespace.com"
+    assert canonical_domain("https://www.bigcartel.com") == "bigcartel.com"
+
+
 def test_canonical_domain_scheme_detection_is_case_insensitive():
     assert canonical_domain("HTTP://WWW.EXAMPLE.COM/Shop") == "example.com"
 

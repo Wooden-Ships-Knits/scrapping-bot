@@ -28,8 +28,13 @@ const RUN_STATE: Record<string, string> = {
 
 const SOURCE: Record<string, string> = {
   shopify_feed: "Feed Shopify",
+  bigcartel_feed: "Feed Big Cartel",
+  woocommerce_feed: "Feed WooCommerce",
+  squarespace_feed: "Feed Squarespace",
+  lightspeed_feed: "Feed Lightspeed",
   sitemap: "Sitemap",
   crawl: "Crawl tautan",
+  llm: "LLM",
   none: "—",
 };
 
