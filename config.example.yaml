@@ -12,6 +12,11 @@ fetch:
   timeout_seconds: 20
   retries: 2
 
+render:                        # the browser, for stores HTTP cannot read (ADR 0002)
+  enabled: true                # needs Camoufox: make install. --no-render turns it off
+  max_pages: 10                # rendered pages per store
+  browsers: 2                  # pages rendered at once
+
 output:
   runs_dir: data/runs
   writers: [xlsx, csv]         # json, jsonl, csv, tsv, xlsx, parquet, sqlite, duckdb

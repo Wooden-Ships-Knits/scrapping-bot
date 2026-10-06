@@ -10,8 +10,12 @@ Stage order for one store (ADR 0001):
    input. Always fetched, feed or not, so contacts are never missed.
 4. Discovery: product sitemaps, else the homepage's links two levels deep.
 5. Structured data on every page: JSON-LD, Microdata, RDFa, OpenGraph, app state.
-6. LLM, only for a store that still has no products (PRD LM-06), and only products
-   that pass the evidence rule (LM-07).
+6. Browser render (ADR 0002), only for a store that still has no products: a
+   JavaScript-shell homepage is rendered and its catalogue links followed; otherwise
+   a few product and collection pages are rendered in case their grid loads by
+   script. Products come from the rendered HTML and from the JSON the pages load.
+7. LLM, only for a store that still has no products (PRD LM-06), and only products
+   that pass the evidence rule (LM-07). It reads rendered pages too.
 
 Every stage tried is recorded in `layers_tried`.
 """
@@ -20,6 +24,7 @@ from collections import Counter
 from typing import TYPE_CHECKING
 
 from ..extract.contacts import find_contacts
+from ..extract.json_products import captured_products
 from ..extract.profile import detect_currency, detect_platform
 from ..extract.structured import page_products
 from ..fetch import Fetcher
@@ -30,6 +35,7 @@ from .discovery import (
     RankedLinks,
     dedupe,
     fetch_pages,
+    link_role,
     rank_links,
     sitemap_urls,
     to_page,
@@ -39,12 +45,18 @@ from .feeds import FEEDS, feeds_for
 
 if TYPE_CHECKING:
     from ..llm.gateway import LLMExtractor
+    from ..render import Renderer
 
 # A homepage with less visible text than this is a JavaScript shell: the content
 # arrives only after scripts run, so an empty result says nothing about the catalogue.
 SHELL_TEXT_CHARS = 200
 
 BLOCKED_STATUSES = (401, 403, 429)
+
+RENDER_MAX_PAGES = 10  # per store (ADR 0002)
+# Pages rendered for a store whose pages have text but no products: enough to see a
+# grid that loads by script, few enough that a store with no catalogue costs little.
+RENDER_PROBE_PAGES = 3
 
 __all__ = ["MAX_PAGES", "acquire"]
 
@@ -54,6 +66,8 @@ def acquire(
     fetcher: Fetcher,
     max_pages: int = MAX_PAGES,
     llm: "LLMExtractor | None" = None,
+    renderer: "Renderer | None" = None,
+    render_pages: int = RENDER_MAX_PAGES,
 ) -> Acquired:
     """Gather everything available for one store. Never raises for network conditions."""
     got = Acquired(domain=target.domain, url=target.url, layers_tried=["homepage"])
@@ -103,12 +117,97 @@ def acquire(
         if not got.currency:
             got.currency, got.currency_source = _currency_from_products(got.products)
 
+    refused = ""
+    if not got.products and renderer is not None and render_pages > 0:
+        refused = _render_stage(target, got, renderer, render_pages)
+        if not got.currency:
+            got.currency, got.currency_source = _currency_from_products(got.products)
+        for product in got.products:
+            product.currency = product.currency or got.currency
+
     if not got.products and llm is not None and got.read_pages:
         _llm_stage(got, llm)
 
     got.contacts = find_contacts(got.read_pages)
     got.status = _read_status(got)
+    if got.status == "js_required" and refused:
+        got.status, got.error = "blocked", f"{refused} in the browser"
     return got
+
+
+def _render_stage(target: Target, got: Acquired, renderer: "Renderer", limit: int) -> str:
+    """Render the pages HTTP could not read, then read products from what the browser
+    saw. Returns why the browser was refused at the homepage, or ""."""
+    home_key = url_key(target.url)
+    shells = [p for p in got.read_pages if len(p.text) < SHELL_TEXT_CHARS]
+    home_is_shell = (
+        bool(got.pages) and url_key(got.pages[0].url) == home_key and (got.pages[0] in shells)
+    )
+    if home_is_shell:
+        todo, budget = [target.url], limit
+    else:
+        # A few pages that should list products, in case their grid loads by script;
+        # with none, the homepage, for the catalogue links only a browser sees.
+        listing = [p.url for p in got.read_pages if _lists_products(p)]
+        todo = [p.url for p in shells if _lists_products(p)] or listing or [target.url]
+        budget = min(limit, RENDER_PROBE_PAGES)
+
+    got.layers_tried.append("render")
+    exact: list[Product] = []
+    guessed: list[Product] = []
+    done: set[str] = set()
+    while todo and len(done) < budget:
+        url = todo.pop(0)
+        if url_key(url) in done:
+            continue
+        done.add(url_key(url))
+        rendered = renderer.render(url)
+        res = rendered.result
+        if not res.ok:
+            if url_key(url) == home_key and (res.challenge or res.status_code in BLOCKED_STATUSES):
+                return (
+                    f"challenge page ({res.challenge})"
+                    if res.challenge
+                    else f"HTTP {res.status_code}"
+                )
+            continue  # the HTTP reading of the page stays
+        page = to_page(url, res, target.url).model_copy(update={"via": "browser"})
+        _replace_page(got, page)
+        exact += page_products(page.html, page.url)
+        for capture in rendered.captured:
+            for product in captured_products(capture.data, capture.url, url):
+                (guessed if product.needs_review else exact).append(product)
+        if url_key(url) == home_key:
+            links = rank_links(res.body, target.url, target.domain)
+            todo += dedupe(
+                links.collection[:3]
+                + links.product[:4]
+                + links.priority[:2]
+                + links.collection[3:],
+                done,
+            )
+
+    products = dedupe_products(exact or guessed)
+    if products:
+        got.products, got.source_used = products, "render"
+    return ""
+
+
+def _lists_products(page: Page) -> bool:
+    return page.kind in ("collection", "product") or link_role(page.url) in (
+        "collection",
+        "product",
+    )
+
+
+def _replace_page(got: Acquired, page: Page) -> None:
+    """The browser's reading of a page replaces the HTTP one, or joins the list."""
+    key = url_key(page.url)
+    for i, existing in enumerate(got.pages):
+        if url_key(existing.url) == key:
+            got.pages[i] = page
+            return
+    got.pages.append(page)
 
 
 # Pages most likely to list products go to the model first.

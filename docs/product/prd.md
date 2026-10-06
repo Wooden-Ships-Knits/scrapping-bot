@@ -180,7 +180,7 @@ Prioritas:
 | RG-01 | Pilihan negara dari daftar ISO 3166 (`pycountry`). Bawaan: Amerika Serikat | Wajib | Semua negara tersedia; kode tidak valid ditolak |
 | RG-02 | Pilihan bahasa dari ISO 639 (`pycountry`). Bawaan mengikuti negara | Wajib | Memilih Jerman menyarankan bahasa Jerman |
 | RG-03 | Mata uang yang diharapkan mengikuti negara (`babel`), dan dapat diganti manual | Wajib | Memilih Kanada menyarankan CAD |
-| RG-04 | Lokal dan zona waktu peramban mengikuti wilayah yang dipilih | Bersyarat (ikut M4) | Toko dengan harga per wilayah menampilkan harga pasar asalnya |
+| RG-04 | Lokal dan zona waktu peramban mengikuti wilayah yang dipilih | Direncanakan (M5) | Toko dengan harga per wilayah menampilkan harga pasar asalnya |
 | RG-05 | Nomor telepon diurai dengan wilayah bawaan yang dipilih (`phonenumbers`) | Wajib | Nomor Inggris tanpa kode negara terbaca benar saat wilayah Inggris |
 | RG-06 | Bahasa halaman dideteksi dan dicatat (`lingua-language-detector`) | Sebaiknya | Setiap halaman punya kode bahasa terdeteksi |
 | RG-07 | Header `Accept-Language` tetap tidak dikirim pada HTTP | Wajib | Harga tidak dilokalkan ke negara operator |
@@ -197,7 +197,7 @@ Prioritas:
 | AQ-06 | Umpan Lightspeed dan platform lain yang ditemukan saat survei | Sebaiknya | Ditambahkan bila survei menunjukkan endpoint bekerja |
 | AQ-07 | Discovery: sitemap (termasuk sitemap produk) dan tautan internal sampai kedalaman 2, maksimal 25 halaman per toko | Wajib | Halaman kontak, "tentang kami", grosir, dan stockist selalu masuk anggaran |
 | AQ-08 | Data terstruktur: JSON-LD, Microdata, OpenGraph, RDFa, state aplikasi | Wajib | Setiap format punya fixture yang lulus tes |
-| AQ-09 | Render peramban (Camoufox) dan tangkap XHR JSON, maksimal 10 halaman per toko | Bersyarat | Dibangun bila survei menemukan ≥ 5 toko yang hanya terbaca dengan peramban |
+| AQ-09 | Render peramban (Camoufox) dan tangkap XHR JSON, maksimal 10 halaman per toko | Dibangun | Syarat survei dicabut oleh operator (6 Okt 2026) |
 | AQ-10 | Status `no_products` untuk situs terbaca tanpa katalog | Wajib | Tidak ada toko berstatus `ok` dengan nol produk |
 | AQ-11 | Beberapa domain diproses paralel tanpa melanggar jeda per domain | Wajib | 300 domain selesai dalam target waktu ([bagian 9](#9-kebutuhan-nonfungsional)) |
 
@@ -342,7 +342,7 @@ Rincian dan alasannya ada di [arsitektur](../architecture/overview.md) dan
 | Wilayah dan bahasa | `pycountry`, `babel`, `phonenumbers`, `lingua-language-detector` |
 | HTTP | `httpx`, `hishel`, `tenacity`, `aiolimiter`, `protego` |
 | Ekstraksi | `extruct`, `chompjs`, `selectolax`, `trafilatura`, `ultimate-sitemap-parser` |
-| Peramban | Camoufox (bersyarat) |
+| Peramban | Camoufox |
 | LLM | LiteLLM + instructor + Pydantic |
 | Keluaran | `pandas`, `pyarrow`, `openpyxl`, `duckdb`, SQLAlchemy, `gspread` |
 | Konfigurasi | `pydantic-settings` + YAML |
@@ -358,7 +358,7 @@ verifikasi hasil nyata (bukan hanya kode keluar 0).
 | **M1. Survei dan benchmark** | Run baca-saja atas toko non-Shopify; gold set 20 situs; benchmark penyedia LLM dan pustaka ekstraksi | Matriks cakupan dan hasil benchmark ditinjau; memutuskan AQ-09 |
 | **M2. Akuisisi non-Shopify** | AQ-05 sampai AQ-08, AQ-10, AQ-11 | Cakupan non-Shopify diukur ulang terhadap target |
 | **M3. LLM dan antarmuka** | LM-01 sampai LM-11, antarmuka web TypeScript (bagian 6), OUT-07 | Operator nonteknis menyelesaikan skenario utama tanpa bantuan |
-| **M4. Render** (bersyarat) | AQ-09, RG-04 | Hanya bila M1 menemukan ≥ 5 toko yang hanya terbaca dengan peramban |
+| **M4. Render** ✓ dibangun | AQ-09 (RG-04 pindah ke M5) | Toko yang hanya terbaca dengan peramban terbaca pada run nyata |
 | **M5. Global dan perubahan** | RG-01 sampai RG-07, IN-08, IN-09, CH-01 sampai CH-03, OUT-04, OUT-05 | Daftar campuran dua negara dan run kedua menghasilkan tabel `changes` |
 | **M6. Rilis dan serah terima** | Run penuh pada daftar nyata; dokumen serah terima (bagian 14) | Semua metrik mutlak terpenuhi; tim menjalankan satu run sendiri |
 

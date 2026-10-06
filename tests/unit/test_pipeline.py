@@ -206,10 +206,10 @@ def test_stores_are_visited_in_parallel(tmp_path):
 def test_one_store_crashing_does_not_stop_the_run(tmp_path, monkeypatch):
     real = pipeline.acquire
 
-    def flaky(target, fetcher, llm=None):
+    def flaky(target, fetcher, **kwargs):
         if target.domain == "bad.com":
             raise RuntimeError("parser bug")
-        return real(target, fetcher, llm=llm)
+        return real(target, fetcher, **kwargs)
 
     monkeypatch.setattr(pipeline, "acquire", flaky)
     cfg = config_for(tmp_path, "website\nhttps://bad.com\nhttps://good.com\n")

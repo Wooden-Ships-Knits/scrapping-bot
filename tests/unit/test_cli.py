@@ -92,3 +92,10 @@ def test_llm_flags_enable_the_llm_stage_without_any_key_in_the_config(captured):
 def test_a_model_without_a_provider_is_refused(captured, capsys):
     assert cli.main(["run", "x.csv", "--llm", "gpt-4o-mini"]) == 2
     assert "provider/model" in capsys.readouterr().err
+
+
+def test_the_browser_is_on_by_default_and_no_render_turns_it_off(captured):
+    cli.main(["run", "x.csv"])
+    assert captured["config"].render.enabled is True
+    cli.main(["run", "x.csv", "--no-render"])
+    assert captured["config"].render.enabled is False

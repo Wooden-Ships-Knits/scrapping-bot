@@ -9,6 +9,7 @@ describe("labels", () => {
     expect(skipReason("over_limit")).toBe("Di luar mode uji");
     expect(storeStatus("something_new")).toBe("something_new");
     expect(sourceLabel("bigcartel_feed")).toBe("Feed Big Cartel");
+    expect(sourceLabel("render")).toBe("Browser (Camoufox)");
   });
 
   it("gives every store status a tone", () => {

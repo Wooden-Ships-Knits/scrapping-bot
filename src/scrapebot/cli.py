@@ -56,6 +56,11 @@ def _parser() -> argparse.ArgumentParser:
     r.add_argument("--llm-fallback", action="append", metavar="MODEL", help="tried in order")
     r.add_argument("--llm-budget", type=float, metavar="USD", help="stop LLM calls at this cost")
     r.add_argument("--llm-api-base", metavar="URL", help="server for local models (Ollama)")
+    r.add_argument(
+        "--no-render",
+        action="store_true",
+        help="never open the browser; JavaScript-only stores stay js_required",
+    )
     r.add_argument("-v", "--verbose", action="store_true", help="log every request decision")
 
     sv = sub.add_parser("survey", help="measure which stage can read which store (read-only)")
@@ -110,6 +115,8 @@ def build_config(args: argparse.Namespace) -> RunConfig:
         data["llm"]["budget_usd"] = args.llm_budget
     if getattr(args, "llm_api_base", None):
         data["llm"]["api_base"] = args.llm_api_base
+    if getattr(args, "no_render", False):
+        data["render"]["enabled"] = False
     return RunConfig.model_validate(data)
 
 

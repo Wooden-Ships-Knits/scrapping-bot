@@ -59,13 +59,17 @@ the actual output. A later milestone starts only when the gate is met.
 | **M1. Survey and benchmark** | Read-only run over the non-Shopify stores; record which stage would succeed. Gold set of 20 sites checked by hand. Benchmark LLM providers and extraction libraries (instructor, ScrapeGraphAI, Crawl4AI) | Coverage matrix and benchmark reviewed; decides M4 |
 | **M2. Non-Shopify acquisition** | WooCommerce and Squarespace feeds (Lightspeed if confirmed), `extruct` and app state, product sitemaps, depth-2 crawl, parallel domains, challenge detection | Non-Shopify coverage re-measured against the PRD target |
 | **M3. LLM and interface** | LiteLLM + instructor gateway with all listed providers, evidence rule, budget, fallback. ~~TypeScript web app over a local FastAPI service, with test mode, progress and downloads~~ ✓ built early; M3 adds the LLM settings (provider, model, key, budget) to it | A non-technical operator completes the main scenario unaided |
-| **M4. Browser render** (gated) | Per-page content check, Camoufox, XHR capture, region-based browser locale | **Only if** M1 finds at least 5 stores that only a browser can read |
+| **M4. Browser render** ✓ built (ungated by the operator, 2026-10-06) | Per-page content check, Camoufox, XHR capture. Region-based browser locale moves to M5 | JavaScript-only stores read in a real run |
 | **M5. Global and changes** | Region settings for any country, phone parsing per region, page language detection, Google Sheets input and writer, PostgreSQL writer, change detection | A two-country list and a second run produce a `changes` table |
 | **M6. Release and handover** | Full run on a real list. Five handover documents in `docs/operations/`. `CHANGELOG.md`, version 2.0.0 | All absolute PRD metrics met; the team runs one list on its own |
 
 **Change from the earlier plan:** the LLM stage is no longer gated. The operator wants
 every listed provider available, and bulk lists from any region are likely to contain
-more stores without structured data. The browser stage stays gated.
+more stores without structured data.
+
+**Change on 2026-10-06:** the browser stage is no longer gated either. The operator
+wants JavaScript-only stores read now rather than after the survey. ADR 0002 still
+holds: the browser renders, it does not get past challenges.
 
 ## Next phase (separate PRD)
 

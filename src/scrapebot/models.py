@@ -72,6 +72,7 @@ class Page(_Record):
     kind: str = "other"  # home | about | contact | wholesale | stockist | product | ...
     http_status: int | None = None
     error: str = ""  # why the page could not be read; "" for a page that was read
+    via: str = "http"  # http | browser
 
     @property
     def ok(self) -> bool:
@@ -118,7 +119,7 @@ class Acquired(_Record):
     platform: str = ""
     currency: str = ""  # store currency, ISO 4217; "" when the site does not declare one
     currency_source: str = ""  # shopify_js | meta | jsonld
-    source_used: str = "none"  # a feed (shopify_feed, ...), sitemap, crawl, or none
+    source_used: str = "none"  # a feed (shopify_feed, ...), sitemap, crawl, render, llm, none
     layers_tried: list[str] = Field(default_factory=list)
     products: list[Product] = Field(default_factory=list)
     pages: list[Page] = Field(default_factory=list)

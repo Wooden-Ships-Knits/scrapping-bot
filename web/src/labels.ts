@@ -35,6 +35,7 @@ const SOURCE: Record<string, string> = {
   magento_feed: "API Magento",
   sitemap: "Sitemap",
   crawl: "Crawl tautan",
+  render: "Browser (Camoufox)",
   llm: "LLM",
   none: "—",
 };

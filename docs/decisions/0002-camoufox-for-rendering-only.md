@@ -46,3 +46,11 @@ not prospects. The two other failures were broken TLS certificates.
 - If a future city list shows many blocked boutiques (not chains), revisit this
   decision. Check the request rate and the IP type (datacenter or residential)
   first, before looking at fingerprinting.
+
+## Update 2026-10-06
+
+The operator lifted the M4 survey gate, and the render stage is built as decided
+here (`render.py`, architecture section 4.7). Nothing in this decision changed: the
+browser takes the same `robots.txt` check and server delay as HTTP, a 401/403/429 or
+a challenge page met in the browser makes the store `blocked` and its content is not
+used, and stores already `blocked` over HTTP are never opened in the browser.

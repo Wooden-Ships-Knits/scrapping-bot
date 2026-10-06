@@ -6,8 +6,9 @@
 help: ## Show this help
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "} {printf "  %-11s %s\n", $$1, $$2}'
 
-install: ## Install Python and web dependencies, browsers for e2e, and git hooks
+install: ## Install Python and web dependencies, the Camoufox browser, browsers for e2e, and git hooks
 	uv sync --all-extras
+	uv run camoufox fetch
 	pnpm --dir web install
 	pnpm --dir web exec playwright install chromium
 	uv run pre-commit install

@@ -3,6 +3,7 @@ from pathlib import Path
 
 from scrapebot.extract.structured import (
     app_state_products,
+    bigcommerce_cards,
     opengraph_product,
     page_products,
     schema_products,
@@ -128,6 +129,48 @@ def test_app_state_next_data_products_are_flagged_for_review():
     )
 
 
+def test_wix_warmup_data_products_and_their_store_urls():
+    """aldomartins.com (Wix Stores): the collection grid is in wix-warmup-data. Shape
+    copied from the real page, trimmed to the fields that matter."""
+    warmup = {
+        "appsWarmupData": {
+            "stores": {
+                "category": {
+                    "productsWithMetaData": {
+                        "list": [
+                            {
+                                "id": "23a77f1d",
+                                "name": "CHAQUETA JACQUARD FLORAL CUELLO MAO",
+                                "price": 298,
+                                "formattedPrice": "298,00€",
+                                "sku": "80828",
+                                "urlPart": "chaqueta-jacquard-floral-cuello-mao",
+                            },
+                            {
+                                "id": "9b1c",
+                                "name": "CHALECO JACQUARD FLORAL",
+                                "price": 198,
+                                "formattedPrice": "198,00€",
+                                "sku": "80830",
+                                "urlPart": "chaleco-jacquard-floral",
+                            },
+                        ]
+                    }
+                }
+            }
+        }
+    }
+    html = f'<script type="application/json" id="wix-warmup-data">{json.dumps(warmup)}</script>'
+    products = page_products(html, "https://www.aldomartins.com/collection")
+    assert [(p.title, p.price, p.source) for p in products] == [
+        ("CHAQUETA JACQUARD FLORAL CUELLO MAO", 298.0, "app_state"),
+        ("CHALECO JACQUARD FLORAL", 198.0, "app_state"),
+    ]
+    assert products[0].url == (
+        "https://www.aldomartins.com/product-page/chaqueta-jacquard-floral-cuello-mao"
+    )
+
+
 def test_app_state_window_assignment():
     html = "<script>window.__INITIAL_STATE__ = {catalog: {items: [{sku: 'A1', title: 'Wool Hat', price: '35.00'}]}};</script>"
     assert [p.title for p in app_state_products(html, "https://x.com")] == ["Wool Hat"]
@@ -135,3 +178,33 @@ def test_app_state_window_assignment():
 
 def test_page_without_structured_data_has_no_products():
     assert page_products("<html><body><h1>Shop</h1></body></html>", "https://x.com") == []
+
+
+def test_bigcommerce_cornerstone_cards():
+    """brocks.ca: a brand page with no structured data, only Stencil product cards."""
+    html = (HTTP / "brocks.ca-2026-10-06-brand-page.html").read_text()
+    products = page_products(html, "https://www.brocks.ca/brands/Birkenstock.html")
+    assert len(products) == 12
+    first = products[0]
+    assert (first.title, first.price, first.price_raw, first.vendor) == (
+        "ARIZONA BIG BUCKLE NARROW BF SANDCASTLE 1031429",
+        170.0,
+        "$170.00",
+        "Birkenstock",
+    )
+    assert first.url == "https://www.brocks.ca/arizona-big-buckle-narrow-bf-sandcastle-1031429/"
+    assert (first.source, first.currency) == ("bigcommerce_card", "")
+
+
+def test_bigcommerce_cards_take_the_brand_not_the_location():
+    """style-encore.com: brandName holds the franchise location; product-brand the brand."""
+    html = (HTTP / "style-encore.com-2026-10-06-category.html").read_text()
+    products = bigcommerce_cards(html, "https://style-encore.com/womens-tops/sweaters/")
+    assert len(products) == 12
+    first = products[0]
+    assert (first.vendor, first.price, first.price_raw) == ("Tommy Hilfiger", 14.0, "$14.00")
+
+
+def test_pages_without_bigcommerce_prices_have_no_cards():
+    html = '<div class="card"><h3 class="card-title"><a href="/x">Team</a></h3></div>'
+    assert bigcommerce_cards(html, "https://x.com") == []

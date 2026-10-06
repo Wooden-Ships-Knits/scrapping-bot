@@ -9,6 +9,7 @@ import json
 import re
 from collections.abc import Iterator
 from typing import Any
+from urllib.parse import urljoin
 
 from ..models import Product
 from .prices import parse_price
@@ -18,11 +19,14 @@ from .values import as_text, currency_code
 SCHEMA_SYNTAXES = ("json-ld", "microdata", "rdfa")
 SOURCE_NAMES = {"json-ld": "jsonld", "microdata": "microdata", "rdfa": "rdfa"}
 
-# Embedded app state: <script id="__NEXT_DATA__" type="application/json">{...}</script>
-# or an assignment such as window.__INITIAL_STATE__ = {...};
-_NEXT_DATA_RE = re.compile(
-    r'<script[^>]+id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>', re.S | re.I
+# Embedded app state: a JSON script block such as
+# <script id="__NEXT_DATA__" type="application/json">{...}</script> (Next.js) or
+# <script id="wix-warmup-data" type="application/json">{...}</script> (Wix), or an
+# assignment such as window.__INITIAL_STATE__ = {...};
+_JSON_SCRIPT_RE = re.compile(
+    r'<script[^>]+type=["\']application/json["\'][^>]*>(.*?)</script>', re.S | re.I
 )
+APP_STATE_MAX_CHARS = 3_000_000
 _STATE_ASSIGN_RE = re.compile(
     r"window\.(__INITIAL_STATE__|__PRELOADED_STATE__|__APOLLO_STATE__|__NUXT__)\s*=\s*", re.I
 )
@@ -183,7 +187,9 @@ def opengraph_product(html: str, page_url: str) -> Product | None:
 def _app_states(html: str) -> Iterator[Any]:
     import chompjs
 
-    for m in _NEXT_DATA_RE.finditer(html or ""):
+    for m in _JSON_SCRIPT_RE.finditer(html or ""):
+        if len(m.group(1)) > APP_STATE_MAX_CHARS:
+            continue
         try:
             yield json.loads(m.group(1))
         except ValueError:
@@ -239,6 +245,8 @@ def app_state_products(html: str, page_url: str) -> list[Product]:
             currency = currency or price.get("currencyCode") or price.get("currency")
             price = _first(price, ("amount", "value", "price"))
         url = _first(obj, ("url", "href"))
+        if not url and isinstance(obj.get("urlPart"), str) and "formattedPrice" in obj:
+            url = urljoin(page_url, f"/product-page/{obj['urlPart']}")  # a Wix Stores product
         out.append(
             Product(
                 title=as_text(_first(obj, _TITLE_KEYS)),
@@ -256,12 +264,54 @@ def app_state_products(html: str, page_url: str) -> list[Product]:
     return out
 
 
+# BigCommerce Stencil themes (Cornerstone and its descendants) mark each product card's
+# price with these attributes; nothing else uses them.
+_BIGCOMMERCE_PRICE_ATTRS = ("data-product-price-without-tax", "data-product-price-with-tax")
+
+
+def bigcommerce_cards(html: str, page_url: str) -> list[Product]:
+    """Product cards on a BigCommerce Stencil category or brand page: title, brand,
+    displayed price and link. The card states no currency."""
+    if "data-product-price-" not in (html or ""):
+        return []
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html, "lxml")
+    out = []
+    for card in soup.select(".card"):
+        link = card.select_one(".card-title a")
+        price_tag = next(
+            (t for attr in _BIGCOMMERCE_PRICE_ATTRS if (t := card.select_one(f"[{attr}]"))), None
+        )
+        if link is None or price_tag is None:
+            continue
+        for label in price_tag.select(".sr-only, .is-srOnly, .price-label"):
+            label.decompose()  # "Current Price:" is for screen readers, not the price
+        price_raw = " ".join(price_tag.get_text(" ").split())
+        brand = card.select_one(".card-brand, .product-brand") or card.select_one(
+            '[data-test-info-type="brandName"]'
+        )
+        href = link.get("href")
+        out.append(
+            Product(
+                title=" ".join(link.get_text(" ").split()),
+                price=parse_price(price_raw),
+                price_raw=price_raw,
+                vendor=" ".join(brand.get_text(" ").split()) if brand else "",
+                url=urljoin(page_url, href) if isinstance(href, str) else "",
+                source="bigcommerce_card",
+                evidence_url=page_url,
+            )
+        )
+    return [p for p in out if p.title]
+
+
 def page_products(html: str, page_url: str) -> list[Product]:
     """Every product a page declares, from the most trusted syntax that has any.
 
     Within a page the syntaxes usually repeat each other, so the first that yields
-    products wins; OpenGraph and app state are only consulted when schema.org
-    data has nothing.
+    products wins; OpenGraph, app state and BigCommerce cards are only consulted
+    when schema.org data has nothing.
     """
     products = schema_products(html, page_url)
     if products:
@@ -269,4 +319,4 @@ def page_products(html: str, page_url: str) -> list[Product]:
     og = opengraph_product(html, page_url)
     if og:
         return [og]
-    return app_state_products(html, page_url)
+    return app_state_products(html, page_url) or bigcommerce_cards(html, page_url)

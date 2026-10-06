@@ -18,7 +18,8 @@ import socket
 import threading
 import time
 import urllib.robotparser
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Protocol
 from urllib.parse import urlparse
@@ -238,6 +239,18 @@ class HttpFetcher:
 
     def allowed(self, url: str) -> bool:
         return not self.respect_robots or self._robots_for(url).can_fetch(USER_AGENT, url)
+
+    def robots(self, url: str) -> urllib.robotparser.RobotFileParser | None:
+        """The robots.txt rules for a URL's site, or None when robots are not respected."""
+        return self._robots_for(url) if self.respect_robots else None
+
+    @contextmanager
+    def polite(self, url: str) -> Iterator[None]:
+        """Hold the server's turn for a request made outside this class (the browser):
+        no other request to that server overlaps it, and the delay applies before it."""
+        with self._server_lock(url):
+            self.throttle(url)
+            yield
 
     def sitemaps(self, origin: str) -> list[str]:
         """Sitemaps the site declares in robots.txt."""

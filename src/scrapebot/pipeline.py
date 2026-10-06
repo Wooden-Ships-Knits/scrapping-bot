@@ -44,6 +44,7 @@ from .tables import (
 
 if TYPE_CHECKING:
     from .llm.gateway import Budget, LLMExtractor
+    from .render import Renderer
 
 log = logging.getLogger(__name__)
 
@@ -144,6 +145,7 @@ def store_rows(run_id: str, target: Target, got: Acquired, fetched_at: str) -> I
             page_kind=page.kind,
             http_status=page.http_status,
             error=page.error,
+            via=page.via,
             text=page.text,
         )
     for c in got.contacts:
@@ -233,10 +235,16 @@ def _started_of(run_id: str) -> datetime:
     return datetime.strptime(run_id[:15], "%Y%m%dT%H%M%S").replace(tzinfo=UTC)
 
 
-def _safe_acquire(target: Target, fetcher: Fetcher, llm: "LLMExtractor | None" = None) -> Acquired:
+def _safe_acquire(
+    target: Target,
+    fetcher: Fetcher,
+    llm: "LLMExtractor | None" = None,
+    renderer: "Renderer | None" = None,
+    render_pages: int = 10,
+) -> Acquired:
     """A bug while reading one store is recorded on that store, never fatal to the run."""
     try:
-        return acquire(target, fetcher, llm=llm)
+        return acquire(target, fetcher, llm=llm, renderer=renderer, render_pages=render_pages)
     except Exception as exc:
         log.exception("Unexpected error while visiting %s", target.domain)
         return Acquired(
@@ -262,6 +270,29 @@ def build_llm(config: RunConfig, keys: Mapping[str, SecretStr]) -> "tuple[LLMExt
     return extractor, budget
 
 
+def build_renderer(config: RunConfig, fetcher: Fetcher) -> "Renderer | None":
+    """The browser for a run, or None when it is off, not installed, or the fetcher
+    cannot share its politeness with it (a test double)."""
+    from .render import CamoufoxRenderer, camoufox_available
+
+    if not config.render.enabled:
+        return None
+    if not isinstance(fetcher, HttpFetcher):
+        return None
+    if not camoufox_available():
+        log.warning(
+            "Camoufox is not installed: JavaScript-only stores stay js_required. "
+            "Install it with: make install"
+        )
+        return None
+    return CamoufoxRenderer(
+        fetcher,
+        workers=config.render.browsers,
+        timeout_seconds=config.render.timeout_seconds,
+        settle_seconds=config.render.settle_seconds,
+    )
+
+
 def execute(
     prepared: PreparedRun,
     fetcher: Fetcher | None = None,
@@ -269,16 +300,12 @@ def execute(
     stop: threading.Event | None = None,
     keys: Mapping[str, SecretStr] | None = None,
     llm: "LLMExtractor | None" = None,
+    renderer: "Renderer | None" = None,
 ) -> RunResult:
     """Visit every store, several at once, then write the exports, summary, manifest and,
     last, the report. When `stop` is set, the stores in progress finish, nothing new
     starts, and the run is left resumable."""
-    config, run_id, store, resolution = (
-        prepared.config,
-        prepared.run_id,
-        prepared.store,
-        prepared.resolution,
-    )
+    config = prepared.config
     t0 = time.monotonic()
     fetcher = fetcher or HttpFetcher(
         cache_dir=config.fetch.cache_dir,
@@ -288,6 +315,31 @@ def execute(
     )
     if llm is None and config.llm.enabled:
         llm, _ = build_llm(config, keys or {})
+    own_renderer = renderer is None
+    if renderer is None:
+        renderer = build_renderer(config, fetcher)
+    try:
+        return _visit_and_write(prepared, fetcher, progress, stop, llm, renderer, t0)
+    finally:
+        if own_renderer and renderer is not None:
+            renderer.close()
+
+
+def _visit_and_write(
+    prepared: PreparedRun,
+    fetcher: Fetcher,
+    progress: Progress | None,
+    stop: threading.Event | None,
+    llm: "LLMExtractor | None",
+    renderer: "Renderer | None",
+    t0: float,
+) -> RunResult:
+    config, run_id, store, resolution = (
+        prepared.config,
+        prepared.run_id,
+        prepared.store,
+        prepared.resolution,
+    )
     by_id = {item.input_id: item for item in resolution.inputs}
     summary_file = store.root / SUMMARY_ROWS_FILE
     todo = [t for t in resolution.targets if t.domain not in prepared.done]
@@ -306,7 +358,11 @@ def execute(
                 target = next(queue, None)
                 if target is None:
                     return
-                running[pool.submit(_safe_acquire, target, fetcher, llm)] = target
+                running[
+                    pool.submit(
+                        _safe_acquire, target, fetcher, llm, renderer, config.render.max_pages
+                    )
+                ] = target
 
         fill()
         while running:

@@ -28,7 +28,7 @@ Needs [uv](https://docs.astral.sh/uv/) and [pnpm](https://pnpm.io)
 (`brew install uv pnpm`) and Node 22+. uv installs the right Python version itself.
 
 ```bash
-make install        # Python + web dependencies, test browser, git hooks
+make install        # Python + web dependencies, Camoufox, test browser, git hooks
 ```
 
 ## Interface
@@ -82,7 +82,7 @@ links (text or file) → resolve (domain, skip reasons) → fetch homepage
   → site profile (platform, currency) → deep links from the input
   → platform feed ──────────────────────────────────────────┐
   → or: discover pages → URL queue → fetch each page        │
-        → content OK? no → browser render*                  │
+        → no products? → browser render (Camoufox)          │
         → structured extraction → enough? no → LLM*         │
   → products, pages, contacts ←─────────────────────────────┘
   → seven tables (JSONL) → writers → summary + report
@@ -102,8 +102,10 @@ one that yields products:
    contact page out of the 25-page budget.
 3. **Structured extraction.** JSON-LD product data on each page. *Planned:*
    Microdata, OpenGraph prices and embedded app state.
-4. **Browser render** (*gated*). Camoufox renders only the pages that come back empty
-   or JavaScript-only, and captures the product JSON they load.
+4. **Browser render.** For a store still at zero products, Camoufox renders the
+   JavaScript-only pages (and a few listing pages) and captures the product JSON they
+   load. Same `robots.txt` and delay as HTTP; a challenge page is recorded as
+   `blocked`, never bypassed. `--no-render` turns it off.
 5. **LLM extraction** (*planned*). For a store still at zero products, any LLM
    provider (Gemini, GPT, Claude, Ollama and others, through LiteLLM) reads the page
    text against a fixed schema. These rows are flagged `needs_review`.

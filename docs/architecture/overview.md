@@ -106,7 +106,9 @@ llm:
   model: gemini/<model-name>       # any LiteLLM provider/model
   fallback: [openai/<model-name>, ollama/<model-name>]
   budget_usd: 5
-render: none                       # camoufox | none
+render:
+  enabled: true                    # Camoufox, when installed
+  max_pages: 10
 output:
   writers: [xlsx, parquet, sqlite]
 limit: 2                           # test mode; null for a full run
@@ -181,18 +183,43 @@ depth 2 **Planned**). URLs are filtered, canonicalised (`w3lib`), deduplicated a
 prioritised: contact, about, wholesale and stockist pages first, then deep links from
 the input, then products. Cap: 25 pages per store.
 
-### 4.7 Content check and render — Gated
+### 4.7 Content check and render — Built
 
-Per page: if the page is empty or a JavaScript shell, render it with Camoufox, keep
-the rendered text and capture product-like JSON responses with their URL. At most 10
-pages per store; same robots check and delay as HTTP. Built only if M1 finds at least 5
-stores that only a browser can read.
+`render.py`, used by `acquire/` for a store that still has no products after the
+feeds, discovery and structured data:
 
-### 4.8 Structured extraction — Partly built
+- **JavaScript-shell homepage** (under 200 characters of text): the homepage is
+  rendered, and the collection, product and contact links the rendered page shows are
+  rendered next, up to `render.max_pages` (10) per store.
+- **Readable store without products:** up to 3 collection or product pages are
+  rendered, in case their product grid loads by script.
+- Products come from the rendered HTML (the same structured-data extraction as HTTP)
+  and from the JSON the page loaded (XHR and fetch). A known feed shape (Shopify,
+  Magento GraphQL) is read exactly; any other list of named, priced objects is read by
+  a heuristic and marked `needs_review`, source `render_json`. `source_used` is
+  `render`; the rendered pages replace the HTTP ones (`pages.via = browser`), so
+  contacts and the LLM stage read them too.
+- **Same rules as HTTP.** The page and every request it makes to the store's own site
+  are checked against `robots.txt`; the browser takes the server's turn with the same
+  delay; images, media and fonts are not loaded. A 401/403/429 or a challenge page
+  makes the store `blocked` and its content is not used.
+- Camoufox runs in `render.browsers` (2) worker threads, each owning one browser,
+  locale `en-US`. It is installed by `make install` (`camoufox fetch`); without it, or
+  with `--no-render`, JavaScript-only stores stay `js_required`. Tests use a fake
+  renderer and never open a browser.
 
-JSON-LD `Product` (**Built**). Microdata, OpenGraph, RDFa via `extruct`; app state
-(`__NEXT_DATA__`, `__NUXT__`, `window.__INITIAL_STATE__`) via `chompjs`; captured XHR
-JSON (**Planned**).
+### 4.8 Structured extraction — Built
+
+JSON-LD, Microdata and RDFa `Product` via `extruct`, then OpenGraph, then app state:
+every `<script type="application/json">` block (`__NEXT_DATA__`, Wix
+`wix-warmup-data`, ...) and `window.__INITIAL_STATE__`-style assignments via
+`chompjs`. App-state products are a heuristic reading, flagged `needs_review`; a Wix
+Stores product gets its `/product-page/<urlPart>` URL. Last, BigCommerce Stencil
+product cards (`.card-title`, `data-product-price-without-tax`, brand): title, brand,
+displayed price as written, link; source `bigcommerce_card`. Captured XHR JSON from the
+browser is read in `extract/json_products.py` (section 4.7), including prices in
+minor units (`priceCents: 4600` is 46.00, `price_raw` keeps `4600`) and prices given
+per variant (the lowest wins).
 
 ### 4.9 LLM extractor — Planned
 
@@ -258,8 +285,8 @@ duration and row counts. **Planned:** LLM tokens and cost (M3), change summary (
 |---|---|---|
 | `ok` | At least one product found | Built |
 | `no_products` | Readable, but no stage found a catalogue | Built |
-| `js_required` | Homepage has under 200 characters of visible text: a JavaScript shell that needs a browser | Built |
-| `blocked` | 401/403/429 or a challenge page; not bypassed | Built (challenge detection planned) |
+| `js_required` | Homepage has under 200 characters of visible text and the browser could not read it either (not installed, turned off, or failed) | Built |
+| `blocked` | 401/403/429 or a challenge page, over HTTP or in the browser; not bypassed | Built |
 | `error` | Network failure, other HTTP error, or `robots.txt` disallow | Built |
 | `no_website`, `invalid_url`, `social_only`, `marketplace`, `duplicate`, `over_limit` | Skipped at input | Built |
 

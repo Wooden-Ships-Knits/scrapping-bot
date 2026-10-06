@@ -33,6 +33,16 @@ class FetchConfig(_Section):
     concurrency: int = Field(default=6, ge=1, le=32)
 
 
+class RenderConfig(_Section):
+    """The browser stage (ADR 0002): Camoufox, for stores HTTP cannot read."""
+
+    enabled: bool = True  # used when Camoufox is installed (make install)
+    max_pages: int = Field(default=10, ge=1, le=25)  # rendered pages per store
+    browsers: int = Field(default=2, ge=1, le=8)  # pages rendered at once
+    timeout_seconds: float = Field(default=30, gt=0)  # to load a page
+    settle_seconds: float = Field(default=6, ge=0)  # waited for the page's own requests
+
+
 class LLMConfig(_Section):
     """The LLM stage (PRD 7.4). Never holds keys: those come from the interface or .env."""
 
@@ -73,6 +83,7 @@ class RunConfig(_Section):
     fetch: FetchConfig = Field(default_factory=FetchConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
+    render: RenderConfig = Field(default_factory=RenderConfig)
     # Test mode (PRD OP-01): visit only the first N stores, end to end. None = full run.
     limit: int | None = Field(default=None, ge=1)
 

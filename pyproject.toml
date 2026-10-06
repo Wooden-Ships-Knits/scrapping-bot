@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11,<3.14"
 dependencies = [
     "beautifulsoup4>=4.12",
+    "camoufox>=0.5.7",
     "chompjs>=1.3",
     "duckdb>=1.1",
     "extruct>=0.17",
