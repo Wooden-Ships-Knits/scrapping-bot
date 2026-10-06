@@ -230,6 +230,9 @@ def _llm_stage(got: Acquired, llm: "LLMExtractor") -> None:
     if any(c.status == "skipped_budget" for c in calls):
         got.layers_tried.append("llm_budget_reached")
     if extraction is None:
+        if calls and calls[-1].status == "error":  # say so, rather than a bare no_products
+            got.layers_tried.append("llm_failed")
+            got.error = f"LLM: {calls[-1].error}"
         return
     answered = next(c for c in calls if c.status == "ok")
     kept, dropped = apply_evidence_rule(extraction, pages, answered.model, answered.prompt_version)

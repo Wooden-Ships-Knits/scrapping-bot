@@ -38,6 +38,10 @@ KEY_VARIABLES = {
 # When LiteLLM has no price for a model, cost is estimated at these rates (USD per
 # million tokens) so the budget still stops the run. Deliberately pessimistic.
 FALLBACK_INPUT_PER_M = 5.0
+# Waits before trying the same model again after a passing failure (a busy or
+# rate-limited provider, a timeout). Measured on 2026-10-06: Gemini answered 503 to two
+# stores of four, and the same stores read fine a minute earlier.
+RETRY_DELAYS_SECONDS = (3.0, 10.0)
 FALLBACK_OUTPUT_PER_M = 15.0
 
 
@@ -136,12 +140,31 @@ def _cost(completion: Any, model: str, tokens_in: int, tokens_out: int) -> tuple
     return estimate, True
 
 
+def is_transient(exc: BaseException) -> bool:
+    """A failure that may pass if the same call is made again a little later."""
+    from litellm import exceptions as errors
+
+    passing = (
+        errors.ServiceUnavailableError,
+        errors.InternalServerError,
+        errors.RateLimitError,
+        errors.Timeout,
+        errors.APIConnectionError,
+    )
+    return isinstance(_root_cause(exc), passing)
+
+
 def explain_error(exc: BaseException) -> str:
     """A provider error in plain words for the operator (PRD LM-05), never the key."""
     from litellm import exceptions as errors
 
     # Most specific first: ContextWindowExceededError is a BadRequestError.
     messages: list[tuple[type[BaseException], str]] = [
+        (
+            errors.ServiceUnavailableError,
+            "Penyedia sedang sibuk (server penuh). Coba lagi nanti atau pasang model cadangan.",
+        ),
+        (errors.InternalServerError, "Penyedia sedang bermasalah. Coba lagi nanti."),
         (errors.AuthenticationError, "API key ditolak penyedia. Periksa key dan penyedianya."),
         (errors.PermissionDeniedError, "Key ini tidak punya akses ke model tersebut."),
         (
@@ -184,6 +207,8 @@ class LiteLLMExtractor:
         api_base: str | None = None,
         completion: Completion | None = None,
         max_retries: int = 1,
+        retry_delays: tuple[float, ...] = RETRY_DELAYS_SECONDS,
+        sleep: Callable[[float], None] = time.sleep,
     ):
         import instructor
         import litellm
@@ -194,6 +219,8 @@ class LiteLLMExtractor:
         self.budget = budget
         self.api_base = api_base
         self.max_retries = max_retries
+        self.retry_delays = retry_delays
+        self._sleep = sleep
         self._client = instructor.from_litellm(
             completion or litellm.completion, mode=instructor.Mode.JSON
         )
@@ -213,6 +240,35 @@ class LiteLLMExtractor:
             **kwargs,
         )
 
+    def _call_with_retries(
+        self,
+        model: str,
+        messages: list[dict[str, str]],
+        domain: str,
+        records: list[CallRecord],
+    ) -> tuple[StoreExtraction, Any] | None:
+        """One model's answer, retried after a passing failure; every failed attempt is
+        recorded. None when the model gave no answer."""
+        for attempt in range(len(self.retry_delays) + 1):
+            started = time.monotonic()
+            try:
+                return self._call(model, messages)
+            except Exception as exc:
+                records.append(
+                    CallRecord(
+                        model=model,
+                        prompt_version=PROMPT_VERSION,
+                        status="error",
+                        duration_seconds=round(time.monotonic() - started, 2),
+                        error=explain_error(exc),
+                    )
+                )
+                log.warning("LLM %s failed for %s: %s", model, domain, type(exc).__name__)
+                if not is_transient(exc) or attempt == len(self.retry_delays):
+                    return None
+                self._sleep(self.retry_delays[attempt])
+        return None
+
     def extract(self, domain: str, pages: list[Page]) -> Extraction:
         """Try each model in order until one answers; record every attempt."""
         records: list[CallRecord] = []
@@ -226,20 +282,10 @@ class LiteLLMExtractor:
         messages = build_messages(domain, pages[:MAX_PAGES])
         for model in self.models:
             started = time.monotonic()
-            try:
-                result, completion = self._call(model, messages)
-            except Exception as exc:
-                records.append(
-                    CallRecord(
-                        model=model,
-                        prompt_version=PROMPT_VERSION,
-                        status="error",
-                        duration_seconds=round(time.monotonic() - started, 2),
-                        error=explain_error(exc),
-                    )
-                )
-                log.warning("LLM %s failed for %s: %s", model, domain, type(exc).__name__)
-                continue
+            answer = self._call_with_retries(model, messages, domain, records)
+            if answer is None:
+                continue  # the next model in the fallback order
+            result, completion = answer
             tokens_in, tokens_out = _usage(completion)
             cost, estimated = _cost(completion, model, tokens_in, tokens_out)
             self.budget.add(cost)

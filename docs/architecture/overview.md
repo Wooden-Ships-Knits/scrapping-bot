@@ -233,7 +233,11 @@ For a store that still has no products after every earlier stage
 - Evidence rule: a product whose `source_url` is not one of the pages sent is dropped.
 - Every row gets `needs_review = true`. Model, prompt version, tokens and cost are
   recorded. A per-run budget stops LLM calls when reached; an optional fallback order
-  covers provider failures.
+  covers provider failures. A passing failure (busy provider 503, rate limit, timeout,
+  connection) is retried on the same model after 3 s and 10 s before the next model
+  is tried; every attempt is a row in `llm_calls`. When no model answers, the store
+  keeps `no_products` with `error = "LLM: <reason>"` and `llm_failed` in
+  `layers_tried`, so a provider outage is not mistaken for a store without products.
 
 ### 4.10 Raw records — Built
 

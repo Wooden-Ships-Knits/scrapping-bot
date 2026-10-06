@@ -196,6 +196,59 @@ def test_fallback_order_is_used_when_the_first_model_fails():
     assert calls[0].error == "API key ditolak penyedia. Periksa key dan penyedianya."
 
 
+def busy(model):
+    return litellm.exceptions.ServiceUnavailableError(
+        "overloaded", llm_provider="gemini", model=model
+    )
+
+
+def test_a_busy_provider_is_tried_again_after_a_wait():
+    """2026-10-06: Gemini answered 503 to two stores of four; a retry reads them."""
+    attempts, waits = [], []
+
+    def once_busy(**kwargs):
+        attempts.append(kwargs["model"])
+        if len(attempts) == 1:
+            raise busy(kwargs["model"])
+        return litellm.completion(mock_response=ANSWER, **kwargs)
+
+    extractor = LiteLLMExtractor(
+        "gemini/gemini-2.5-flash", {}, Budget(1.0), completion=once_busy, sleep=waits.append
+    )
+    result, calls = extractor.extract("rose.com", [Page(url="https://rose.com/c", text="x")])
+    assert result is not None
+    assert [c.status for c in calls] == ["error", "ok"]
+    assert calls[0].error.startswith("Penyedia sedang sibuk")
+    assert waits == [3.0]
+
+
+def test_a_provider_that_stays_busy_falls_back_to_the_next_model():
+    waits = []
+
+    def gemini_down(**kwargs):
+        if kwargs["model"].startswith("gemini/"):
+            raise busy(kwargs["model"])
+        return litellm.completion(mock_response=ANSWER, **kwargs)
+
+    extractor = LiteLLMExtractor(
+        "gemini/gemini-2.5-flash",
+        {},
+        Budget(1.0),
+        fallbacks=["openai/gpt-4o-mini"],
+        completion=gemini_down,
+        sleep=waits.append,
+    )
+    result, calls = extractor.extract("rose.com", [Page(url="https://rose.com/c", text="x")])
+    assert result is not None
+    assert [(c.model, c.status) for c in calls] == [
+        ("gemini/gemini-2.5-flash", "error"),
+        ("gemini/gemini-2.5-flash", "error"),
+        ("gemini/gemini-2.5-flash", "error"),
+        ("openai/gpt-4o-mini", "ok"),
+    ]
+    assert waits == [3.0, 10.0]
+
+
 def test_budget_stops_further_calls():
     """PRD LM-09."""
     budget = Budget(0.0)
@@ -332,3 +385,20 @@ def test_price_evidence_matches_the_number_not_the_formatting():
         "v",
     )
     assert len(kept) == 1
+
+
+def test_a_failed_llm_says_why_the_store_has_no_products():
+    class DownLLM:
+        def extract(self, domain, pages):
+            call = LLMCall(
+                model="gemini/gemini-2.5-flash",
+                prompt_version="extract-v1",
+                status="error",
+                error="Penyedia sedang sibuk (server penuh). Coba lagi nanti atau pasang model cadangan.",
+            )
+            return None, [call]
+
+    got = acquire(Target(domain="rose.com", url="https://rose.com"), shop(), llm=DownLLM())
+    assert got.status == "no_products"
+    assert got.error.startswith("LLM: Penyedia sedang sibuk")
+    assert "llm_failed" in got.layers_tried
