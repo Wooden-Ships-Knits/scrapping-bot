@@ -65,6 +65,7 @@ CHALLENGE_MARKERS = {
 }
 # A real page can mention these words; a challenge page is short and little else.
 CHALLENGE_MAX_CHARS = 60_000
+CHALLENGE_STATUSES = frozenset({200, 301, 302, 303, 307, 308, 403, 429, 503})
 
 # (url, headers, verify_tls, timeout) -> (status_code, body, final_url). Raises on
 # network failure. Swapped for a fake in tests.
@@ -98,8 +99,13 @@ class Fetcher(Protocol):
 
 
 def detect_challenge(status: int | None, body: str) -> str:
-    """The vendor of an anti-bot challenge page, or "" for an ordinary response."""
-    if status not in (200, 403, 429, 503) or len(body) > CHALLENGE_MAX_CHARS:
+    """The vendor of an anti-bot challenge page, or "" for an ordinary response.
+
+    Redirect statuses count: PerimeterX answers ralphlauren.com with its block page
+    and status 307 (no Location header), which used to end as a plain `error`. A 404
+    does not: Cloudflare injects its challenge script into ordinary pages too.
+    """
+    if status not in CHALLENGE_STATUSES or len(body) > CHALLENGE_MAX_CHARS:
         return ""
     lowered = body.lower()
     for vendor, markers in CHALLENGE_MARKERS.items():

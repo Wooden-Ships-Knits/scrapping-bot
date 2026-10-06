@@ -267,6 +267,16 @@ def test_challenge_pages_are_flagged_never_retried_and_never_cached(tmp_path, st
     assert len([c for c in calls if c[0] == "https://x.com"]) == 2, "not cached"
 
 
+def test_a_block_page_sent_as_a_redirect_is_a_challenge():
+    """ralphlauren.com: PerimeterX's block page with status 307 and no Location."""
+    from pathlib import Path
+
+    body = (
+        Path(__file__).parents[1] / "fixtures/http/ralphlauren.com-2026-10-06-perimeterx-307.html"
+    ).read_text()
+    assert detect_challenge(307, body) == "perimeterx"
+
+
 def test_an_ordinary_page_mentioning_captcha_words_is_not_a_challenge():
     long_page = "<html>" + "<p>We sell cardigans.</p>" * 5000 + "datadome</html>"
     assert detect_challenge(200, long_page) == ""
