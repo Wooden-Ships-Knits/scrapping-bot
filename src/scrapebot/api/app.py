@@ -46,7 +46,7 @@ UPLOAD_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 
 # (provider, label, example model). Any LiteLLM provider/model works; these are offered.
 PROVIDERS = (
-    ("gemini", "Google Gemini", "gemini/gemini-2.5-flash"),
+    ("gemini", "Google Gemini", "gemini/gemini-3.5-flash"),
     ("openai", "OpenAI", "openai/gpt-4o-mini"),
     ("anthropic", "Anthropic Claude", "anthropic/claude-haiku-4-5-20251001"),
     ("mistral", "Mistral", "mistral/mistral-small-latest"),
