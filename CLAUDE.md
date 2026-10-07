@@ -4,7 +4,7 @@ Guidance for Claude Code (and any contributor) working in this repo.
 
 ## Read first
 
-- What and why: `docs/product/prd.md` (Indonesian)
+- What and why: `docs/product/prd.md` (English)
 - How it works: `docs/architecture/overview.md`
 - How code is written: `docs/engineering/standards.md`
 - What is next: `docs/planning/roadmap.md`

@@ -145,4 +145,4 @@ A change is done when:
 - [ ] a LIMIT run on real stores was checked by reading the output;
 - [ ] docs and, if needed, an ADR are updated;
 - [ ] for a release: the five handover documents exist in `docs/operations/`
-  ([PRD section 14](../product/prd.md#14-serah-terima)).
+  ([PRD section 14](../product/prd.md#14-handover)).

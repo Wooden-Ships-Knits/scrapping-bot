@@ -1,61 +1,61 @@
-# PRD — Scrapebot: Pengumpulan Data Toko secara Massal
+# PRD — Scrapebot: Bulk Store Data Collection
 
 | | |
 |---|---|
-| **Versi** | 2.1 (draf) |
-| **Tanggal** | 7 Oktober 2026 (2.1: pencarian toko dan fokus rajutan, [ADR 0008](../decisions/0008-store-discovery-paid-search.md)) |
-| **Status** | Draf untuk ditinjau |
-| **Pemilik produk** | _(isi nama penanggung jawab)_ |
-| **Menggantikan** | [PRD 1.0 (PDF)](../archive/pdf/prd-akuisisi-data-mentah-v1.pdf) |
-| **Dokumen teknis** | [Arsitektur](../architecture/overview.md) · [Keputusan teknis](../decisions/) · [Standar rekayasa](../engineering/standards.md) · [Roadmap](../planning/roadmap.md) |
+| **Version** | 2.1 (draft) |
+| **Date** | 7 October 2026 (2.1: store discovery and knitwear focus, [ADR 0008](../decisions/0008-store-discovery-paid-search.md)) |
+| **Status** | Draft for review |
+| **Product owner** | _(fill in the owner's name)_ |
+| **Supersedes** | [PRD 1.0 (PDF)](../archive/pdf/prd-akuisisi-data-mentah-v1.pdf) |
+| **Technical documents** | [Architecture](../architecture/overview.md) · [Technical decisions](../decisions/) · [Engineering standards](../engineering/standards.md) · [Roadmap](../planning/roadmap.md) |
 
 ---
 
-## 1. Ringkasan
+## 1. Summary
 
-Scrapebot mencari toko rajutan (knitwear) lewat Google Maps, pencarian web, profil
-Instagram dan Facebook di hasil pencarian, serta LLM yang mencari di web. Hasilnya
-berupa daftar tautan toko. Operator juga bisa menempelkan atau mengunggah daftar
-tautan sendiri dalam jumlah banyak, dalam format apa pun. Scrapebot mengunjungi setiap toko, mengumpulkan data produk, harga,
-merek yang dijual, halaman grosir, dan kontak **apa adanya**, lalu mengekspornya ke
-format yang dipilih operator (Excel, Parquet, JSON, basis data, Google Sheets, dan
-lainnya). Data ini menjadi bahan untuk tahap berikutnya: **menentukan toko mana yang
-pesaing dan toko mana yang layak diajak bekerja sama**. Penjangkauan (reachout)
-dikerjakan belakangan.
+Scrapebot finds knitwear stores through Google Maps, web search, Instagram and
+Facebook profiles in search results, and an LLM that searches the web. The result is
+a list of store links. The operator can also paste or upload their own list of links,
+in bulk and in any format. Scrapebot visits each store, collects product data, prices,
+the brands sold, wholesale pages and contacts **as they are**, then exports them to
+the formats the operator picks (Excel, Parquet, JSON, databases, Google Sheets and
+more). This data feeds the next stage: **deciding which stores are competitors and
+which are worth partnering with**. Reachout comes later.
 
-Bot bisa dipakai lewat antarmuka web sederhana yang mirip *playground* ScrapeGraph,
-tetapi menerima banyak tautan sekaligus, atau lewat baris perintah (CLI).
+The bot can be used through a simple web interface similar to the ScrapeGraph
+*playground*, but one that accepts many links at once, or through the command line
+(CLI).
 
-## 2. Masalah dan hasil bisnis
+## 2. Problem and business outcomes
 
-**Masalah sekarang:**
+**Problems today:**
 
-1. Riset toko dilakukan satu per satu secara manual, sehingga lambat dan hasilnya tidak
-   seragam.
-2. Versi 1 hanya membaca toko Shopify dengan baik. Toko di platform lain sering
-   menghasilkan nol produk.
-3. Masukan dan keluaran terikat pada CSV dengan kolom tetap.
-4. Versi 1 dirancang untuk satu wilayah (Amerika Serikat), tanpa pilihan negara dan
-   bahasa.
+1. Store research is done manually, one store at a time, so it is slow and the
+   results are not uniform.
+2. Version 1 only reads Shopify stores well. Stores on other platforms often yield
+   zero products.
+3. Input and output are tied to CSV with fixed columns.
+4. Version 1 was designed for one region (the United States), with no choice of
+   country or language.
 
-**Hasil bisnis yang dituju:**
+**Target business outcomes:**
 
-| Hasil | Ukuran |
+| Outcome | Measure |
 |---|---|
-| Waktu riset turun | Waktu dari "daftar tautan siap" sampai "data siap dianalisis". Target ditetapkan setelah mengukur proses manual sekarang ([P-01](#15-asumsi-dan-pertanyaan-terbuka)) |
-| Cakupan naik | Persentase toko non-Shopify yang menghasilkan data produk |
-| Keputusan lebih cepat | Data sudah memuat sinyal untuk memilah pesaing dan calon mitra |
-| Dipakai tim | Jumlah run per bulan oleh tim, bukan hanya oleh pembuatnya |
+| Less research time | Time from "link list ready" to "data ready for analysis". The target is set after measuring today's manual process ([P-01](#15-assumptions-and-open-questions)) |
+| Wider coverage | Percentage of non-Shopify stores that yield product data |
+| Faster decisions | The data already holds the signals to sort competitors from potential partners |
+| Used by the team | Runs per month by the team, not only by its author |
 
-## 3. Tujuan akhir dan batas PRD ini
+## 3. End goal and the boundary of this PRD
 
 ```mermaid
 flowchart LR
-    S[Pencarian toko<br/>rajutan] --> A
-    A[Tautan massal<br/>format bebas] --> B[Akuisisi<br/>data mentah]
-    B --> C[Ekspor<br/>multi-format]
-    C --> D[Deteksi perubahan<br/>antarjalan]
-    D --> E[Analisis:<br/>pesaing atau mitra?]
+    S[Knitwear<br/>store discovery] --> A
+    A[Bulk links<br/>any format] --> B[Raw data<br/>acquisition]
+    B --> C[Multi-format<br/>export]
+    C --> D[Change detection<br/>between runs]
+    D --> E[Analysis:<br/>competitor or partner?]
     E --> F[Reachout]
 
     classDef inscope fill:#DCEBF7,stroke:#4A7FB0
@@ -66,72 +66,72 @@ flowchart LR
     class F later
 ```
 
-| Bagian | Status di PRD ini |
+| Part | Status in this PRD |
 |---|---|
-| Pencarian toko, masukan massal, akuisisi, ekspor, deteksi perubahan | **Dalam cakupan** |
-| Analisis pesaing atau mitra | **Fase berikutnya**, dengan PRD sendiri. PRD ini wajib menyediakan datanya ([bagian 8.3](#83-data-yang-wajib-tersedia-untuk-analisis-berikutnya)) |
-| Reachout (surel, CRM) | **Belakangan**, di luar cakupan |
+| Store discovery, bulk input, acquisition, export, change detection | **In scope** |
+| Competitor or partner analysis | **Next phase**, with its own PRD. This PRD must provide its data ([section 8.3](#83-data-required-for-the-next-analysis)) |
+| Reachout (email, CRM) | **Later**, out of scope |
 
-## 4. Pengguna
+## 4. Users
 
-| Pengguna | Kebutuhan | Cara memakai |
+| User | Need | How they use it |
 |---|---|---|
-| **Operator** | Menjalankan bot untuk ratusan tautan tanpa menulis kode | Antarmuka web: tempel tautan, pilih wilayah, model LLM, dan format, lalu klik Jalankan |
-| **Analis** | Data yang rapi, lengkap, dan dapat ditelusuri asalnya | Membuka hasil di Excel, Google Sheets, DuckDB, pandas, atau alat BI |
-| **Peninjau** | Tahu data mana yang perlu dicek manusia | Menyaring baris `needs_review` dan status `no_products` atau `blocked` |
-| **Otomasi** (n8n, cron) | Menjalankan bot tanpa antarmuka | CLI dengan berkas konfigurasi yang sama |
+| **Operator** | Run the bot on hundreds of links without writing code | Web interface: paste links, pick the region, LLM model and formats, then click "Jalankan" (Run) |
+| **Analyst** | Data that is tidy, complete and traceable to its source | Opens the results in Excel, Google Sheets, DuckDB, pandas or a BI tool |
+| **Reviewer** | Know which data needs a human check | Filters `needs_review` rows and `no_products` or `blocked` statuses |
+| **Automation** (n8n, cron) | Run the bot without the interface | CLI with the same config file |
 
-### Skenario utama
+### Main scenario
 
-1. Operator membuka antarmuka web dan menempelkan 300 tautan dari berbagai sumber.
-   Sebagian berupa beranda, sebagian halaman produk, sebagian bercampur dengan teks lain.
-2. Operator memilih wilayah **Amerika Serikat**, bahasa **Inggris**, penyedia LLM
-   **Gemini**, lalu memasukkan API key-nya.
-3. Operator memilih format **Excel + Parquet**.
-4. **Mode uji** aktif secara bawaan: bot menjalankan 2 tautan pertama dari awal sampai
-   akhir. Operator memeriksa hasilnya.
-5. Operator menjalankan sisanya. Progres tampil per toko.
-6. Operator mengunduh berkas hasil. Laporan run menunjukkan: masuk = diproses +
-   dilewati, cakupan per sumber, dan biaya token.
-7. Sebulan kemudian, run yang sama diulang. Bot menandai produk baru, produk hilang,
-   dan perubahan harga.
+1. The operator opens the web interface and pastes 300 links from various sources.
+   Some are home pages, some are product pages, some are mixed in with other text.
+2. The operator picks region **United States**, language **English** and LLM provider
+   **Gemini**, then enters its API key.
+3. The operator picks the **Excel + Parquet** formats.
+4. **Test mode** is on by default: the bot runs the first 2 links end to end. The
+   operator checks the results.
+5. The operator runs the rest. Progress shows per store.
+6. The operator downloads the result files. The run report shows: in = processed +
+   skipped, coverage per source, and token cost.
+7. A month later, the same run is repeated. The bot flags new products, removed
+   products and price changes.
 
-## 5. Ruang lingkup
+## 5. Scope
 
-### 5.1 Dalam cakupan
+### 5.1 In scope
 
-- Pencarian toko rajutan otomatis dari sumber berbayar, dengan batas permintaan dan
-  biaya ([bagian 7.9](#79-pencarian-toko)).
-- Masukan massal dalam format bebas, lewat antarmuka web atau CLI.
-- Pilihan wilayah dan bahasa. Bawaannya Amerika Serikat dan bahasa Inggris.
-- Akuisisi berlapis: umpan platform, data terstruktur, sitemap, render peramban
-  (bersyarat), dan LLM.
-- LLM multi-penyedia: cukup isi API key, lalu pilih model.
-- Data mentah: produk, merek, harga apa adanya, halaman grosir dan stockist, teks
-  halaman, dan kontak sebagaimana ditemukan.
-- Ekspor ke banyak format sekaligus.
-- Deteksi perubahan antarjalan.
-- Mode uji (LIMIT), laporan run, dan rekonsiliasi jumlah.
+- Automatic knitwear store discovery from paid sources, with request and cost limits
+  ([section 7.9](#79-store-discovery)).
+- Bulk input in any format, through the web interface or the CLI.
+- Region and language choice. The default is the United States and English.
+- Layered acquisition: platform feeds, structured data, sitemaps, browser rendering
+  (gated), and LLM.
+- Multi-provider LLM: enter an API key, then pick a model.
+- Raw data: products, brands, prices as they are, wholesale and stockist pages, page
+  text, and contacts as found.
+- Export to many formats at once.
+- Change detection between runs.
+- Test mode (LIMIT), run report, and count reconciliation.
 
-### 5.2 Di luar cakupan
+### 5.2 Out of scope
 
-| Hal | Alasan |
+| Item | Reason |
 |---|---|
-| Penyimpanan atau ekspor **HTML** | Tidak diperlukan untuk analisis. Yang disimpan adalah teks halaman dan data terstruktur |
-| Klasifikasi pesaing atau mitra | Fase berikutnya. Datanya disiapkan di PRD ini |
-| Reachout, pengiriman surel, CRM | Belakangan |
-| Menembus perlindungan antibot | Tidak ada pemecah CAPTCHA, tidak ada rotasi proksi, dan `robots.txt` dipatuhi ([ADR 0002](../decisions/0002-camoufox-for-rendering-only.md)) |
-| Login ke situs | Hanya halaman publik |
-| Membuka atau mengambil data dari profil Instagram dan Facebook | Keduanya melarang pengumpulan otomatis. Profil hanya dibaca dari hasil mesin pencari |
-| Pencocokan dengan daftar pelanggan dan data penjualan | Masuk fase analisis ([ADR 0008](../decisions/0008-store-discovery-paid-search.md)) |
-| Antarmuka multi-pengguna dengan akun dan hak akses | Antarmuka v2 adalah alat internal yang dijalankan lokal |
+| Storing or exporting **HTML** | Not needed for analysis. What is stored is page text and structured data |
+| Competitor or partner classification | Next phase. Its data is prepared in this PRD |
+| Reachout, sending email, CRM | Later |
+| Getting past anti-bot protection | No CAPTCHA solver, no proxy rotation, and `robots.txt` is respected ([ADR 0002](../decisions/0002-camoufox-for-rendering-only.md)) |
+| Logging in to sites | Public pages only |
+| Opening or collecting data from Instagram and Facebook profiles | Both forbid automated collection. Profiles are read only from search engine results |
+| Matching against the customer list and sales data | Belongs to the analysis phase ([ADR 0008](../decisions/0008-store-discovery-paid-search.md)) |
+| Multi-user interface with accounts and permissions | The v2 interface is an internal tool run locally |
 
-## 6. Antarmuka pengguna
+## 6. User interface
 
-Antarmuka web internal yang dibangun dengan **TypeScript** (React + Vite) di atas
-layanan API lokal (FastAPI), dan dijalankan lokal
-([ADR 0007](../decisions/0007-typescript-web-ui-local-api.md)). Logikanya sama dengan CLI;
-antarmuka hanya membaca dan menulis konfigurasi.
+An internal web interface built with **TypeScript** (React + Vite) on top of a local
+API service (FastAPI), and run locally
+([ADR 0007](../decisions/0007-typescript-web-ui-local-api.md)). Its logic is the same
+as the CLI's; the interface only reads and writes configuration.
 
 ```
 ┌───────────────────────┬────────────────────────────────────────────────────┐
@@ -158,293 +158,297 @@ antarmuka hanya membaca dan menulis konfigurasi.
 ⚑ = needs_review
 ```
 
-## 7. Kebutuhan fungsional
+The interface itself is in Indonesian, so the mockup keeps its real labels.
 
-Prioritas:
-- **Wajib**: harus ada untuk rilis.
-- **Sebaiknya**: dikerjakan bila waktu memungkinkan.
-- **Bersyarat**: dibangun hanya bila survei M1 membuktikan kebutuhannya.
+## 7. Functional requirements
 
-### 7.1 Masukan
+Priorities:
+- **Must**: required for the release.
+- **Should**: done if time allows.
+- **Gated**: built only if the M1 survey proves the need.
 
-| ID | Kebutuhan | Prioritas | Kriteria penerimaan |
+### 7.1 Input
+
+| ID | Requirement | Priority | Acceptance criteria |
 |---|---|---|---|
-| IN-01 | Menerima tautan yang ditempel sebagai teks bebas. URL diekstrak dari teks apa pun, termasuk teks yang bercampur kalimat | Wajib | Teks berisi 10 URL di tengah kalimat menghasilkan 10 URL |
-| IN-02 | Menerima unggahan berkas `.txt`, `.csv`, `.tsv`, `.xlsx`, `.json`, `.jsonl`, `.parquet` | Wajib | Daftar yang sama dalam ketujuh format menghasilkan daftar URL yang identik |
-| IN-03 | Pada berkas bertabel, kolom URL dikenali otomatis dan dapat dipilih manual. Kolom lain diteruskan utuh sebagai metadata masukan | Wajib | Kolom `store_name`, `address`, dan lainnya muncul di keluaran tanpa perubahan |
-| IN-04 | Deduplikasi per domain terdaftar (misalnya `www.a.com` dan `a.com/shop` dihitung satu toko) | Wajib | Ringkasan menampilkan jumlah tautan, domain unik, dan duplikat sebelum run |
-| IN-05 | Tautan dalam (halaman produk atau koleksi) menandai tokonya dan halaman itu ikut diambil sebagai halaman prioritas | Wajib | Tautan produk menghasilkan data toko lengkap plus produk tersebut |
-| IN-06 | Tautan media sosial, marketplace (Amazon, Etsy), dan tautan rusak ditandai, bukan diam-diam dibuang | Wajib | Status `social_only`, `marketplace`, atau `invalid_url` dengan tautan aslinya |
-| IN-07 | Batas jumlah tautan per run dapat diatur (bawaan 1.000) | Wajib | Masukan di atas batas ditolak dengan pesan jelas sebelum run dimulai |
-| IN-08 | Masukan dari tautan Google Sheets | Sebaiknya | Daftar terbaca tanpa ekspor manual |
-| IN-09 | Kolom `country` atau `language` pada masukan mengganti pengaturan wilayah untuk baris itu | Sebaiknya | Daftar campuran AS dan Inggris diproses dengan wilayah masing-masing |
+| IN-01 | Accept links pasted as free text. URLs are extracted from any text, including text mixed with sentences | Must | Text with 10 URLs in the middle of sentences yields 10 URLs |
+| IN-02 | Accept uploaded files: `.txt`, `.csv`, `.tsv`, `.xlsx`, `.json`, `.jsonl`, `.parquet` | Must | The same list in all seven formats yields an identical URL list |
+| IN-03 | In tabular files, the URL column is detected automatically and can be picked manually. Other columns pass through intact as input metadata | Must | Columns `store_name`, `address` and others appear in the output unchanged |
+| IN-04 | Deduplicate by registered domain (for example `www.a.com` and `a.com/shop` count as one store) | Must | The summary shows the number of links, unique domains and duplicates before the run |
+| IN-05 | A deep link (product or collection page) marks its store, and that page is also fetched as a priority page | Must | A product link yields full store data plus that product |
+| IN-06 | Social media links, marketplaces (Amazon, Etsy) and broken links are flagged, not silently dropped | Must | Status `social_only`, `marketplace` or `invalid_url`, with the original link |
+| IN-07 | The limit on links per run is configurable (default 1,000) | Must | Input over the limit is rejected with a clear message before the run starts |
+| IN-08 | Input from a Google Sheets link | Should | The list is read without a manual export |
+| IN-09 | A `country` or `language` column in the input overrides the region setting for that row | Should | A mixed US and UK list is processed with each row's own region |
 
-### 7.2 Wilayah dan bahasa
+### 7.2 Region and language
 
-| ID | Kebutuhan | Prioritas | Kriteria penerimaan |
+| ID | Requirement | Priority | Acceptance criteria |
 |---|---|---|---|
-| RG-01 | Pilihan negara dari daftar ISO 3166 (`pycountry`). Bawaan: Amerika Serikat | Wajib | Semua negara tersedia; kode tidak valid ditolak |
-| RG-02 | Pilihan bahasa dari ISO 639 (`pycountry`). Bawaan mengikuti negara | Wajib | Memilih Jerman menyarankan bahasa Jerman |
-| RG-03 | Mata uang yang diharapkan mengikuti negara (`babel`), dan dapat diganti manual | Wajib | Memilih Kanada menyarankan CAD |
-| RG-04 | Lokal dan zona waktu peramban mengikuti wilayah yang dipilih | Direncanakan (M5) | Toko dengan harga per wilayah menampilkan harga pasar asalnya |
-| RG-05 | Nomor telepon diurai dengan wilayah bawaan yang dipilih (`phonenumbers`) | Wajib | Nomor Inggris tanpa kode negara terbaca benar saat wilayah Inggris |
-| RG-06 | Bahasa halaman dideteksi dan dicatat (`lingua-language-detector`) | Sebaiknya | Setiap halaman punya kode bahasa terdeteksi |
-| RG-07 | Header `Accept-Language` tetap tidak dikirim pada HTTP | Wajib | Harga tidak dilokalkan ke negara operator |
+| RG-01 | Country choice from the ISO 3166 list (`pycountry`). Default: United States | Must | All countries are available; invalid codes are rejected |
+| RG-02 | Language choice from ISO 639 (`pycountry`). The default follows the country | Must | Picking Germany suggests German |
+| RG-03 | The expected currency follows the country (`babel`) and can be overridden manually | Must | Picking Canada suggests CAD |
+| RG-04 | The browser's locale and time zone follow the selected region | Planned (M5) | A store with per-region prices shows its home-market prices |
+| RG-05 | Phone numbers are parsed with the selected default region (`phonenumbers`) | Must | A UK number without a country code reads correctly when the region is the UK |
+| RG-06 | Page language is detected and recorded (`lingua-language-detector`) | Should | Every page has a detected language code |
+| RG-07 | The `Accept-Language` header is still not sent on HTTP | Must | Prices are not localised to the operator's country |
 
-### 7.3 Akuisisi
+### 7.3 Acquisition
 
-| ID | Kebutuhan | Prioritas | Kriteria penerimaan |
+| ID | Requirement | Priority | Acceptance criteria |
 |---|---|---|---|
-| AQ-01 | Pengambilan sopan: `robots.txt`, jeda per domain (bawaan 1,5 detik), coba ulang bertahap | Wajib | Tes membuktikan URL terlarang tidak diambil dan jeda dijaga |
-| AQ-02 | Hanya respons berhasil yang disimpan di cache | Wajib | Run ulang mencoba lagi toko yang gagal sementara |
-| AQ-03 | Deteksi pemblokiran: 401, 403, 429, dan halaman tantangan | Wajib | Status `blocked`; tidak ada upaya penembusan |
-| AQ-04 | Deteksi platform dan mata uang beserta sumbernya | Wajib | Tercatat untuk setiap toko yang berandanya terbaca |
-| AQ-05 | Umpan platform: Shopify, WooCommerce, Squarespace | Wajib | Fixture dari situs nyata lulus tes |
-| AQ-06 | Umpan Lightspeed dan platform lain yang ditemukan saat survei | Sebaiknya | Ditambahkan bila survei menunjukkan endpoint bekerja |
-| AQ-07 | Discovery: sitemap (termasuk sitemap produk) dan tautan internal sampai kedalaman 2, maksimal 25 halaman per toko | Wajib | Halaman kontak, "tentang kami", grosir, dan stockist selalu masuk anggaran |
-| AQ-08 | Data terstruktur: JSON-LD, Microdata, OpenGraph, RDFa, state aplikasi | Wajib | Setiap format punya fixture yang lulus tes |
-| AQ-09 | Render peramban (Camoufox) dan tangkap XHR JSON, maksimal 10 halaman per toko | Dibangun | Syarat survei dicabut oleh operator (6 Okt 2026) |
-| AQ-10 | Status `no_products` untuk situs terbaca tanpa katalog | Wajib | Tidak ada toko berstatus `ok` dengan nol produk |
-| AQ-11 | Beberapa domain diproses paralel tanpa melanggar jeda per domain | Wajib | 300 domain selesai dalam target waktu ([bagian 9](#9-kebutuhan-nonfungsional)) |
+| AQ-01 | Polite fetching: `robots.txt`, per-domain delay (default 1.5 seconds), retries with backoff | Must | Tests prove disallowed URLs are not fetched and the delay holds |
+| AQ-02 | Only successful responses are cached | Must | A rerun retries stores that failed temporarily |
+| AQ-03 | Block detection: 401, 403, 429 and challenge pages | Must | Status `blocked`; no attempt to get past the block |
+| AQ-04 | Platform and currency detection, with their source | Must | Recorded for every store whose home page was read |
+| AQ-05 | Platform feeds: Shopify, WooCommerce, Squarespace | Must | Fixtures from real sites pass the tests |
+| AQ-06 | Feeds for Lightspeed and other platforms found during the survey | Should | Added if the survey shows the endpoint works |
+| AQ-07 | Page discovery: sitemaps (including product sitemaps) and internal links up to depth 2, at most 25 pages per store | Must | Contact, "about us", wholesale and stockist pages always fit in the budget |
+| AQ-08 | Structured data: JSON-LD, Microdata, OpenGraph, RDFa, app state | Must | Every format has a fixture that passes the tests |
+| AQ-09 | Browser rendering (Camoufox) and capture of JSON XHR, at most 10 pages per store | Built | The survey gate was lifted by the operator (6 October 2026) |
+| AQ-10 | Status `no_products` for a readable site without a catalogue | Must | No store has status `ok` with zero products |
+| AQ-11 | Several domains are processed in parallel without breaking the per-domain delay | Must | 300 domains finish within the target time ([section 9](#9-nonfunctional-requirements)) |
 
-### 7.4 LLM multi-penyedia
+### 7.4 Multi-provider LLM
 
-| ID | Kebutuhan | Prioritas | Kriteria penerimaan |
+| ID | Requirement | Priority | Acceptance criteria |
 |---|---|---|---|
-| LM-01 | Satu antarmuka untuk semua penyedia melalui **LiteLLM**, dengan keluaran terstruktur melalui **instructor** + Pydantic ([ADR 0004](../decisions/0004-llm-gateway-litellm-instructor.md)) | Wajib | Mengganti penyedia hanya mengubah konfigurasi |
-| LM-02 | Penyedia yang disiapkan: OpenAI (GPT), Google Gemini, Anthropic Claude, Mistral, Groq, OpenRouter, Azure OpenAI, dan Ollama lokal | Wajib | Setiap penyedia lulus tes kontrak dengan respons rekaman |
-| LM-03 | Model ditulis bebas dalam format `penyedia/model` | Wajib | Model baru dapat dipakai tanpa perubahan kode |
-| LM-04 | API key dimasukkan di antarmuka (hanya disimpan di memori sesi) atau dibaca dari `.env` | Wajib | Key tidak pernah muncul di log, berkas keluaran, laporan, atau cache |
-| LM-05 | Tombol "Tes koneksi" memvalidasi key dan model sebelum run | Wajib | Key salah memberi pesan jelas, bukan galat mentah |
-| LM-06 | LLM hanya dipanggil untuk toko yang masih nol produk setelah lapisan lain | Wajib | Laporan menunjukkan jumlah toko yang memakai LLM |
-| LM-07 | Aturan bukti: produk tanpa URL bukti dari halaman yang dikirim dibuang | Wajib | Tes dengan respons rekaman yang berisi produk karangan |
-| LM-08 | Setiap hasil LLM bertanda `needs_review` dan memiliki `confidence` | Wajib | Kolom tersedia di semua format keluaran |
-| LM-09 | Batas biaya per run. LLM berhenti dipanggil saat batas tercapai | Wajib | Laporan mencatat titik berhenti dan sisa toko |
-| LM-10 | Urutan cadangan penyedia (misalnya Gemini, lalu GPT, lalu Ollama) bila penyedia utama gagal | Sebaiknya | Kegagalan satu penyedia tidak menghentikan run |
-| LM-11 | Token, biaya, model, dan versi prompt dicatat per panggilan | Wajib | Total biaya per run tampil di laporan |
+| LM-01 | One interface for all providers through **LiteLLM**, with structured output through **instructor** + Pydantic ([ADR 0004](../decisions/0004-llm-gateway-litellm-instructor.md)) | Must | Switching provider only changes configuration |
+| LM-02 | Providers set up: OpenAI (GPT), Google Gemini, Anthropic Claude, Mistral, Groq, OpenRouter, Azure OpenAI, and local Ollama | Must | Each provider passes a contract test with recorded responses |
+| LM-03 | The model is written freely in the format `provider/model` | Must | A new model can be used without code changes |
+| LM-04 | The API key is entered in the interface (kept only in session memory) or read from `.env` | Must | The key never appears in logs, output files, reports or the cache |
+| LM-05 | A "Tes koneksi" (Test connection) button validates the key and model before the run | Must | A wrong key gives a clear message, not a raw error |
+| LM-06 | The LLM is called only for stores that still have zero products after the other layers | Must | The report shows how many stores used the LLM |
+| LM-07 | Evidence rule: a product without an evidence URL from the pages sent is dropped | Must | Test with a recorded response that contains made-up products |
+| LM-08 | Every LLM result is flagged `needs_review` and has a `confidence` | Must | The columns exist in every output format |
+| LM-09 | Cost limit per run. The LLM stops being called when the limit is reached | Must | The report records the stopping point and the remaining stores |
+| LM-10 | Provider fallback order (for example Gemini, then GPT, then Ollama) when the main provider fails | Should | One provider's failure does not stop the run |
+| LM-11 | Tokens, cost, model and prompt version are recorded per call | Must | Total cost per run shows in the report |
 
-### 7.5 Data mentah
+### 7.5 Raw data
 
-| ID | Kebutuhan | Prioritas | Kriteria penerimaan |
+| ID | Requirement | Priority | Acceptance criteria |
 |---|---|---|---|
-| DT-01 | Produk disimpan apa adanya: judul, harga mentah, mata uang, merek atau vendor, jenis produk, tag, URL, sumber, URL bukti, dan objek sumber utuh | Wajib | Tidak ada konversi atau pembersihan nilai |
-| DT-02 | Teks halaman disimpan utuh, **tanpa HTML** | Wajib | Tidak ada berkas atau kolom HTML di keluaran |
-| DT-03 | Kontak sebagaimana ditemukan: surel, telepon, Instagram, Facebook, TikTok, LinkedIn, beserta URL halaman sumbernya | Wajib | Setiap kontak punya `source_url` |
-| DT-04 | Halaman grosir, stockist, dan "tentang kami" ditandai jenisnya | Wajib | Kolom `page_kind` terisi |
-| DT-05 | Setiap catatan membawa `run_id`, waktu ambil, dan tahap sumbernya | Wajib | Semua tabel bisa digabung per run |
+| DT-01 | Products are stored as they are: title, raw price, currency, brand or vendor, product type, tags, URL, source, evidence URL, and the full source object | Must | No conversion or cleaning of values |
+| DT-02 | Page text is stored in full, **without HTML** | Must | No HTML file or column in the output |
+| DT-03 | Contacts as found: email, phone, Instagram, Facebook, TikTok, LinkedIn, with the URL of the page they came from | Must | Every contact has a `source_url` |
+| DT-04 | Wholesale, stockist and "about us" pages are tagged with their kind | Must | The `page_kind` column is filled |
+| DT-05 | Every record carries `run_id`, fetch time and its source stage | Must | All tables can be joined per run |
 
-### 7.6 Keluaran
+### 7.6 Output
 
-| ID | Kebutuhan | Prioritas | Kriteria penerimaan |
+| ID | Requirement | Priority | Acceptance criteria |
 |---|---|---|---|
-| OUT-01 | Data disusun sebagai tabel rapi yang saling terhubung ([bagian 8](#8-model-data)) | Wajib | Kunci penghubung konsisten di semua format |
-| OUT-02 | Format berkas: JSON, JSONL, CSV, TSV, Excel `.xlsx` (satu sheet per tabel), Parquet | Wajib | Isi semua format identik pada run yang sama |
-| OUT-03 | Basis data lokal: SQLite dan DuckDB | Wajib | Dapat dikueri langsung tanpa impor |
-| OUT-04 | Google Sheets: satu tab baru per run, tidak pernah menimpa tab lama | Sebaiknya | Sheet tim tidak berubah selain tab baru |
-| OUT-05 | PostgreSQL: append dengan `run_id`, tanpa menghapus data lama | Sebaiknya | Run kedua menambah, bukan menimpa |
-| OUT-06 | Beberapa format aktif sekaligus dalam satu run | Wajib | Memilih Excel + Parquet + SQLite menghasilkan ketiganya |
-| OUT-07 | Semua berkas dapat diunduh dari antarmuka | Wajib | Tombol unduh per format |
-| OUT-08 | Menambah format baru cukup dengan menambah satu adapter | Wajib | Tidak ada perubahan pada tahap akuisisi |
+| OUT-01 | Data is laid out as tidy, linked tables ([section 8](#8-data-model)) | Must | Join keys are consistent across all formats |
+| OUT-02 | File formats: JSON, JSONL, CSV, TSV, Excel `.xlsx` (one sheet per table), Parquet | Must | All formats hold identical content for the same run |
+| OUT-03 | Local databases: SQLite and DuckDB | Must | Can be queried directly without an import |
+| OUT-04 | Google Sheets: one new tab per run, never overwriting old tabs | Should | The team's sheet does not change apart from the new tab |
+| OUT-05 | PostgreSQL: append with `run_id`, without deleting old data | Should | A second run adds, not overwrites |
+| OUT-06 | Several formats active at once in one run | Must | Picking Excel + Parquet + SQLite produces all three |
+| OUT-07 | All files can be downloaded from the interface | Must | A download button per format |
+| OUT-08 | Adding a new format only takes adding one adapter | Must | No change to the acquisition stage |
 
-### 7.7 Deteksi perubahan antarjalan
+### 7.7 Change detection between runs
 
-| ID | Kebutuhan | Prioritas | Kriteria penerimaan |
+| ID | Requirement | Priority | Acceptance criteria |
 |---|---|---|---|
-| CH-01 | Setiap run memiliki `run_id` dan disimpan sebagai snapshot | Wajib | Run lama tetap dapat dibaca |
-| CH-02 | Membandingkan run dengan run sebelumnya untuk domain yang sama: produk baru, produk hilang, perubahan harga, perubahan status | Sebaiknya | Tabel `changes` terisi pada run kedua |
-| CH-03 | Ringkasan perubahan tampil di laporan run | Sebaiknya | Jumlah perubahan per jenis |
+| CH-01 | Every run has a `run_id` and is stored as a snapshot | Must | Old runs stay readable |
+| CH-02 | Compare a run with the previous run for the same domain: new products, removed products, price changes, status changes | Should | The `changes` table is filled on the second run |
+| CH-03 | A change summary shows in the run report | Should | Number of changes per type |
 
-### 7.8 Operasional
+### 7.8 Operations
 
-| ID | Kebutuhan | Prioritas | Kriteria penerimaan |
+| ID | Requirement | Priority | Acceptance criteria |
 |---|---|---|---|
-| OP-01 | **Mode uji (LIMIT)**: jalankan N tautan pertama (bawaan 2) dari awal sampai akhir sebelum run penuh. Aktif secara bawaan di antarmuka | Wajib | Run penuh tidak dapat dimulai di antarmuka sebelum mode uji pernah dijalankan untuk masukan itu, kecuali dimatikan dengan sengaja |
-| OP-02 | Laporan run: rekonsiliasi (masuk = diproses + dilewati), jumlah per status, cakupan per sumber, daftar `needs_review` dan `no_products`, durasi, dan biaya | Wajib | Angka rekonsiliasi selalu cocok |
-| OP-03 | Run dapat dilanjutkan setelah terhenti tanpa mengulang toko yang sudah selesai | Wajib | Menghentikan run di tengah lalu melanjutkannya menghasilkan data yang sama |
-| OP-04 | CLI dan antarmuka memakai konfigurasi dan kode yang sama | Wajib | Konfigurasi yang diekspor dari antarmuka dapat dijalankan lewat CLI |
-| OP-05 | Konfigurasi run dapat disimpan dan dimuat ulang | Sebaiknya | Run bulanan memakai preset yang sama |
+| OP-01 | **Test mode (LIMIT)**: run the first N links (default 2) end to end before the full run. On by default in the interface | Must | A full run cannot start in the interface until test mode has run for that input, unless it is deliberately switched off |
+| OP-02 | Run report: reconciliation (in = processed + skipped), count per status, coverage per source, the `needs_review` and `no_products` lists, duration and cost | Must | The reconciliation numbers always match |
+| OP-03 | A run can resume after it stops, without repeating stores already done | Must | Stopping a run midway and resuming it yields the same data |
+| OP-04 | The CLI and the interface use the same configuration and code | Must | A configuration exported from the interface runs through the CLI |
+| OP-05 | Run configuration can be saved and loaded again | Should | The monthly run uses the same preset |
 
-### 7.9 Pencarian toko
+### 7.9 Store discovery
 
-Ditambahkan di versi 2.1 ([ADR 0008](../decisions/0008-store-discovery-paid-search.md)).
-Bisnis hanya berfokus pada rajutan, jadi pencarian dan penandaan diarahkan ke sana.
+Added in version 2.1 ([ADR 0008](../decisions/0008-store-discovery-paid-search.md)).
+The business focuses only on knitwear, so discovery and tagging aim at it.
 
-| ID | Kebutuhan | Prioritas | Kriteria penerimaan |
+| ID | Requirement | Priority | Acceptance criteria |
 |---|---|---|---|
-| DS-01 | `scrapebot discover` mencari toko dari Google Places, Tavily (web dan profil Instagram/Facebook di hasil pencarian), dan LLM dengan pencarian web lewat LiteLLM | Wajib | Sumber tanpa API key dilewati dan dicatat; sumber lain tetap berjalan |
-| DS-02 | Temuan dari semua sumber digabung menjadi satu baris per toko, berdasarkan domain website, profil sosial, atau nama + kode pos/kota | Wajib | Toko yang sama dari tiga sumber menjadi satu baris |
-| DS-03 | Hasilnya berupa berkas tautan (`stores.csv`) yang langsung bisa dipakai `scrapebot run`. Data toko ikut sebagai metadata masukan | Wajib | `scrapebot run stores.csv` tanpa opsi tambahan |
-| DS-04 | Setiap sumber berbayar punya batas permintaan, agen LLM punya batas biaya, dan jawaban yang berhasil disimpan di cache tanpa key | Wajib | Pencarian ulang dengan konfigurasi sama tidak memakai permintaan berbayar |
-| DS-05 | Toko yang hanya dikenal dari nama atau profil dicarikan websitenya (satu pencarian per toko) | Wajib | Kolom `website_source` = `lookup` |
-| DS-06 | Pencarian tidak pernah membuka website toko dan tidak menilai toko. Penilaian memakai data hasil run | Wajib | Tidak ada permintaan ke website toko selama `discover` |
-| DS-07 | Setiap produk diberi tanda `is_knitwear` dan setiap toko `knit_count`. Tidak ada produk yang dibuang | Wajib | Produk non-rajutan tetap ada di tabel `products` |
-| DS-08 | Pencarian toko dari antarmuka web | Sebaiknya | Operator menjalankan pencarian tanpa terminal |
+| DS-01 | `scrapebot discover` finds stores from Google Places, Tavily (the web, and Instagram/Facebook profiles in search results), and an LLM with web search through LiteLLM | Must | Sources without an API key are skipped and recorded; the other sources still run |
+| DS-02 | Hits from all sources merge into one row per store, by website domain, social profile, or name + postcode/city | Must | The same store from three sources becomes one row |
+| DS-03 | The result is a links file (`stores.csv`) that `scrapebot run` can use directly. Store details travel as input metadata | Must | `scrapebot run stores.csv` with no extra options |
+| DS-04 | Every paid source has a request limit, the LLM agent has a cost limit, and successful answers are cached without the key | Must | Repeating discovery with the same configuration uses no paid requests |
+| DS-05 | Stores known only by name or profile get a website lookup (one search per store) | Must | Column `website_source` = `lookup` |
+| DS-06 | Discovery never opens store websites and never judges stores. Judging uses the run's data | Must | No requests to store websites during `discover` |
+| DS-07 | Every product gets an `is_knitwear` flag and every store a `knit_count`. No product is dropped | Must | Non-knitwear products stay in the `products` table |
+| DS-08 | Store discovery from the web interface | Should | The operator runs discovery without a terminal |
 
-## 8. Model data
+## 8. Data model
 
-### 8.1 Tabel
+### 8.1 Tables
 
-Semua format keluaran dibentuk dari tabel yang sama
+All output formats are built from the same tables
 ([ADR 0006](../decisions/0006-tidy-tables-multiformat-writers.md)).
 
-| Tabel | Satu baris per | Kolom kunci |
+| Table | One row per | Key columns |
 |---|---|---|
-| `runs` | run | `run_id`, waktu mulai dan selesai, konfigurasi (tanpa key), versi, total biaya |
-| `inputs` | baris masukan | `run_id`, `input_id`, tautan asli, `domain`, status, metadata masukan |
-| `stores` | toko per run | `run_id`, `domain`, status, platform, negara, bahasa, mata uang, `layers_tried`, `product_count`, `knit_count`, `ssl_bypassed` |
-| `products` | produk | `run_id`, `domain`, `title`, `price_raw`, `currency`, `vendor`, `product_type`, `tags`, `url`, `source`, `evidence_url`, `needs_review`, `confidence`, `is_knitwear`, `raw` (JSON) |
-| `pages` | halaman yang diambil | `run_id`, `domain`, `url`, `page_kind`, `http_status`, `via`, `language`, `text` |
-| `contacts` | kontak yang ditemukan | `run_id`, `domain`, `type`, `value`, `source_url` |
-| `changes` | perubahan antarjalan | `run_id`, `domain`, `change_type`, `key`, nilai lama, nilai baru |
+| `runs` | run | `run_id`, start and end time, configuration (without keys), version, total cost |
+| `inputs` | input row | `run_id`, `input_id`, original link, `domain`, status, input metadata |
+| `stores` | store per run | `run_id`, `domain`, status, platform, country, language, currency, `layers_tried`, `product_count`, `knit_count`, `ssl_bypassed` |
+| `products` | product | `run_id`, `domain`, `title`, `price_raw`, `currency`, `vendor`, `product_type`, `tags`, `url`, `source`, `evidence_url`, `needs_review`, `confidence`, `is_knitwear`, `raw` (JSON) |
+| `pages` | fetched page | `run_id`, `domain`, `url`, `page_kind`, `http_status`, `via`, `language`, `text` |
+| `contacts` | contact found | `run_id`, `domain`, `type`, `value`, `source_url` |
+| `changes` | change between runs | `run_id`, `domain`, `change_type`, `key`, old value, new value |
 
-Pada format datar (CSV, TSV, Excel), kolom bertingkat seperti `raw` dan `tags`
-disimpan sebagai teks JSON. Pada JSON dan JSONL, strukturnya tetap utuh.
+In flat formats (CSV, TSV, Excel), nested columns such as `raw` and `tags` are stored
+as JSON text. In JSON and JSONL, the structure stays intact.
 
-### 8.2 Status
+### 8.2 Statuses
 
-| Status | Arti |
+| Status | Meaning |
 |---|---|
-| `ok` | Minimal satu produk ditemukan |
-| `no_products` | Situs terbaca, tetapi tidak ada lapisan yang menemukan katalog |
-| `js_required` | Perlu peramban yang belum terpasang atau belum dibangun |
-| `blocked` | 401, 403, 429, atau halaman tantangan. Tidak ditembus |
-| `error` | Galat jaringan, galat HTTP lain, atau dilarang `robots.txt` |
-| `social_only`, `marketplace`, `invalid_url`, `duplicate` | Dilewati saat masukan, dengan alasan tercatat |
+| `ok` | At least one product found |
+| `no_products` | The site was read, but no layer found a catalogue |
+| `js_required` | Needs a browser that is not installed or not built yet |
+| `blocked` | 401, 403, 429 or a challenge page. Not bypassed |
+| `error` | Network error, other HTTP error, or disallowed by `robots.txt` |
+| `social_only`, `marketplace`, `invalid_url`, `duplicate` | Skipped at input, with the reason recorded |
 
-### 8.3 Data yang wajib tersedia untuk analisis berikutnya
+### 8.3 Data required for the next analysis
 
-Analisis pesaing atau mitra belum dibangun di PRD ini, tetapi datanya harus sudah ada.
+Competitor or partner analysis is not built in this PRD, but its data must already
+exist.
 
-| Pertanyaan analisis | Data pendukung |
+| Analysis question | Supporting data |
 |---|---|
-| Toko ini menjual merek sendiri (calon **pesaing**) atau banyak merek (calon **mitra**)? | `products.vendor`, jumlah vendor unik, teks "tentang kami" |
-| Apakah mereka menjual rajutan, dan seberapa banyak? | `products.title`, `product_type`, `tags` |
-| Apakah rentang harganya cocok dengan kita? | `price_raw` + `currency` |
-| Apakah mereka menerima merek dari luar? | Halaman grosir atau stockist (`page_kind`) |
-| Bagaimana cara menghubungi mereka? | Tabel `contacts` |
-| Apakah mereka berubah dari waktu ke waktu? | Tabel `changes` |
+| Does this store sell its own brand (potential **competitor**) or many brands (potential **partner**)? | `products.vendor`, number of unique vendors, "about us" text |
+| Do they sell knitwear, and how much? | `products.title`, `product_type`, `tags` |
+| Does their price range fit ours? | `price_raw` + `currency` |
+| Do they take on outside brands? | Wholesale or stockist pages (`page_kind`) |
+| How do we contact them? | The `contacts` table |
+| Do they change over time? | The `changes` table |
 
-## 9. Kebutuhan nonfungsional
+## 9. Nonfunctional requirements
 
-| Aspek | Kebutuhan |
+| Aspect | Requirement |
 |---|---|
-| **Etika** | `robots.txt` dipatuhi untuk HTTP dan peramban. Jeda per domain. Hanya halaman publik. Tanpa penembusan antibot |
-| **Keamanan** | API key hanya di memori sesi atau `.env`, tidak pernah di log, keluaran, atau repositori. DSN basis data dari variabel lingkungan |
-| **Kinerja** | Target usulan: 300 domain dalam ≤ 60 menit tanpa peramban dan LLM, dengan pemrosesan paralel antardomain. Dikonfirmasi saat M1 |
-| **Keandalan** | Satu toko yang gagal tidak menghentikan run. Setiap toko selalu mendapat status |
-| **Ketertelusuran** | Setiap produk punya sumber dan URL bukti. Setiap run punya konfigurasi dan versi yang tercatat |
-| **Biaya** | Biaya LLM dicatat per panggilan dan dibatasi per run |
-| **Pengujian** | Semua tes berjalan tanpa jaringan dengan respons HTTP dan LLM yang direkam |
-| **Portabilitas** | Tanpa peramban atau API key, lapisan lain tetap berjalan dan yang dilewati tercatat |
-| **Kualitas kode** | Mengikuti [standar rekayasa](../engineering/standards.md) |
+| **Ethics** | `robots.txt` is respected for HTTP and the browser. Per-domain delay. Public pages only. No anti-bot bypass |
+| **Security** | API keys only in session memory or `.env`, never in logs, output or the repository. Database DSN from environment variables |
+| **Performance** | Proposed target: 300 domains in ≤ 60 minutes without the browser and LLM, with parallel processing across domains. Confirmed during M1 |
+| **Reliability** | One failed store does not stop the run. Every store always gets a status |
+| **Traceability** | Every product has a source and an evidence URL. Every run has its configuration and version recorded |
+| **Cost** | LLM cost is recorded per call and capped per run |
+| **Testing** | All tests run without the network, with recorded HTTP and LLM responses |
+| **Portability** | Without a browser or API key, the other layers still run, and what was skipped is recorded |
+| **Code quality** | Follows the [engineering standards](../engineering/standards.md) |
 
-## 10. Beli atau bangun
+## 10. Buy or build
 
-| Pilihan | Model biaya | Kecocokan | Kontrol data | Catatan |
+| Option | Cost model | Fit | Data control | Notes |
 |---|---|---|---|---|
-| ScrapeGraph API | Berbayar per permintaan | Satu URL per panggilan, semua lewat LLM | Data lewat pihak ketiga | Mengganti umpan Shopify yang gratis dan tepat dengan pembacaan LLM |
-| Firecrawl (hosted) | Berbayar per kredit | Kuat untuk crawl dan ekstraksi | Data lewat pihak ketiga | Tetap perlu logika umpan dan status sendiri |
-| Apify actors | Berbayar per pemakaian | Ada actor siap pakai untuk Shopify | Data lewat pihak ketiga | Satu actor per platform, perlu dirangkai |
-| **Bangun sendiri (v1 diperluas)** | Gratis, kecuali token LLM | Umpan gratis menutup ±40% toko; LLM hanya untuk sisanya | Penuh | v1 sudah berjalan dan teruji |
+| ScrapeGraph API | Paid per request | One URL per call, all through the LLM | Data passes through a third party | Replaces the free, exact Shopify feed with LLM reading |
+| Firecrawl (hosted) | Paid per credit | Strong for crawling and extraction | Data passes through a third party | Still needs our own feed and status logic |
+| Apify actors | Paid per use | Ready-made actors exist for Shopify | Data passes through a third party | One actor per platform; they need chaining |
+| **Build our own (v1 extended)** | Free, except LLM tokens | Free feeds cover ±40% of stores; the LLM only handles the rest | Full | v1 already runs and is tested |
 
-**Rekomendasi:** bangun sendiri di atas v1. Pustaka sumber terbuka ScrapeGraphAI
-dan Crawl4AI tetap dipakai sebagai pembanding dalam benchmark M1. Harga layanan
-berbayar tidak dibandingkan di sini karena berubah-ubah; bila perlu, uji coba 30 hari
-pada satu layanan dengan volume kita.
+**Recommendation:** build our own on top of v1. The open-source libraries
+ScrapeGraphAI and Crawl4AI are still used as baselines in the M1 benchmark. Prices of
+paid services are not compared here because they change; if needed, run a 30-day
+trial of one service at our volume.
 
-## 11. Pilihan teknologi
+## 11. Technology choices
 
-Rincian dan alasannya ada di [arsitektur](../architecture/overview.md) dan
-[keputusan teknis](../decisions/).
+Details and reasons are in the [architecture](../architecture/overview.md) and the
+[technical decisions](../decisions/).
 
-| Bagian | Pilihan |
+| Part | Choice |
 |---|---|
-| Antarmuka | React + TypeScript (Vite) + FastAPI lokal + CLI |
-| Masukan | `pandas`, `openpyxl`, `pyarrow`, `urlextract`, `tldextract` |
-| Wilayah dan bahasa | `pycountry`, `babel`, `phonenumbers`, `lingua-language-detector` |
+| Interface | React + TypeScript (Vite) + local FastAPI + CLI |
+| Input | `pandas`, `openpyxl`, `pyarrow`, `urlextract`, `tldextract` |
+| Region and language | `pycountry`, `babel`, `phonenumbers`, `lingua-language-detector` |
 | HTTP | `httpx`, `hishel`, `tenacity`, `aiolimiter`, `protego` |
-| Ekstraksi | `extruct`, `chompjs`, `selectolax`, `trafilatura`, `ultimate-sitemap-parser` |
-| Peramban | Camoufox |
+| Extraction | `extruct`, `chompjs`, `selectolax`, `trafilatura`, `ultimate-sitemap-parser` |
+| Browser | Camoufox |
 | LLM | LiteLLM + instructor + Pydantic |
-| Keluaran | `pandas`, `pyarrow`, `openpyxl`, `duckdb`, SQLAlchemy, `gspread` |
-| Konfigurasi | `pydantic-settings` + YAML |
+| Output | `pandas`, `pyarrow`, `openpyxl`, `duckdb`, SQLAlchemy, `gspread` |
+| Configuration | `pydantic-settings` + YAML |
 
-## 12. Rencana rilis
+## 12. Release plan
 
-Setiap tahap diakhiri dengan **run LIMIT pada 2 toko**, lalu run penuh, lalu
-verifikasi hasil nyata (bukan hanya kode keluar 0).
+Every stage ends with a **LIMIT run on 2 stores**, then a full run, then a check of
+the real results (not just exit code 0).
 
-| Tahap | Isi | Gerbang selesai |
+| Stage | Content | Exit gate |
 |---|---|---|
-| **M0. Fondasi** | Perbaikan v1 (cache galat, `no_products`, mata uang), model data (bagian 8), adapter masukan IN-01 sampai IN-07, keluaran OUT-01 sampai OUT-03 dan OUT-06, mode uji OP-01, laporan OP-02 | Semua tes lulus; daftar v1 menghasilkan data yang setara dalam semua format |
-| **M1. Survei dan benchmark** | Run baca-saja atas toko non-Shopify; gold set 20 situs; benchmark penyedia LLM dan pustaka ekstraksi | Matriks cakupan dan hasil benchmark ditinjau; memutuskan AQ-09 |
-| **M2. Akuisisi non-Shopify** | AQ-05 sampai AQ-08, AQ-10, AQ-11 | Cakupan non-Shopify diukur ulang terhadap target |
-| **M3. LLM dan antarmuka** | LM-01 sampai LM-11, antarmuka web TypeScript (bagian 6), OUT-07 | Operator nonteknis menyelesaikan skenario utama tanpa bantuan |
-| **M4. Render** ✓ dibangun | AQ-09 (RG-04 pindah ke M5) | Toko yang hanya terbaca dengan peramban terbaca pada run nyata |
-| **M5. Global dan perubahan** | RG-01 sampai RG-07, IN-08, IN-09, CH-01 sampai CH-03, OUT-04, OUT-05 | Daftar campuran dua negara dan run kedua menghasilkan tabel `changes` |
-| **M6. Rilis dan serah terima** | Run penuh pada daftar nyata; dokumen serah terima (bagian 14) | Semua metrik mutlak terpenuhi; tim menjalankan satu run sendiri |
+| **M0. Foundation** | v1 fixes (error cache, `no_products`, currency), data model (section 8), input adapters IN-01 to IN-07, output OUT-01 to OUT-03 and OUT-06, test mode OP-01, report OP-02 | All tests pass; the v1 list yields equivalent data in every format |
+| **M1. Survey and benchmark** | Read-only run over non-Shopify stores; gold set of 20 sites; benchmark of LLM providers and extraction libraries | Coverage matrix and benchmark results reviewed; decision on AQ-09 |
+| **M2. Non-Shopify acquisition** | AQ-05 to AQ-08, AQ-10, AQ-11 | Non-Shopify coverage measured again against the target |
+| **M3. LLM and interface** | LM-01 to LM-11, TypeScript web interface (section 6), OUT-07 | A nontechnical operator completes the main scenario without help |
+| **M4. Render** ✓ built | AQ-09 (RG-04 moved to M5) | Stores that only read with a browser are read in a real run |
+| **M5. Global and changes** | RG-01 to RG-07, IN-08, IN-09, CH-01 to CH-03, OUT-04, OUT-05 | A mixed two-country list and a second run produce the `changes` table |
+| **M6. Release and handover** | Full run on a real list; handover documents (section 14) | All hard metrics met; the team does one run on its own |
 
-## 13. Metrik keberhasilan
+## 13. Success metrics
 
-Metrik **mutlak** wajib dipenuhi untuk rilis. Metrik **usulan** dikonfirmasi setelah M1.
+**Hard** metrics must be met for the release. **Proposed** metrics are confirmed
+after M1.
 
-| Metrik | Target | Jenis |
+| Metric | Target | Type |
 |---|---|---|
-| Rekonsiliasi: tautan masuk = diproses + dilewati | 100% run | Mutlak |
-| Toko berstatus `ok` dengan nol produk | 0 | Mutlak |
-| Produk dengan sumber dan URL bukti | 100% | Mutlak |
-| API key yang bocor ke log atau keluaran | 0 | Mutlak |
-| Permintaan yang melanggar `robots.txt` atau menembus tantangan | 0 | Mutlak |
-| Toko non-Shopify yang menghasilkan ≥ 1 produk | ≥ 60% | Usulan |
-| Ketepatan produk hasil LLM pada gold set | ≥ 90% | Usulan |
-| Durasi 300 domain tanpa peramban dan LLM | ≤ 60 menit | Usulan |
-| Run per bulan oleh tim (adopsi) | ≥ 2 | Usulan |
+| Reconciliation: links in = processed + skipped | 100% of runs | Hard |
+| Stores with status `ok` and zero products | 0 | Hard |
+| Products with a source and an evidence URL | 100% | Hard |
+| API keys leaked to logs or output | 0 | Hard |
+| Requests that break `robots.txt` or get past a challenge | 0 | Hard |
+| Non-Shopify stores that yield ≥ 1 product | ≥ 60% | Proposed |
+| Accuracy of LLM-extracted products on the gold set | ≥ 90% | Proposed |
+| Duration for 300 domains without the browser and LLM | ≤ 60 minutes | Proposed |
+| Runs per month by the team (adoption) | ≥ 2 | Proposed |
 
-## 14. Serah terima
+## 14. Handover
 
-Rilis dianggap selesai bila lima dokumen berikut ada di `docs/operations/`:
+The release counts as done when these five documents exist in `docs/operations/`:
 
-1. **Apa yang dilakukan bot**: satu paragraf bahasa sehari-hari.
-2. **Cara menjalankan**: antarmuka dan CLI, masukan, lokasi keluaran.
-3. **Cara memeriksa hasilnya**: dua sampai tiga pengecekan, termasuk rekonsiliasi.
-4. **Tiga kegagalan teratas dan perbaikannya**.
-5. **Pemilik dan catatan pemeliharaan**: apa yang perlu diperbarui saat platform atau
-   penyedia LLM berubah.
+1. **What the bot does**: one paragraph in everyday language.
+2. **How to run it**: interface and CLI, input, where the output goes.
+3. **How to check its results**: two or three checks, including reconciliation.
+4. **The top three failures and how to fix them**.
+5. **Owner and maintenance notes**: what needs updating when a platform or an LLM
+   provider changes.
 
-## 15. Asumsi dan pertanyaan terbuka
+## 15. Assumptions and open questions
 
-### Asumsi
+### Assumptions
 
-- **A-01.** Antarmuka dipakai internal oleh satu sampai beberapa orang, dijalankan lokal.
-- **A-02.** "Massal" berarti sampai 1.000 tautan per run untuk sementara.
-- **A-03.** "HTML tidak perlu" berarti HTML tidak disimpan dan tidak diekspor. Teks
-  halaman tetap disimpan.
-- **A-04.** "Bot bisa membantu perubahan" diartikan sebagai **deteksi perubahan
-  antarjalan** (CH-01 sampai CH-03).
-- **A-05.** Fokus wilayah adalah Amerika Serikat. Wilayah lain didukung lewat
-  pengaturan, tetapi diuji setelah AS stabil.
+- **A-01.** The interface is used internally by one to a few people, and run locally.
+- **A-02.** "Bulk" means up to 1,000 links per run, for now.
+- **A-03.** "HTML is not needed" means HTML is not stored and not exported. Page text
+  is still stored.
+- **A-04.** "The bot can help with changes" is read as **change detection between
+  runs** (CH-01 to CH-03).
+- **A-05.** The region focus is the United States. Other regions are supported through
+  settings, but tested after the US is stable.
 
-### Pertanyaan terbuka
+### Open questions
 
-| No. | Pertanyaan | Pengaruhnya |
+| No. | Question | What it affects |
 |---|---|---|
-| P-01 | Berapa lama riset manual per toko sekarang? | Menjadi dasar target "waktu riset turun" |
-| P-02 | Apakah A-04 sudah tepat, atau maksudnya hal lain? | Ruang lingkup CH-01 sampai CH-03 |
-| P-03 | Siapa pemilik bot setelah serah terima? | Bagian 14, butir 5 |
-| P-04 | Apakah Google Sheets tim menjadi tujuan utama keluaran? | Prioritas OUT-04 bisa naik menjadi Wajib |
-| P-05 | Penyedia LLM mana yang sudah punya akun dan key? | Urutan pengujian LM-02 |
-| P-06 | Negara mana yang menyusul setelah AS? | Urutan pengujian RG-01 sampai RG-07 |
+| P-01 | How long does manual research take per store today? | The basis for the "less research time" target |
+| P-02 | Is A-04 right, or was something else meant? | Scope of CH-01 to CH-03 |
+| P-03 | Who owns the bot after handover? | Section 14, item 5 |
+| P-04 | Is the team's Google Sheets the main output destination? | OUT-04 priority could rise to Must |
+| P-05 | Which LLM providers already have an account and a key? | Test order for LM-02 |
+| P-06 | Which country comes after the US? | Test order for RG-01 to RG-07 |
 
-## 16. Glosarium
+## 16. Glossary
 
-| Istilah | Arti |
+| Term | Meaning |
 |---|---|
-| Adapter | Komponen yang dapat ditukar untuk satu tugas, misalnya membaca Excel atau menulis ke PostgreSQL |
-| Data mentah | Data yang disimpan persis seperti ditemukan, ditambah keterangan asalnya |
-| Gold set | Kumpulan situs yang jawabannya diperiksa manual, untuk benchmark |
-| JSONL | Satu objek JSON per baris; lentur dan mudah diproses bertahap |
-| Mode uji (LIMIT) | Menjalankan beberapa tautan pertama dari awal sampai akhir sebelum run penuh |
-| Run | Satu kali eksekusi bot atas satu daftar tautan |
-| Umpan produk | Alamat yang disediakan platform toko untuk daftar produk dalam JSON |
-| URL bukti | Alamat halaman atau respons tempat sebuah data ditemukan |
-| `needs_review` | Penanda bahwa data perlu diperiksa manusia sebelum dipakai |
+| Adapter | A swappable component for one task, for example reading Excel or writing to PostgreSQL |
+| Evidence URL | The address of the page or response where a piece of data was found |
+| Gold set | A set of sites whose answers were checked by hand, used for benchmarks |
+| JSONL | One JSON object per line; flexible and easy to process incrementally |
+| Product feed | An address the store's platform provides that lists products in JSON |
+| Raw data | Data stored exactly as found, plus a note of where it came from |
+| Run | One execution of the bot over one list of links |
+| Test mode (LIMIT) | Running the first few links end to end before the full run |
+| `needs_review` | A flag that the data needs a human check before use |

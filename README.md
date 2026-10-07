@@ -238,7 +238,7 @@ network call. How code is written, tested and reviewed is in the
 
 ## Documentation
 
-- [docs/product/prd.md](docs/product/prd.md) — what v2 does and why (Indonesian)
+- [docs/product/prd.md](docs/product/prd.md) — what v2 does and why
 - [docs/architecture/overview.md](docs/architecture/overview.md) — the pipeline, stage by stage
 - [docs/engineering/standards.md](docs/engineering/standards.md) — how code is written and tested
 - [docs/planning/roadmap.md](docs/planning/roadmap.md) — milestones, gates, known issues
