@@ -147,6 +147,8 @@ social_search:                   # needs TAVILY_API_KEY; reads search results, n
 ai_agent:                        # an LLM with web search, through LiteLLM
   enabled: true
   model: gemini/gemini-2.5-flash # needs GEMINI_API_KEY; anthropic/... models work too
+                                 # with only OPENAI_API_KEY: openai/gpt-5-search-api
+                                 # (verified 2026-10-07; the -search-preview models are deprecated)
   areas:                         # one agent run per area
     - "New England, USA"
     - "New York City and the Hudson Valley"

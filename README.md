@@ -47,8 +47,15 @@ downloads. The interface is local only (127.0.0.1) and in Indonesian.
 
 ## Finding stores
 
-`scrapebot discover` finds knitwear stores and writes them as a links file for a run
-([ADR 0008](docs/decisions/0008-store-discovery-paid-search.md)):
+**In the interface**, the *Cari toko otomatis* tab of the Scrape page does it in one
+click: type how many stores, pick a region or continent, tick the items (knitwear,
+cashmere/wool, fall/winter, spring/summer, or *Lainnya* with your own words) and press
+**Cari toko & mulai uji**. It finds the stores, then starts a test run on the first two;
+the full list runs from the run page. The tab is the default when `.env` has at least
+one search key.
+
+**From the command line**, `scrapebot discover` finds knitwear stores and writes them as
+a links file for a run ([ADR 0008](docs/decisions/0008-store-discovery-paid-search.md)):
 
 ```bash
 cp discover.example.yaml data/my-discover.yaml        # edit places, queries, brands
@@ -164,8 +171,8 @@ overwritten:
 |---|---|---|
 | `runs` | run | config, version, mode |
 | `inputs` | input link | link as supplied, status or skip reason, the whole input row in `meta` |
-| `stores` | store | `status`, `platform`, `currency` and its source, `layers_tried`, `product_count`, `knit_count`, `ssl_bypassed` |
-| `products` | product | `title`, `price_raw` as found, `price`, `currency`, `vendor`, `url`, `source`, `evidence_url`, `is_knitwear`, full source object in `raw` |
+| `stores` | store | `status`, `platform`, `currency` and its source, `layers_tried`, `product_count`, `knit_count`, `focus_count`, `ssl_bypassed` |
+| `products` | product | `title`, `price_raw` as found, `price`, `currency`, `vendor`, `url`, `source`, `evidence_url`, `is_knitwear`, `matched_items` (the items ticked that it matches), full source object in `raw` |
 | `pages` | fetched page | `page_kind` (home, about, contact, wholesale, stockist, product, ...), full `text`. Never HTML |
 | `contacts` | contact | `email`, `phone`, `instagram`, `facebook`, `tiktok`, `linkedin`, `pinterest`, with the `source_url` it was found on |
 | `changes` | change between runs | empty until change detection lands (M5) |

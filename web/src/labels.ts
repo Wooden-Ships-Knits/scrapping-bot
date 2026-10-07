@@ -51,6 +51,46 @@ const WRITER: Record<string, string> = {
   duckdb: "DuckDB",
 };
 
+const REGION: Record<string, string> = {
+  north_america: "Amerika Utara (AS & Kanada)",
+  united_states: "Amerika Serikat",
+  canada: "Kanada",
+  europe: "Eropa",
+  united_kingdom: "Inggris & Irlandia",
+  oceania: "Australia & Selandia Baru",
+  asia: "Asia Timur & Tenggara",
+};
+
+const ITEM: Record<string, string> = {
+  knitwear: "Knitwear",
+  cashmere_wool: "Cashmere / wol",
+  fall_winter: "Musim Fall/Winter",
+  spring_summer: "Musim Spring/Summer",
+  other: "Lainnya",
+};
+
+const DISCOVERY_SOURCE: Record<string, string> = {
+  google_places: "Google Maps",
+  web_search: "Pencarian web",
+  social_search: "Instagram/Facebook",
+  ai_agent: "Agen AI",
+};
+
+const DISCOVERY_STATE: Record<string, string> = {
+  searching: "Mencari toko",
+  starting_run: "Memulai run uji",
+  done: "Selesai",
+  failed: "Gagal",
+};
+
+const SOURCE_STATUS: Record<string, string> = {
+  ok: "Berhasil",
+  disabled: "Tidak dipakai",
+  no_api_key: "Tanpa API key",
+  budget_reached: "Batas tercapai",
+  error: "Gagal",
+};
+
 const pick = (table: Record<string, string>) => (code: string) => table[code] ?? code;
 
 export const storeStatus = pick(STORE_STATUS);
@@ -58,6 +98,11 @@ export const skipReason = pick(SKIP_REASON);
 export const runState = pick(RUN_STATE);
 export const sourceLabel = pick(SOURCE);
 export const writerLabel = pick(WRITER);
+export const regionLabel = pick(REGION);
+export const itemLabel = pick(ITEM);
+export const discoverySourceLabel = pick(DISCOVERY_SOURCE);
+export const discoveryState = pick(DISCOVERY_STATE);
+export const sourceStatus = pick(SOURCE_STATUS);
 
 /** Tone for a status badge: good, warn, bad or neutral. */
 export function tone(code: string): "good" | "warn" | "bad" | "neutral" {

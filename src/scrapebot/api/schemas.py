@@ -5,6 +5,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
 RunState = Literal["queued", "running", "stopped", "done", "failed", "interrupted"]
+DiscoveryState = Literal["searching", "starting_run", "done", "failed"]
 
 
 class _In(BaseModel):
@@ -189,3 +190,44 @@ class OverviewOut(BaseModel):
 class ErrorOut(BaseModel):
     code: str
     message: str
+
+
+class DiscoverIn(_In):
+    """Find stores, then start a test run on them (ADR 0008)."""
+
+    count: int = Field(ge=1, le=500)  # how many stores to find and visit
+    region: str
+    items: list[str] = Field(min_length=1)
+    terms: list[str] = Field(default_factory=list)  # the operator's own words, item "other"
+    writers: list[str] = Field(min_length=1)
+    test_limit: int = Field(default=2, ge=1, le=50)
+
+
+class DiscoverySourceOut(BaseModel):
+    name: str  # google_places | web_search | social_search | ai_agent
+    status: str  # ok | disabled | no_api_key | budget_reached | error
+    found: int
+    error: str
+
+
+class DiscoveryOut(BaseModel):
+    discovery_id: str
+    state: DiscoveryState
+    count: int  # stores asked for
+    step: str  # the source being searched now; "" when none
+    found: int  # stores or sightings so far
+    stores_to_visit: int  # stores with a website handed to the run
+    sources: list[DiscoverySourceOut]
+    cost_usd: float  # the agent's spend; search APIs bill per request
+    run_id: str | None
+    error: str
+
+
+class DiscoverOptionsOut(BaseModel):
+    regions: list[str]
+    default_region: str
+    items: list[str]
+    default_items: list[str]
+    max_count: int
+    agent_model: str  # "" when no LLM key is set
+    sources: dict[str, bool]  # source -> its key is set

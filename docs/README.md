@@ -22,6 +22,7 @@ docs/
 | [Architecture](architecture/overview.md) | English | The pipeline stage by stage, marked Built, Planned or Gated; entry points, config, writers |
 | [Engineering standards](engineering/standards.md) | English | Tooling, code layout, design rules, testing, secrets, definition of done |
 | [Roadmap](planning/roadmap.md) | English | v1 findings, known issues, milestones M0–M6 with gates |
+| [System flow](system-flow.md) | English | A learning guide: how a list of links becomes tables, stage by stage, with the tools each stage uses |
 
 ## Decisions
 

@@ -23,6 +23,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, SecretStr, ValidationError
 
+from ..extract.focus import search_phrase
 from ..llm.gateway import (
     Budget,
     cost_of,
@@ -35,22 +36,21 @@ from ..llm.gateway import (
 from ..models import LLMCall
 from . import geo
 from .config import DiscoverConfig
-from .merge import Candidate
+from .merge import Candidate, name_key
 from .paid import ApiError, read_cached, write_cached
 
 log = logging.getLogger(__name__)
 
-PROMPT_VERSION = "discover-v1"
-PROMPT = """Find retail stores that sell women's sweaters and knitwear.
+PROMPT_VERSION = "discover-v2"
+PROMPT = """Find retail stores that sell {items}.
 
 Task: {task}
 
 What counts: independent boutiques, multi-brand clothing stores, and online stores that \
-sell sweaters, cardigans or other knitwear to consumers, located in or shipping from: \
-{countries}.
+sell {items} to consumers, located in or shipping from: {countries}.
 What does not count: marketplaces (Amazon, Etsy, eBay), department-store chains, yarn or \
 knitting-supply shops, wholesalers, and brands' own sites that have no shop.
-
+{exclude}
 Search the web several times with different wording, including searches of Instagram and \
 Facebook, where many small boutiques only have a profile. Read the results and collect as \
 many real stores as you can find (aim for 20 or more). Only report a store you actually \
@@ -61,8 +61,24 @@ Answer with ONLY a JSON array, no other text. Each element is an object with the
 name, website, instagram, facebook, city, state (two-letter code), country (two-letter \
 code) and note (one short line: what it sells and where you saw it). Use an empty string \
 for anything unknown."""
+# Names of stores already found, sent so the next run looks for new ones.
+MAX_EXCLUDED_NAMES = 80
 
 Completion = Callable[..., Any]
+
+# Models with web search, tried in this order when the interface picks one by the keys
+# that are set. Verified 2026-10-07: openai/gpt-5-search-api (the -search-preview
+# models are deprecated).
+AGENT_MODELS = (
+    ("gemini", "gemini/gemini-2.5-flash"),
+    ("openai", "openai/gpt-5-search-api"),
+    ("anthropic", "anthropic/claude-sonnet-4-5"),
+)
+
+
+def pick_agent_model(keys: Mapping[str, SecretStr]) -> str:
+    """The first agent model whose provider has a key; "" when none has."""
+    return next((model for provider, model in AGENT_MODELS if provider in keys), "")
 
 
 class AgentStore(BaseModel):
@@ -173,34 +189,69 @@ class AgentSource:
                 f'Stores that stock the knitwear brand "{brand}" (its stockists and retailers).'
                 for brand in self.config.brands
             ]
-        return tasks[: self.opts.max_runs]
+        return tasks
 
-    def run(self) -> None:
+    def stores_found(self) -> int:
+        """Distinct stores with a website so far: what a target counts."""
+        return len({name_key(c.name) for c in self.found if c.website})
+
+    def _prompt(self, task: str) -> str:
+        names = list(dict.fromkeys(c.name for c in self.found))[-MAX_EXCLUDED_NAMES:]
+        exclude = (
+            "These stores are already known; find others: " + "; ".join(names) + "\n"
+            if names
+            else ""
+        )
+        return PROMPT.format(
+            items=search_phrase(self.config.items, self.config.terms),
+            task=task,
+            countries=" / ".join(self.config.countries),
+            exclude=exclude,
+        )
+
+    def run(self, progress: Callable[[int], None] | None = None) -> None:
+        """Each task once; with `target_stores`, the tasks again in turn (asking for
+        stores not yet named) until the target, `max_runs`, the budget, or a full round
+        that finds nothing new."""
         tasks = self.tasks()
         if not tasks:
             self.notes.append("ai_agent.areas is empty and brand_tasks is off: nothing to do")
-        countries = " / ".join(self.config.countries)
-        for task in tasks:
-            stores = self._ask(PROMPT.format(task=task, countries=countries))
-            if stores is None:
-                self.notes.append(f"no store list for: {task}")
-                continue
-            log.info("ai_agent: %d stores for %r", len(stores), task)
-            self.found += [
-                Candidate(
-                    name=s.name,
-                    source=self.name,
-                    website=s.website,
-                    instagram=s.instagram,
-                    facebook=s.facebook,
-                    city=s.city,
-                    state=geo.state_code(s.state) or s.state,
-                    country=geo.infer_country(s.country, s.state, ""),
-                    note=s.note,
-                    query=task,
-                )
-                for s in stores
-            ]
+            return
+        target = self.config.target_stores
+        runs = 0
+        while True:
+            before = self.stores_found()
+            for task in tasks:
+                if runs >= self.opts.max_runs or (target and self.stores_found() >= target):
+                    return
+                runs += 1
+                stores = self._ask(self._prompt(task))
+                if stores is None:
+                    self.notes.append(f"no store list for: {task}")
+                    continue
+                log.info("ai_agent: %d stores for %r", len(stores), task)
+                self.found += [
+                    Candidate(
+                        name=s.name,
+                        source=self.name,
+                        website=s.website,
+                        instagram=s.instagram,
+                        facebook=s.facebook,
+                        city=s.city,
+                        state=geo.state_code(s.state) or s.state,
+                        country=geo.infer_country(s.country, s.state, ""),
+                        note=s.note,
+                        query=task,
+                    )
+                    for s in stores
+                ]
+                if progress:
+                    progress(self.stores_found())
+                if self.budget.exhausted():
+                    self.notes.append("budget reached")
+                    return
+            if not target or self.stores_found() == before:
+                return
 
     def _ask(self, prompt: str) -> list[AgentStore] | None:
         digest = hashlib.sha256(f"{self.model}\n{PROMPT_VERSION}\n{prompt}".encode()).hexdigest()

@@ -660,3 +660,74 @@ def test_stores_given_one_website_by_the_lookup_become_one_row():
 )
 def test_stores_on_shared_hosts_stay_apart(url, expected):
     assert store_website(url) == expected
+
+
+# --- the interface's discovery: regions, targets ------------------------------------
+
+
+def test_a_region_request_becomes_a_capped_discovery():
+    from scrapebot.discover.regions import discover_config
+
+    cfg = discover_config(
+        50, "europe", ["knitwear", "other"], ["ponchos"], "openai/gpt-5-search-api"
+    )
+    assert "FR" in cfg.countries
+    assert "Paris, France" in cfg.locations
+    assert cfg.target_stores == 50
+    assert cfg.ai_agent.max_runs == 8
+    assert cfg.ai_agent.budget_usd == 0.96
+    assert cfg.google_places.queries[:2] == ["sweater boutique", "knitwear store"]
+    assert "ponchos boutique" in cfg.google_places.queries
+    assert "sweaters and knitwear, ponchos" in cfg.web_search.queries[0]
+    assert "Europe" in cfg.web_search.queries[0]
+
+
+def test_the_agent_keeps_asking_for_new_stores_until_the_target(tmp_path):
+    answers = iter(
+        [
+            json.dumps([{"name": f"S{i}", "website": f"https://s{i}.com"} for i in range(3)]),
+            json.dumps([{"name": f"S{i}", "website": f"https://s{i}.com"} for i in range(3, 6)]),
+            json.dumps([{"name": "S9", "website": "https://s9.com"}]),
+        ]
+    )
+    prompts = []
+
+    def completion(**kwargs):
+        prompts.append(kwargs["messages"][0]["content"])
+        return litellm.completion(mock_response=next(answers), **kwargs)
+
+    cfg = config(
+        tmp_path,
+        target_stores=5,
+        ai_agent={"model": "gemini/gemini-2.5-flash", "areas": ["Colorado"], "max_runs": 10},
+    )
+    agent = AgentSource(cfg, keys(gemini="gm-key-123456"), tmp_path / "cache", completion)
+    seen = []
+    agent.run(seen.append)
+    assert agent.stores_found() == 6
+    assert len(prompts) == 2, "stops once the target is reached"
+    assert "already known; find others: S0; S1; S2" in prompts[1]
+    assert seen == [3, 6]
+
+
+def test_the_agent_stops_when_a_round_finds_nothing_new(tmp_path):
+    same = json.dumps([{"name": "S0", "website": "https://s0.com"}])
+    completion = functools.partial(litellm.completion, mock_response=same)
+    cfg = config(
+        tmp_path,
+        target_stores=50,
+        ai_agent={"model": "gemini/gemini-2.5-flash", "areas": ["A", "B"], "max_runs": 20},
+    )
+    agent = AgentSource(cfg, keys(gemini="gm-key-123456"), tmp_path / "cache", completion)
+    agent.run()
+    assert (len(agent.calls), agent.cached) == (3, 1), "two rounds of two areas, then stop"
+
+
+def test_stores_to_visit_prefer_websites_and_agreement():
+    from scrapebot.discover.run import stores_to_visit
+
+    a = FoundStore(name="A", website="https://a.com", sources=["ai_agent"])
+    b = FoundStore(name="B", website="https://b.com", sources=["ai_agent", "google_places"])
+    c = FoundStore(name="C", sources=["social_search"])
+    assert [s.name for s in stores_to_visit([a, b, c], 1)] == ["B"]
+    assert [s.name for s in stores_to_visit([a, b, c], None)] == ["B", "A"]

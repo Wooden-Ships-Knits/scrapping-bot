@@ -1,5 +1,6 @@
-"""US and Canada place names: enough to send a search to the right country and to tell
-two sightings of the same shop apart. Region support for other countries is M5."""
+"""Place names: enough to send a search to the right country and to tell two sightings
+of the same shop apart. States and provinces are known for the US and Canada; other
+countries by name only. Full region support for any country is M5."""
 
 import re
 import unicodedata
@@ -28,7 +29,13 @@ _STATE_BY_NAME = {name.lower(): code for code, name in {**US_STATES, **CA_PROVIN
 _STATE_BY_NAME.update({"washington dc": "DC", "d.c.": "DC", "québec": "QC", "pei": "PE"})
 COUNTRIES = {
     "united states": "US", "united states of america": "US", "usa": "US", "u.s.a.": "US",
-    "u.s.": "US", "canada": "CA", "united kingdom": "GB", "uk": "GB", "australia": "AU",
+    "u.s.": "US", "canada": "CA", "united kingdom": "GB", "uk": "GB", "england": "GB",
+    "scotland": "GB", "wales": "GB", "ireland": "IE", "france": "FR", "belgium": "BE",
+    "netherlands": "NL", "the netherlands": "NL", "germany": "DE", "austria": "AT",
+    "switzerland": "CH", "denmark": "DK", "sweden": "SE", "norway": "NO", "finland": "FI",
+    "italy": "IT", "spain": "ES", "portugal": "PT", "australia": "AU", "new zealand": "NZ",
+    "japan": "JP", "south korea": "KR", "korea": "KR", "hong kong": "HK", "taiwan": "TW",
+    "singapore": "SG",
 }  # fmt: skip
 _CA_POSTAL = re.compile(r"^[ABCEGHJ-NPRSTVXY]\d[A-Z][ -]?\d[A-Z]\d$", re.I)
 

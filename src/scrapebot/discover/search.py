@@ -24,7 +24,11 @@ from .paid import PaidApi
 log = logging.getLogger(__name__)
 
 _SITE = re.compile(r"\bsite:(\S+)\s*")
-_TAVILY_COUNTRY = {"US": "united states", "CA": "canada", "GB": "united kingdom"}
+# Tavily takes a country by its lower-case English name: the first full name per code.
+_TAVILY_COUNTRY: dict[str, str] = {}
+for _name, _code in geo.COUNTRIES.items():
+    if len(_name) > 4 and "." not in _name:
+        _TAVILY_COUNTRY.setdefault(_code, _name)
 _TITLE_SPLIT = re.compile(r"\s+[|\-–—:·•]\s+")
 _DOMAIN_IN_TEXT = re.compile(
     r"(?<![\w@/.])(?:https?://)?(?:www\.)?((?:[a-z0-9-]+\.)+"
@@ -113,7 +117,9 @@ class WebSearchSource:
     def run(self) -> None:
         seen: set[str] = set()
         exclude = frozenset(self.config.exclude_domains)
-        for country in self.config.countries:
+        # Many countries (a continent): search once, the region is in the query itself.
+        countries = self.config.countries if len(self.config.countries) <= 2 else [""]
+        for country in countries:
             for query in self.queries():
                 for item in tavily_search(self.api, self.opts.base_url, self.key, query, country):
                     site = store_website(item["url"], exclude)

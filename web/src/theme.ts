@@ -10,10 +10,10 @@ function stored(): Theme {
   } catch {
     // storage blocked: fall through to the default
   }
-  return "dark";
+  return "light";
 }
 
-/** Dark by default, remembered per browser. */
+/** Light by default, remembered per browser. */
 export function useTheme(): [Theme, () => void] {
   const [theme, setTheme] = useState<Theme>(stored);
   useEffect(() => {

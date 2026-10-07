@@ -61,6 +61,7 @@ class StoreRow(Row):
     layers_tried: list[str] = Field(default_factory=list)
     product_count: int = 0
     knit_count: int = 0  # products that are knitwear (`products.is_knitwear`)
+    focus_count: int = 0  # products matching any item the run looks for
     page_count: int = 0  # pages read
     failed_page_count: int = 0  # pages that could not be read; see `pages.error`
     contact_count: int = 0
@@ -92,6 +93,8 @@ class ProductRow(Row):
     # Knit terms in the title, type, tags or description (`extract.signals.is_knit`).
     # A flag beside the raw values, never a filter: every product is kept.
     is_knitwear: bool = False
+    # The run's chosen items this product matches (`config.focus`), e.g. ["knitwear"].
+    matched_items: list[str] = Field(default_factory=list)
     raw: dict[str, Any] = Field(default_factory=dict)
 
 

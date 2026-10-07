@@ -13,9 +13,9 @@ test("main scenario: paste, preview, test run, check the data, full run, downloa
     .fill("Cek monkees.com, https://boutique.com dan https://blocked.com. IG: https://instagram.com/x");
 
   await expect(page.getByTestId("link-count")).toHaveText("4 tautan · 3 toko");
-  await expect(page.getByTestId("preview")).toContainText('"https://monkees.com"');
-  await expect(page.getByTestId("preview")).toContainText("dilewati: Media sosial");
-  await page.getByRole("button", { name: "START RUN UJI" }).click();
+  await expect(page.getByTestId("preview")).toContainText("https://monkees.com");
+  await expect(page.getByTestId("preview")).toContainText("Dilewati: Media sosial");
+  await page.getByRole("button", { name: "Mulai run uji" }).click();
 
   await expect(page).toHaveURL(/#\/runs\//);
   await expect(page.getByRole("heading", { name: /Run uji: 2 toko pertama/ })).toBeVisible();
@@ -26,21 +26,20 @@ test("main scenario: paste, preview, test run, check the data, full run, downloa
   await expect(result.getByRole("row", { name: /monkees\.com.*Ada produk/ })).toBeVisible();
   await expect(result.getByRole("row", { name: /boutique\.com.*Tanpa katalog/ })).toBeVisible();
 
-  await result.getByRole("tab", { name: "PRODUCTS" }).click();
+  await result.getByRole("tab", { name: /Produk/ }).click();
   await expect(result.getByRole("cell", { name: "Cher Sweater in Eggnog" })).toBeVisible();
-  await result.getByRole("tab", { name: "RESPONSE" }).click();
+  await result.getByRole("tab", { name: "JSON" }).click();
   await expect(result.getByTestId("json-view")).toContainText('"price_raw": "139.00"');
 
-  await result.getByRole("button", { name: "Unduh hasil" }).click();
   const download = page.waitForEvent("download");
-  await page.getByRole("link", { name: "Excel (.xlsx)" }).click();
+  await page.getByRole("region", { name: "Unduh hasil" }).getByRole("link", { name: "Unduh Excel (.xlsx)" }).click();
   expect((await download).suggestedFilename()).toBe("tables.xlsx");
 
   await page.getByRole("button", { name: /Jalankan seluruh daftar/ }).click();
   await expect(page.getByRole("heading", { name: /Run penuh/ })).toBeVisible();
   await waitDone(page);
   await expect(page.getByText("Toko dikunjungi: 3 dari 3")).toBeVisible();
-  await expect(page.getByText("(HTTP 403)")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Perlu dilihat" }).getByText("HTTP 403")).toBeVisible();
 
   await page.goto("/#/runs");
   await expect(page.getByRole("heading", { name: "Riwayat run" })).toBeVisible();
@@ -54,15 +53,15 @@ test("an uploaded spreadsheet keeps its columns and runs", async ({ page }) => {
     mimeType: "text/csv",
     buffer: Buffer.from("store_name,website\nKnit Shop,https://knitshop.com\nTanpa situs,\n"),
   });
-  await expect(page.getByText("prospek.csv")).toBeVisible();
+  await expect(page.getByText("prospek.csv", { exact: true })).toBeVisible();
   await expect(page.getByTestId("link-count")).toHaveText("2 tautan · 1 toko");
   await expect(page.getByTestId("preview")).toContainText("Tanpa situs 1");
 
-  await page.getByRole("button", { name: /START RUN/ }).click();
+  await page.getByRole("button", { name: /Mulai (run uji|scrape)/ }).click();
   await waitDone(page);
   await expect(page.getByText(/prospek\.csv · dimulai/)).toBeVisible();
   const result = page.getByRole("region", { name: "Hasil" });
-  await result.getByRole("tab", { name: "INPUTS" }).click();
+  await result.getByRole("tab", { name: /Masukan/ }).click();
   await expect(result.getByRole("row", { name: /Tanpa situs/ })).toBeVisible();
 });
 
@@ -73,7 +72,7 @@ test("a full run of an untested list needs a deliberate confirmation", async ({ 
   await page.getByRole("checkbox", { name: "Jalankan beberapa toko pertama dulu" }).uncheck();
   await page.keyboard.press("Escape");
 
-  const runAll = page.getByRole("button", { name: "START RUN", exact: true });
+  const runAll = page.getByRole("button", { name: "Mulai scrape", exact: true });
   await expect(page.getByText(/belum pernah diuji/)).toBeVisible();
   await expect(runAll).toBeDisabled();
   await page.getByRole("checkbox", { name: "Saya sengaja melewati mode uji" }).check();
@@ -87,7 +86,7 @@ test("overview and theme switch", async ({ page }) => {
   await page.goto("/#/overview");
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   const html = page.locator("html");
-  await expect(html).toHaveAttribute("data-theme", "dark");
-  await page.getByRole("switch", { name: "Tema terang" }).click();
   await expect(html).toHaveAttribute("data-theme", "light");
+  await page.getByRole("switch", { name: "Tema gelap" }).click();
+  await expect(html).toHaveAttribute("data-theme", "dark");
 });

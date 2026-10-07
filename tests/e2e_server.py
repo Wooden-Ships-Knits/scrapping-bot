@@ -71,7 +71,14 @@ def main() -> None:
         {"output": {"runs_dir": work / "runs"}, "fetch": {"cache_dir": work / "cache"}}
     )
     settings = ApiSettings(
-        base=base, uploads_dir=work / "uploads", web_dist=ROOT / "web" / "dist", poll_seconds=0.2
+        base=base,
+        uploads_dir=work / "uploads",
+        web_dist=ROOT / "web" / "dist",
+        poll_seconds=0.2,
+        # No keys: the suite never sees a developer's .env, and opens on pasted links.
+        env_file=work / ".env",
+        discover_dir=work / "discover",
+        discover_cache_dir=work / "discover-cache",
     )
     app = create_app(settings, fetcher_factory=lambda: SlowFakeFetcher(args.delay))
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")

@@ -81,7 +81,7 @@ flowchart TD
 | Entry point | Role | Status |
 |---|---|---|
 | CLI | `scrapebot run <input>`, optionally with a YAML config. Used directly and by automation (n8n, cron) | Built |
-| Discovery | `scrapebot discover -c discover.yaml`: finds stores and writes `data/discover/<id>/stores.csv`, the input of a run (section 4.0) | Built (CLI only; web app planned) |
+| Discovery | `scrapebot discover -c discover.yaml`, or the web app's *Cari toko otomatis* tab: finds stores and writes `data/discover/<id>/stores.csv`, the input of a run (section 4.0) | Built |
 | Web app + local API | `scrapebot serve`: React + TypeScript (`web/`) over a local FastAPI service (`api/`) on 127.0.0.1. Paste or upload links, preview, choose formats, test mode with a gate before untested full runs, live progress (SSE), history, downloads ([ADR 0007](../decisions/0007-typescript-web-ui-local-api.md)) | Built (LLM settings come with M3) |
 
 Both build the same `RunConfig`. The pipeline is split into `prepare` (read and
@@ -97,6 +97,12 @@ API routes: `GET /api/options`, `POST /api/uploads`, `POST /api/preview`,
 `GET /api/runs/{id}/events` (SSE), `GET /api/runs/{id}/download/{key}`. The web app's
 TypeScript types are generated from the API's OpenAPI schema (`make api-types`); CI
 fails when they drift.
+
+The interface is monochrome (light by default, dark on request) and shows only what
+the API returns. A store's status is drawn by shape as well as label: a filled badge for
+`ok`, an outlined one for `no_products` and `js_required`, and a dashed one for `blocked`,
+`error` and skipped links. The overview charts products per run for the last 14 runs,
+using `GET /api/runs`.
 
 ```yaml
 # config.yaml (example)
@@ -146,6 +152,18 @@ flowchart LR
 | Agent | `discover/agent.py` | `litellm.completion(..., web_search_options=...)`; JSON store list; per-discovery cost cap; answers cached |
 | Merge | `discover/merge.py` | One row per store; drops other countries, closed places, excluded domains, bare names; stores the lookup gives one website are folded into one row |
 | Orchestration | `discover/run.py` | Sources in order; one failing or missing a key never stops the others |
+
+From the web app, `POST /api/discover` takes a store count, a region and the items
+(`discover/regions.py` turns them into countries, agent areas, Maps cities and request
+and cost caps that grow with the count). The agent then runs area after area, telling
+the model which stores it already has, until the count is reached, a round finds
+nothing new, or a cap is hit. The stores with a website (the ones most sources agree on
+first) become `to_visit.csv`, and a test run starts on them; `GET /api/discover/{id}`
+reports progress until then. One discovery runs at a time, in its own thread.
+
+The items chosen also go into the run's config (`focus`): each product gets the items
+it matches in `products.matched_items` (`extract/focus.py`), each store a
+`focus_count`. Season items look for words such as *fall*, *winter*, *FW25*.
 
 `stores.csv` puts `website` first, so `scrapebot run` finds the link column itself;
 the other columns (name, address, phone, profiles, sources, `found_by`, notes) become

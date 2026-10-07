@@ -4,6 +4,105 @@
  */
 
 export interface paths {
+    "/api/discover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Discovery
+         * @description Find stores, then start a test run on them; poll GET /api/discover/{id}.
+         */
+        post: operations["start_discovery_api_discover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/discover/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Discover Options
+         * @description What the interface offers for finding stores, and which sources have a key.
+         *     Keys themselves are never sent.
+         */
+        get: operations["discover_options_api_discover_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/discover/{discovery_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Discovery */
+        get: operations["discovery_api_discover__discovery_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/llm/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Llm Check
+         * @description Prove a key and model work before a run (PRD LM-05).
+         */
+        post: operations["llm_check_api_llm_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/llm/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Llm Providers
+         * @description The supported providers (PRD LM-02) and whether .env already has a key for each.
+         *     Keys themselves are never sent.
+         */
+        get: operations["llm_providers_api_llm_providers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/options": {
         parameters: {
             query?: never;
@@ -230,6 +329,83 @@ export interface components {
             /** File */
             file: string;
         };
+        /**
+         * DiscoverIn
+         * @description Find stores, then start a test run on them (ADR 0008).
+         */
+        DiscoverIn: {
+            /** Count */
+            count: number;
+            /** Items */
+            items: string[];
+            /** Region */
+            region: string;
+            /** Terms */
+            terms?: string[];
+            /**
+             * Test Limit
+             * @default 2
+             */
+            test_limit: number;
+            /** Writers */
+            writers: string[];
+        };
+        /** DiscoverOptionsOut */
+        DiscoverOptionsOut: {
+            /** Agent Model */
+            agent_model: string;
+            /** Default Items */
+            default_items: string[];
+            /** Default Region */
+            default_region: string;
+            /** Items */
+            items: string[];
+            /** Max Count */
+            max_count: number;
+            /** Regions */
+            regions: string[];
+            /** Sources */
+            sources: {
+                [key: string]: boolean;
+            };
+        };
+        /** DiscoveryOut */
+        DiscoveryOut: {
+            /** Cost Usd */
+            cost_usd: number;
+            /** Count */
+            count: number;
+            /** Discovery Id */
+            discovery_id: string;
+            /** Error */
+            error: string;
+            /** Found */
+            found: number;
+            /** Run Id */
+            run_id: string | null;
+            /** Sources */
+            sources: components["schemas"]["DiscoverySourceOut"][];
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "searching" | "starting_run" | "done" | "failed";
+            /** Step */
+            step: string;
+            /** Stores To Visit */
+            stores_to_visit: number;
+        };
+        /** DiscoverySourceOut */
+        DiscoverySourceOut: {
+            /** Error */
+            error: string;
+            /** Found */
+            found: number;
+            /** Name */
+            name: string;
+            /** Status */
+            status: string;
+        };
         /** DownloadOut */
         DownloadOut: {
             /** Filename */
@@ -243,6 +419,49 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** LLMCheckIn */
+        LLMCheckIn: {
+            /** Api Base */
+            api_base?: string | null;
+            /** Api Key */
+            api_key?: string | null;
+            /** Model */
+            model: string;
+        };
+        /** LLMCheckOut */
+        LLMCheckOut: {
+            /** Message */
+            message: string;
+            /** Ok */
+            ok: boolean;
+        };
+        /**
+         * LLMIn
+         * @description LLM settings for one run. The key stays in memory for this run only (PRD LM-04).
+         */
+        LLMIn: {
+            /** Api Base */
+            api_base?: string | null;
+            /** Api Key */
+            api_key?: string | null;
+            /**
+             * Budget Usd
+             * @default 1
+             */
+            budget_usd: number;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /** Fallbacks */
+            fallbacks?: string[];
+            /**
+             * Model
+             * @default
+             */
+            model: string;
         };
         /** OptionsOut */
         OptionsOut: {
@@ -305,6 +524,19 @@ export interface components {
             /** Too Many */
             too_many: boolean;
         };
+        /** ProviderOut */
+        ProviderOut: {
+            /** Example Model */
+            example_model: string;
+            /** Key In Env */
+            key_in_env: boolean;
+            /** Label */
+            label: string;
+            /** Needs Key */
+            needs_key: boolean;
+            /** Provider */
+            provider: string;
+        };
         /**
          * RowsOut
          * @description A page of one table's rows, for previewing data in the interface.
@@ -327,6 +559,7 @@ export interface components {
         };
         /** RunIn */
         RunIn: {
+            llm?: components["schemas"]["LLMIn"] | null;
             /**
              * Skip Test Run
              * @default false
@@ -400,6 +633,12 @@ export interface components {
             limit: number | null;
             /** Links In */
             links_in: number;
+            /** Llm Cost Usd */
+            llm_cost_usd: number;
+            /** Llm Model */
+            llm_model: string;
+            /** Llm Stores */
+            llm_stores: number;
             /**
              * Mode
              * @enum {string}
@@ -519,6 +758,143 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    start_discovery_api_discover_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiscoverIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    discover_options_api_discover_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoverOptionsOut"];
+                };
+            };
+        };
+    };
+    discovery_api_discover__discovery_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                discovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    llm_check_api_llm_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LLMCheckIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LLMCheckOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    llm_providers_api_llm_providers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderOut"][];
+                };
+            };
+        };
+    };
     options_api_options_get: {
         parameters: {
             query?: never;

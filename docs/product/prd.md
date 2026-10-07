@@ -280,7 +280,8 @@ The business focuses only on knitwear, so discovery and tagging aim at it.
 | DS-05 | Stores known only by name or profile get a website lookup (one search per store) | Must | Column `website_source` = `lookup` |
 | DS-06 | Discovery never opens store websites and never judges stores. Judging uses the run's data | Must | No requests to store websites during `discover` |
 | DS-07 | Every product gets an `is_knitwear` flag and every store a `knit_count`. No product is dropped | Must | Non-knitwear products stay in the `products` table |
-| DS-08 | Store discovery from the web interface | Should | The operator runs discovery without a terminal |
+| DS-08 | Store discovery from the web interface: the operator types how many stores, picks a region or continent and ticks the items (knitwear, cashmere/wool, fall/winter, spring/summer, or their own words); one click finds the stores and starts a test run on them | Should (built) | The operator finds and tests stores without a terminal |
+| DS-09 | The items ticked are recorded per product (`matched_items`) and counted per store (`focus_count`); nothing is dropped | Should (built) | A product's matched items are visible in every export |
 
 ## 8. Data model
 

@@ -11,7 +11,7 @@ A source without its key is skipped and the others still run (PRD section 9).
 import csv
 import json
 import logging
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -74,9 +74,15 @@ def _secret(keys: Mapping[str, SecretStr], name: str) -> str:
     return value.get_secret_value() if value else ""
 
 
-def _run_source(source: _Source, report: SourceReport) -> list[Candidate]:
+# (step name, how many stores or sightings so far): for a live progress display.
+Progress = Callable[[str, int], None]
+
+
+def _run_source(
+    source: _Source, report: SourceReport, run: Callable[[], None] | None = None
+) -> list[Candidate]:
     try:
-        source.run()
+        (run or source.run)()
     except BudgetReached as exc:
         report.status = "budget_reached"
         log.warning("%s", exc)
@@ -86,6 +92,33 @@ def _run_source(source: _Source, report: SourceReport) -> list[Candidate]:
     report.candidates = len(source.found)
     report.notes = source.notes
     return source.found
+
+
+def _run_agent(
+    config: DiscoverConfig,
+    keys: Mapping[str, SecretStr],
+    completion: Completion | None,
+    report: SourceReport,
+    progress: Progress | None,
+    found_before: int,
+) -> list[Candidate]:
+    agent = AgentSource(config, keys, config.cache_dir, completion=completion)
+    if not agent.model:
+        report.status = "disabled"
+        report.notes = ["ai_agent.model is empty"]
+        return []
+    if agent.needs_key and not agent.key:
+        report.status = "no_api_key"
+        return []
+
+    def on_agent(n: int) -> None:
+        if progress:
+            progress("ai_agent", found_before + n)
+
+    found = _run_source(agent, report, lambda: agent.run(on_agent))
+    report.requests_sent, report.requests_cached = agent.sent, agent.cached
+    report.cost_usd = round(sum(c.cost_usd for c in agent.calls), 6)
+    return found
 
 
 def _lookup_websites(
@@ -123,6 +156,7 @@ def run_discover(
     only: list[str] | None = None,
     transport: Transport | None = None,
     completion: Completion | None = None,
+    progress: Progress | None = None,
 ) -> DiscoverResult:
     started = datetime.now(UTC)
     discovery_id = started.strftime("%Y%m%dT%H%M%SZ")
@@ -141,17 +175,7 @@ def run_discover(
             report.status = "disabled"
             continue
         if name == "ai_agent":
-            agent = AgentSource(config, keys, config.cache_dir, completion=completion)
-            if not agent.model:
-                report.status = "disabled"
-                report.notes = ["ai_agent.model is empty"]
-                continue
-            if agent.needs_key and not agent.key:
-                report.status = "no_api_key"
-                continue
-            candidates += _run_source(agent, report)
-            report.requests_sent, report.requests_cached = agent.sent, agent.cached
-            report.cost_usd = round(sum(c.cost_usd for c in agent.calls), 6)
+            candidates += _run_agent(config, keys, completion, report, progress, len(candidates))
             continue
         key = _secret(keys, SOURCE_KEYS[name])
         if not key:
@@ -166,6 +190,8 @@ def run_discover(
         }[name]
         candidates += _run_source(source_class(config, key, api), report)
         report.requests_sent, report.requests_cached = api.sent, api.cached
+        if progress:
+            progress(name, len(candidates))
 
     stores = merge(candidates, config.countries, config.exclude_domains)
 
@@ -211,3 +237,18 @@ def run_discover(
         sources=reports,
         websites_looked_up=looked_up,
     )
+
+
+def stores_to_visit(stores: list[FoundStore], count: int | None) -> list[FoundStore]:
+    """The stores a run should visit: those with a website, at most `count`, in the order
+    the sources found them most often (stores several sources agree on first)."""
+    with_site = [s for s in stores if s.website]
+    with_site.sort(key=lambda s: -len(s.sources))
+    return with_site[:count] if count else with_site
+
+
+def write_links_file(stores: list[FoundStore], path: Path) -> Path:
+    """A links file `scrapebot run` reads, for a chosen subset of stores."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _write_csv(stores, path)
+    return path

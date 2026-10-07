@@ -79,6 +79,11 @@ class ResolveConfig(_Section):
 
 class DiscoverConfig(_Section):
     countries: list[str] = Field(default_factory=lambda: ["US", "CA"])  # others are dropped
+    # What the stores should sell (`extract.focus`): the agent is asked for these.
+    items: list[str] = Field(default_factory=lambda: ["knitwear"])
+    terms: list[str] = Field(default_factory=list)  # the operator's own words, item "other"
+    # Stop asking the agent once this many stores are found; None = run every area once.
+    target_stores: int | None = Field(default=None, ge=1, le=1000)
     locations: list[str] = Field(default_factory=list)  # "City, ST" places to search in
     brands: list[str] = Field(default_factory=list)  # search seeds: retailers of these brands
     exclude_domains: list[str] = Field(default_factory=list)  # never stores: media, own site

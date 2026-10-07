@@ -22,7 +22,8 @@ from pydantic import SecretStr
 
 from . import __version__
 from .acquire import acquire
-from .config import InputConfig, RunConfig
+from .config import FocusConfig, InputConfig, RunConfig
+from .extract.focus import matched_items
 from .extract.signals import is_knit
 from .fetch import Fetcher, HttpFetcher
 from .inputs.readers import InputError, InputRecord, read_file, read_text
@@ -106,8 +107,16 @@ def read_records(cfg: InputConfig) -> list[InputRecord]:
     return records
 
 
-def store_rows(run_id: str, target: Target, got: Acquired, fetched_at: str) -> Iterable[Row]:
+def store_rows(
+    run_id: str,
+    target: Target,
+    got: Acquired,
+    fetched_at: str,
+    focus: FocusConfig | None = None,
+) -> Iterable[Row]:
     """Every table row one visited store produces."""
+    focus = focus or FocusConfig()
+    matches = [matched_items(p, focus.items, focus.terms) for p in got.products]
     yield StoreRow(
         run_id=run_id,
         domain=got.domain,
@@ -121,6 +130,7 @@ def store_rows(run_id: str, target: Target, got: Acquired, fetched_at: str) -> I
         layers_tried=got.layers_tried,
         product_count=len(got.products),
         knit_count=sum(is_knit(p) for p in got.products),
+        focus_count=sum(bool(m) for m in matches),
         page_count=len(got.read_pages),
         failed_page_count=len(got.pages) - len(got.read_pages),
         contact_count=len(got.contacts),
@@ -133,11 +143,12 @@ def store_rows(run_id: str, target: Target, got: Acquired, fetched_at: str) -> I
     )
     for call in got.llm_calls:
         yield LLMCallRow(run_id=run_id, domain=got.domain, **call.model_dump())
-    for p in got.products:
+    for p, matched in zip(got.products, matches, strict=True):
         yield ProductRow(
             run_id=run_id,
             domain=got.domain,
             is_knitwear=is_knit(p),
+            matched_items=matched,
             **p.model_dump(include=set(ProductRow.model_fields) - {"run_id", "domain"}),
         )
     for page in got.pages:
@@ -349,7 +360,7 @@ def _visit_and_write(
     total, finished = len(resolution.targets), len(prepared.done)
 
     def record(target: Target, got: Acquired) -> None:
-        store.append(store_rows(run_id, target, got, _iso(_now())))
+        store.append(store_rows(run_id, target, got, _iso(_now()), config.focus))
         _append_json_lines(summary_file, [summary_row(by_id[i], got) for i in target.input_ids])
 
     with ThreadPoolExecutor(max_workers=config.fetch.concurrency) as pool:

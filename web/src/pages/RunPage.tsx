@@ -1,27 +1,43 @@
-import { ChevronLeft, ChevronRight, Download, Play, RotateCw, Square } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+  Braces,
+  ChevronLeft,
+  ChevronRight,
+  Database,
+  Download,
+  FileSpreadsheet,
+  FileText,
+  ListChecks,
+  Play,
+  RotateCw,
+  Square,
+} from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { api, ApiError, type PreviewTable, type Rows, type Run } from "../api/client";
 import { useRun } from "../api/useRun";
 import { DataTable, type Renderers } from "../components/ui/DataTable";
 import { JsonView } from "../components/ui/JsonView";
-import { Menu } from "../components/ui/Menu";
 import { formatNumber, formatTime, runState, skipReason, storeStatus, tone, writerLabel } from "../labels";
 import { navigate } from "../router";
 
 const LOOK_AT = ["no_products", "js_required", "blocked", "error"];
-const TABLES: { key: PreviewTable; label: string }[] = [
-  { key: "stores", label: "STORES" },
-  { key: "products", label: "PRODUCTS" },
-  { key: "contacts", label: "CONTACTS" },
-  { key: "pages", label: "PAGES" },
-  { key: "inputs", label: "INPUTS" },
+const TABLES: { key: PreviewTable; label: string; count: (run: Run) => number }[] = [
+  { key: "stores", label: "Toko", count: (r) => r.stores_done },
+  { key: "products", label: "Produk", count: (r) => r.products },
+  { key: "contacts", label: "Kontak", count: (r) => r.contacts },
+  { key: "pages", label: "Halaman", count: (r) => r.pages },
+  { key: "inputs", label: "Masukan", count: (r) => r.links_in },
+];
+const VIEWS: { key: View; label: string }[] = [
+  { key: "table", label: "TABEL" },
+  { key: "response", label: "JSON" },
+  { key: "params", label: "PARAMETER" },
 ];
 const PAGE_SIZE = 50;
 
 const badge = (code: string, label: string) => <span className={`badge badge-${tone(code)}`}>{label}</span>;
 
-// How some columns read in the table view; the RESPONSE view keeps the raw codes.
+// How some columns read in the table view; the JSON view keeps the raw codes.
 const RENDERERS: Partial<Record<PreviewTable, Renderers>> = {
   stores: { status: (v) => badge(String(v), storeStatus(String(v))) },
   inputs: {
@@ -52,41 +68,36 @@ export function RunDetail({
   onRestart?: () => void;
 }) {
   const finished = run.state === "done";
+  const live = run.state === "running" || run.state === "queued";
   const percent = run.stores_total ? Math.round((100 * run.stores_done) / run.stores_total) : 100;
   const balanced = run.links_in === run.processed + run.skipped;
   const needsLook = run.stores.filter((s) => LOOK_AT.includes(s.status));
+  const count = (status: string) => run.status_counts[status] ?? 0;
 
   return (
     <div className="page">
-      <header className="page-head">
-        <h1>
-          {run.mode === "test" ? `Run uji: ${run.limit} toko pertama` : "Run penuh"}{" "}
-          <span className={`badge badge-${tone(run.state)}`}>{runState(run.state)}</span>
-        </h1>
-        <p className="mono muted">
-          {run.source_name} · dimulai {formatTime(run.started_at)}
-          {run.finished_at && <> · selesai {formatTime(run.finished_at)}</>} · {run.run_id}
-        </p>
-      </header>
-
-      {connectionError && <div className="notice warn">{connectionError}</div>}
-      {run.state === "failed" && (
-        <div className="notice bad" role="alert">
-          Run gagal: {run.error || "lihat log server"}.
-        </div>
-      )}
-      {(run.state === "interrupted" || run.state === "stopped") && (
-        <ResumeNotice run={run} onRestart={onRestart} />
-      )}
-
       <section className="card">
         <div className="card-body">
-          <div className="progress-head mono">
-            {(run.state === "running" || run.state === "queued") && <StopButton run={run} />}
+          <div className="run-head">
+            <div>
+              <h1>{run.mode === "test" ? `Run uji: ${run.limit} toko pertama` : "Run penuh"}</h1>
+              <p className="run-meta">
+                <span className={`badge badge-${tone(run.state)}`}>{runState(run.state)}</span>
+                <span>
+                  {run.source_name} · dimulai {formatTime(run.started_at)}
+                  {run.finished_at && <> · selesai {formatTime(run.finished_at)}</>}
+                </span>
+              </p>
+              <p className="run-id">{run.run_id}</p>
+            </div>
+            {live && <StopButton run={run} />}
+          </div>
+
+          <div className="progress-head">
             <span>
               Toko dikunjungi: <strong>{formatNumber(run.stores_done)}</strong> dari {formatNumber(run.stores_total)}
             </span>
-            <span>{percent}%</span>
+            <span className="mono">{percent}%</span>
           </div>
           <div
             className="progress"
@@ -96,14 +107,8 @@ export function RunDetail({
             aria-valuenow={run.stores_done}
             aria-label="Progres run"
           >
-            <div className={`progress-bar ${finished ? "" : "live"}`} style={{ width: `${percent}%` }} />
+            <div className={`progress-bar ${live ? "live" : ""}`} style={{ width: `${percent}%` }} />
           </div>
-          <dl className="stats">
-            <Stat label="Produk" value={run.products} />
-            <Stat label="Halaman" value={run.pages} />
-            <Stat label="Kontak" value={run.contacts} />
-            <Stat label="Toko" value={run.stores_done} />
-          </dl>
           <p className={`reconcile mono ${balanced ? "good" : "bad"}`} data-testid="reconciliation">
             Tautan masuk <strong>{formatNumber(run.links_in)}</strong> = diproses <strong>{formatNumber(run.processed)}</strong> +
             dilewati <strong>{formatNumber(run.skipped)}</strong> {balanced ? "✓ seimbang" : "✗ tidak seimbang"}
@@ -117,25 +122,50 @@ export function RunDetail({
               ))}
             </ul>
           )}
-          {finished && needsLook.length > 0 && (
-            <div className="look">
-              <p className="mono small muted">PERLU DILIHAT</p>
-              <ul>
-                {needsLook.map((s) => (
-                  <li key={s.domain}>
-                    <strong>{s.domain}</strong>: {storeStatus(s.status)}
-                    {s.error && <span className="muted"> ({s.error})</span>}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
         </div>
       </section>
 
-      {finished && run.mode === "test" && <ContinueFullRun run={run} />}
+      {connectionError && <div className="notice warn">{connectionError}</div>}
+      {run.state === "failed" && (
+        <div className="notice bad" role="alert">
+          Run gagal: {run.error || "lihat log server"}.
+        </div>
+      )}
+      {(run.state === "interrupted" || run.state === "stopped") && <ResumeNotice run={run} onRestart={onRestart} />}
+
+      <dl className="stats">
+        <Stat label="Toko" value={run.stores_done} sub={`dari ${formatNumber(run.stores_total)} target`} />
+        <Stat label="Produk" value={run.products} sub="ditemukan" />
+        <Stat label="Kontak" value={run.contacts} sub={`dari ${formatNumber(run.pages)} halaman`} />
+        <Stat label="Diblokir" value={count("blocked")} sub="toko menolak akses" alert={count("blocked") > 0} />
+        <Stat label="Gagal" value={count("error")} sub="galat saat mengambil" alert={count("error") > 0} />
+      </dl>
+
+      {finished && run.mode === "test" && <ContinueFullRun run={run} balanced={balanced} />}
+
+      {needsLook.length > 0 && (
+        <section className="card" aria-label="Perlu dilihat">
+          <div className="card-head">
+            <span className="label">Perlu dilihat</span>
+            <span className="tag solid">{formatNumber(needsLook.length)} toko</span>
+          </div>
+          <ul className="look-list">
+            {needsLook.map((s) => (
+              <li key={s.domain}>
+                <div>
+                  <strong title={s.domain}>{s.domain}</strong>
+                  {s.error && <small title={s.error}>{s.error}</small>}
+                </div>
+                {badge(s.status, storeStatus(s.status))}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <ResultCard run={run} />
+
+      {finished && run.downloads.length > 0 && <Downloads run={run} />}
     </div>
   );
 }
@@ -145,14 +175,14 @@ function StopButton({ run }: { run: Run }) {
   return (
     <button
       type="button"
-      className="button ghost small-button"
+      className="button ghost"
       disabled={asked}
       onClick={() => {
         setAsked(true);
         api.stopRun(run.run_id).catch(() => setAsked(false));
       }}
     >
-      <Square size={12} /> {asked ? "MENGHENTIKAN…" : "STOP"}
+      <Square size={13} /> {asked ? "Menghentikan…" : "Hentikan"}
     </button>
   );
 }
@@ -179,24 +209,25 @@ function ResumeNotice({ run, onRestart }: { run: Run; onRestart?: () => void }) 
         {formatNumber(run.stores_done)} dari {formatNumber(run.stores_total)} toko selesai dan tersimpan.
       </span>
       <span className="spacer" />
-      <button type="button" className="button primary" onClick={resume} disabled={busy}>
-        <RotateCw size={14} /> {busy ? "MELANJUTKAN…" : "LANJUTKAN"}
+      <button type="button" className="button" onClick={resume} disabled={busy}>
+        <RotateCw size={14} /> {busy ? "Melanjutkan…" : "Lanjutkan"}
       </button>
       {error && <span role="alert">{error}</span>}
     </div>
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({ label, value, sub, alert = false }: { label: string; value: number; sub: string; alert?: boolean }) {
   return (
-    <div className="stat">
-      <dt className="mono">{label}</dt>
+    <div className={`stat ${alert ? "alert" : ""}`}>
+      <dt>{label}</dt>
       <dd>{formatNumber(value)}</dd>
+      <p className="sub">{sub}</p>
     </div>
   );
 }
 
-function ContinueFullRun({ run }: { run: Run }) {
+function ContinueFullRun({ run, balanced }: { run: Run; balanced: boolean }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -212,17 +243,38 @@ function ContinueFullRun({ run }: { run: Run }) {
     }
   }
 
+  // The first item is checked by the run itself; the other two are the operator's to tick.
   return (
     <section className="card callout">
+      <div className="card-head">
+        <ListChecks size={16} />
+        <h2>Periksa hasil uji, lalu lanjutkan</h2>
+      </div>
       <div className="card-body">
-        <h2 className="mono">Periksa hasil uji, lalu lanjutkan</h2>
-        <ol>
-          <li>Rekonsiliasi di atas harus seimbang.</li>
-          <li>Toko yang Anda tahu punya katalog harus berstatus “Ada produk”.</li>
-          <li>Buka tab PRODUCTS atau file Excel: judul, harga dan mata uang harus sama dengan situsnya.</li>
-        </ol>
-        <button type="button" className="button primary" onClick={start} disabled={busy}>
-          <Play size={14} /> {busy ? "MEMULAI…" : `Jalankan seluruh daftar (${formatNumber(run.links_in)} tautan)`}
+        <ul className="checklist">
+          <li>
+            <label>
+              <input type="checkbox" checked={balanced} readOnly disabled />
+              <span>
+                Rekonsiliasi seimbang <span className="muted">(diperiksa otomatis)</span>
+              </span>
+            </label>
+          </li>
+          <li>
+            <label>
+              <input type="checkbox" />
+              <span>Toko yang Anda tahu punya katalog berstatus “Ada produk”.</span>
+            </label>
+          </li>
+          <li>
+            <label>
+              <input type="checkbox" />
+              <span>Di tab Produk atau file Excel: judul, harga dan mata uang sama dengan situsnya.</span>
+            </label>
+          </li>
+        </ul>
+        <button type="button" className="button" onClick={start} disabled={busy}>
+          <Play size={14} /> {busy ? "Memulai…" : `Jalankan seluruh daftar (${formatNumber(run.links_in)} tautan)`}
         </button>
         {error && (
           <div className="notice bad" role="alert">
@@ -230,6 +282,47 @@ function ContinueFullRun({ run }: { run: Run }) {
           </div>
         )}
       </div>
+    </section>
+  );
+}
+
+const FILE_ICONS: Record<string, ReactNode> = {
+  xlsx: <FileSpreadsheet size={18} />,
+  json: <Braces size={18} />,
+  jsonl: <Braces size={18} />,
+  parquet: <Database size={18} />,
+  sqlite: <Database size={18} />,
+  duckdb: <Database size={18} />,
+};
+
+function Downloads({ run }: { run: Run }) {
+  return (
+    <section className="card" aria-label="Unduh hasil">
+      <div className="card-head">
+        <h2>Unduh hasil</h2>
+        <p>File hasil run ini, sama dengan isi foldernya di komputer ini.</p>
+      </div>
+      <ul className="download-list">
+        {run.downloads.map((d) => (
+          <li key={d.key}>
+            <a
+              className="download-row"
+              href={api.downloadUrl(run.run_id, d.key)}
+              download={d.filename}
+              aria-label={`Unduh ${d.label}`}
+            >
+              {FILE_ICONS[d.key] ?? <FileText size={18} />}
+              <span>
+                <strong>{d.filename}</strong>
+                <small>{d.label}</small>
+              </span>
+              <span className="icon-button" aria-hidden="true">
+                <Download size={16} />
+              </span>
+            </a>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -266,28 +359,14 @@ function ResultCard({ run }: { run: Run }) {
   return (
     <section className="card result" aria-label="Hasil">
       <div className="card-head">
-        <span className="mono result-title">{run.source_name}</span>
+        <h2>Data hasil</h2>
+        <span className="muted small result-title">{run.source_name}</span>
         <span className="spacer" />
         {run.writers.map((w) => (
           <span key={w} className="tag">
             {writerLabel(w)}
           </span>
         ))}
-        <span className="tag">
-          {formatNumber(run.stores_done)}/{formatNumber(run.stores_total)} toko
-        </span>
-        {run.state === "done" ? (
-          <Menu className="button ghost" align="right" icon={<Download size={14} />} label="DOWNLOAD" ariaLabel="Unduh hasil">
-            <p className="menu-title">Unduh hasil</p>
-            {run.downloads.map((d) => (
-              <a key={d.key} className="menu-item" href={api.downloadUrl(run.run_id, d.key)} download={d.filename}>
-                {d.label}
-              </a>
-            ))}
-          </Menu>
-        ) : (
-          <span className="tag muted">menunggu selesai…</span>
-        )}
       </div>
 
       <div className="tabs-row">
@@ -303,15 +382,15 @@ function ResultCard({ run }: { run: Run }) {
                 if (view === "params") setView("table");
               }}
             >
-              {t.label}
+              {t.label} <small>({formatNumber(t.count(run))})</small>
             </button>
           ))}
         </div>
         <span className="spacer" />
         <div className="segmented" role="tablist" aria-label="Tampilan">
-          {(["table", "response", "params"] as View[]).map((v) => (
-            <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => setView(v)}>
-              {v === "table" ? "TABLE" : v === "response" ? "RESPONSE" : "PARAMS"}
+          {VIEWS.map((v) => (
+            <button key={v.key} type="button" role="tab" aria-selected={view === v.key} onClick={() => setView(v.key)}>
+              {v.label}
             </button>
           ))}
         </div>
