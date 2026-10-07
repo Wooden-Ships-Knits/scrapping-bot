@@ -3,6 +3,7 @@
 import re
 
 from ..models import Contact, Page
+from .text import html_to_text
 
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 MAILTO_RE = re.compile(r'mailto:([^"\'?>\s]+)', re.I)
@@ -48,10 +49,13 @@ def extract_emails(html: str) -> list[str]:
     )
 
 
-def extract_phones(html: str) -> list[str]:
-    """Phone numbers from tel: links and page text."""
+def extract_phones(html: str, text: str | None = None) -> list[str]:
+    """Phone numbers from tel: links in the HTML, then from the visible text. Only the
+    text is searched for written numbers: markup is full of digit runs (SVG paths,
+    coordinates) that look like one. `text` is the page's visible text when known."""
     found = [m.strip() for m in TEL_RE.findall(html or "")]
-    found += [m.strip() for m in PHONE_TEXT_RE.findall(html or "")]
+    visible = html_to_text(html or "") if text is None else text
+    found += [m.strip() for m in PHONE_TEXT_RE.findall(visible)]
     return _dedupe(found)
 
 
@@ -84,7 +88,7 @@ def find_contacts(pages: list[Page]) -> list[Contact]:
     for page in pages:
         for email in extract_emails(page.html)[:MAX_EMAILS_PER_PAGE]:
             add("email", email, page.url)
-        for phone in extract_phones(page.html)[:MAX_PHONES_PER_PAGE]:
+        for phone in extract_phones(page.html, page.text)[:MAX_PHONES_PER_PAGE]:
             add("phone", phone, page.url)
         for network, urls in extract_social_links(page.html).items():
             for url in urls:
