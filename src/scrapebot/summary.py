@@ -1,9 +1,9 @@
 """The prospect summary: one row per input link, in the v1 column layout.
 
-It keeps the qualification view v1 users work from (knitwear share, price band,
-contacts) until the analysis phase replaces it. Original input columns come
-first, untouched. Unlike the seven tables, this is a derived view: computed
-while page HTML is still in memory, never re-read by the pipeline.
+It keeps the qualification view v1 users work from (knitwear share, contacts) until
+the analysis phase replaces it. Original input columns come first, untouched. Unlike
+the seven tables, this is a derived view: computed while page HTML is still in
+memory, never re-read by the pipeline.
 """
 
 import csv
@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any
 
 from .extract.pages import about_snippet, find_wholesale_page
-from .extract.prices import price_stats
 from .extract.signals import is_chain, knit_products
 from .inputs.resolve import ResolvedInput
 from .models import Acquired
@@ -19,8 +18,7 @@ from .models import Acquired
 SUMMARY_COLUMNS = [
     "input_id", "domain", "scrape_status", "ssl_bypassed", "source_used", "platform",
     "is_chain", "pages_fetched", "product_count", "knit_count", "knit_share",
-    "knit_examples", "knit_price_min", "knit_price_max", "price_min", "price_max",
-    "price_median", "currency", "currency_mixed", "emails", "phone", "instagram",
+    "knit_examples", "currency", "currency_mixed", "emails", "phone", "instagram",
     "facebook", "wholesale_page", "about_snippet",
 ]  # fmt: skip
 
@@ -36,10 +34,6 @@ def _store_name(meta: dict[str, Any]) -> str:
     return ""
 
 
-def _blank(value: float | None) -> float | str:
-    return "" if value is None else value
-
-
 def summary_row(item: ResolvedInput, acquired: Acquired | None) -> dict[str, Any]:
     """One row for one input link. `acquired` is None for links that were not visited."""
     row: dict[str, Any] = dict.fromkeys(SUMMARY_COLUMNS, "")
@@ -51,8 +45,6 @@ def summary_row(item: ResolvedInput, acquired: Acquired | None) -> dict[str, Any
 
     products = acquired.products
     knits = knit_products(products)
-    p_min, p_max, p_med = price_stats(products)
-    k_min, k_max, _ = price_stats(knits)
     currencies = {p.currency for p in products} - {""}
     all_html = " ".join(p.html for p in acquired.pages)
     first = {c.type: c.value for c in reversed(acquired.contacts)}
@@ -68,13 +60,8 @@ def summary_row(item: ResolvedInput, acquired: Acquired | None) -> dict[str, Any
         knit_count=len(knits),
         knit_share=f"{round(100 * len(knits) / len(products))}%" if products else "",
         knit_examples="; ".join(p.title for p in knits[:MAX_KNIT_EXAMPLES]),
-        knit_price_min=_blank(k_min),
-        knit_price_max=_blank(k_max),
-        price_min=_blank(p_min),
-        price_max=_blank(p_max),
-        price_median=_blank(p_med),
         currency=acquired.currency or (min(currencies) if len(currencies) == 1 else ""),
-        # Price columns compare numbers; across currencies they would be meaningless.
+        # Prices in more than one currency cannot be compared without converting them.
         currency_mixed=len(currencies) > 1,
         emails="; ".join([c.value for c in acquired.contacts if c.type == "email"][:5]),
         phone="; ".join([c.value for c in acquired.contacts if c.type == "phone"][:3]),

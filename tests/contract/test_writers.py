@@ -83,7 +83,6 @@ def sample_tables(long_text: str = "Hello") -> list[Table]:
                 domain="café-tricot.fr",
                 title='=SUM(A1:A2) pull-over, "laine"\tdouble',
                 price_raw="1.234,50 €",
-                price=1.0,
                 currency="EUR",
                 tags=["hiver", "laine"],
                 source="jsonld",
