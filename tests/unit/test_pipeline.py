@@ -266,3 +266,20 @@ def test_resume_refuses_a_changed_input(tmp_path):
     (tmp_path / "in.csv").write_text("website\nhttps://other.com\n")
     with pytest.raises(InputError, match="input changed"):
         resume(first.root)
+
+
+def test_products_are_flagged_knitwear_and_none_are_dropped(tmp_path):
+    cfg = config_for(tmp_path, "website\nhttps://monkees.com\n")
+    fetcher = FakeFetcher(
+        {
+            "https://monkees.com": (200, SHOPIFY_HOME),
+            "https://monkees.com/products.json?limit=250&page=1": (200, FEED_PAGE_1),
+        }
+    )
+    result = run(cfg, fetcher=fetcher)
+    tables = result.root / "tables"
+    products = {p["title"]: p for p in read_jsonl(tables / "products.jsonl")}
+    assert products["Cher Sweater in Eggnog"]["is_knitwear"] is True
+    assert products["Leather Bag"]["is_knitwear"] is False, "kept, only flagged"
+    [store] = read_jsonl(tables / "stores.jsonl")
+    assert (store["product_count"], store["knit_count"]) == (2, 1)

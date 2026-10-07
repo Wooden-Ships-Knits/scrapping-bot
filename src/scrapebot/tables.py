@@ -60,6 +60,7 @@ class StoreRow(Row):
     source_used: str = ""
     layers_tried: list[str] = Field(default_factory=list)
     product_count: int = 0
+    knit_count: int = 0  # products that are knitwear (`products.is_knitwear`)
     page_count: int = 0  # pages read
     failed_page_count: int = 0  # pages that could not be read; see `pages.error`
     contact_count: int = 0
@@ -88,6 +89,9 @@ class ProductRow(Row):
     evidence_url: str = ""
     needs_review: bool = False
     confidence: float | None = None
+    # Knit terms in the title, type, tags or description (`extract.signals.is_knit`).
+    # A flag beside the raw values, never a filter: every product is kept.
+    is_knitwear: bool = False
     raw: dict[str, Any] = Field(default_factory=dict)
 
 

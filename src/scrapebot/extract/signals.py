@@ -1,7 +1,9 @@
-"""Prospect signals for the summary: knitwear and national chains.
+"""Prospect signals: knitwear and national chains.
 
-These judge the data rather than collect it. They stay simple and conservative,
-and will move into the analysis phase (see roadmap, "Next phase").
+These judge the data rather than collect it, so they never change or drop a value:
+the knitwear test adds `is_knitwear` to each product row and `knit_count` to each
+store row (the product focus, ADR 0008), and both feed the summary. They stay simple
+and conservative, and will move into the analysis phase (see roadmap, "Next phase").
 """
 
 import re
@@ -63,23 +65,23 @@ def product_blob(p: Product) -> str:
     return " ".join(part for part in parts if part).strip()
 
 
-def knit_products(products: list[Product]) -> list[Product]:
-    """The subset of products whose searchable text mentions a knit term.
+def is_knit(p: Product) -> bool:
+    """Whether a product's searchable text mentions a knit term.
 
-    A product is suppressed when every matched term is "weak" (wool, shawl —
+    A product is not knitwear when every matched term is "weak" (wool, shawl —
     terms that also appear routinely on woven, non-knit goods) AND the title
     names a clearly woven garment (coat, pant, vest, ...). Any strong term
-    present is enough to keep the product regardless of title.
+    present is enough regardless of title.
     """
-    hits = []
-    for p in products:
-        terms = knit_terms_in(product_blob(p))
-        if not terms:
-            continue
-        if all(t in WEAK_KNIT_TERMS for t in terms) and WOVEN_GARMENT_RE.search(p.title):
-            continue
-        hits.append(p)
-    return hits
+    terms = knit_terms_in(product_blob(p))
+    if not terms:
+        return False
+    return not (all(t in WEAK_KNIT_TERMS for t in terms) and WOVEN_GARMENT_RE.search(p.title))
+
+
+def knit_products(products: list[Product]) -> list[Product]:
+    """The subset of products that are knitwear (see `is_knit`)."""
+    return [p for p in products if is_knit(p)]
 
 
 def _slug(name: str) -> str:

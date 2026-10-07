@@ -1,0 +1,171 @@
+# Example discovery config. Copy it, edit it, then:
+#   uv run scrapebot discover -c my-discover.yaml
+#   uv run scrapebot run data/discover/<id>/stores.csv --limit 2
+# Keys go in .env (GOOGLE_MAPS_API_KEY, TAVILY_API_KEY, and the agent's LLM key), never here.
+# Every source is paid per request: check each provider's pricing before a large run.
+# Paid answers are cached in cache_dir, so repeating a discovery costs nothing.
+#
+# First run: keep two or three locations and ai_agent.max_runs: 1, read stores.csv,
+# then widen.
+
+countries: [US, CA]              # stores located elsewhere are dropped
+
+# Google Maps is searched once per query per place. More places = more stores = more requests.
+locations:
+  - "New York, NY"
+  - "Brooklyn, NY"
+  - "Boston, MA"
+  - "Portland, ME"
+  - "Philadelphia, PA"
+  - "Washington, DC"
+  - "Charleston, SC"
+  - "Charlotte, NC"
+  - "Atlanta, GA"
+  - "Nashville, TN"
+  - "Miami, FL"
+  - "New Orleans, LA"
+  - "Dallas, TX"
+  - "Houston, TX"
+  - "Austin, TX"
+  - "Chicago, IL"
+  - "Detroit, MI"
+  - "Minneapolis, MN"
+  - "Milwaukee, WI"
+  - "St. Louis, MO"
+  - "Kansas City, MO"
+  - "Denver, CO"
+  - "Boulder, CO"
+  - "Aspen, CO"
+  - "Salt Lake City, UT"
+  - "Santa Fe, NM"
+  - "Scottsdale, AZ"
+  - "Los Angeles, CA"
+  - "San Francisco, CA"
+  - "San Diego, CA"
+  - "Portland, OR"
+  - "Seattle, WA"
+  - "Boise, ID"
+  - "Toronto, ON"
+  - "Ottawa, ON"
+  - "Montreal, QC"
+  - "Halifax, NS"
+  - "Calgary, AB"
+  - "Vancouver, BC"
+  - "Victoria, BC"
+
+# Knitwear brands sold by the stores we look for. Used as search seeds only:
+# web_search.brand_queries runs once per brand, and the agent asks "who stocks X?"
+# when brand_tasks is on. Whether a store carries a brand is read from its own data.
+brands:
+  - "Zaket & Plover"
+  - Lisa Todd
+  - 525 America
+  - Kerisma
+  - Minnie Rose
+  - "White + Warren"
+  - Autumn Cashmere
+  - Kinross Cashmere
+  - Line the Label
+  - "Lyla + Luxe"
+  - RD Style
+  - Parkhurst
+  - Brodie Cashmere
+  - Aldo Martins
+  - J.Society
+  - Central Park West
+  - MERSEA
+  - French Kyss
+  - Krimson Klover
+  - Lilla P
+  - Charlie B
+  - Alison Sheri
+  - Tyler Boe
+  - Demylee
+  - Micaela Greg
+  - Wol Hide
+  - Bare Knitwear
+  - Alashan Cashmere
+  - 27 Miles Malibu
+  - "Margaret O'Leary"
+  - Eribe
+  - Oleana
+  - Dale of Norway
+  - Mansted
+  - Repeat Cashmere
+  - Mr Mittens
+  - One Grey Day
+  - Queen of Sparkles
+  - "Ellsworth & Ivey"
+  - Atelier Delphine
+  - The Knotty Ones
+
+# Never stores: your own site, media and directories. Marketplaces and social
+# networks are never treated as a store's website anyway.
+exclude_domains:
+  - wooden-ships.com
+  - vogue.com
+  - whowhatwear.com
+  - instyle.com
+  - nytimes.com
+  - forbes.com
+  - medium.com
+  - substack.com
+  - target.com
+  - thredup.com
+  - therealreal.com
+
+google_places:                   # needs GOOGLE_MAPS_API_KEY (Places API (New))
+  enabled: true
+  queries:                       # each is searched as "<query> in <location>"
+    - "sweater boutique"
+    - "knitwear store"
+    - "women's clothing boutique"
+    - "cashmere sweater shop"
+  max_pages: 2                   # 20 places a page; Google gives at most 3 pages per search
+  max_requests: 200              # hard cap (4 queries x 40 places x 2 pages = up to 320)
+
+web_search:                      # needs TAVILY_API_KEY
+  enabled: true
+  queries:                       # each runs once per country
+    - "multi-brand women's boutique sweaters shop online"
+    - "independent boutique sweaters cardigans online store"
+    - "knitwear boutique online store USA"
+    - "women's sweater boutique online Canada"
+  brand_queries:                 # once per brand above: retailers of brands with no stockist list
+    - '"{brand}" sweaters boutique'
+  max_requests: 150
+
+social_search:                   # needs TAVILY_API_KEY; reads search results, never the profiles
+  enabled: true
+  queries:                       # {location} = once per place, up to max_locations places
+    - 'site:instagram.com women''s boutique sweaters "{location}"'
+    - 'site:facebook.com women''s boutique sweaters "{location}"'
+    - 'site:instagram.com knitwear boutique stockist "Zaket & Plover" OR "Lisa Todd"'
+  max_locations: 20
+  max_requests: 60
+
+ai_agent:                        # an LLM with web search, through LiteLLM
+  enabled: true
+  model: gemini/gemini-2.5-flash # needs GEMINI_API_KEY; anthropic/... models work too
+  areas:                         # one agent run per area
+    - "New England, USA"
+    - "New York City and the Hudson Valley"
+    - "the US Mid-Atlantic (Pennsylvania, New Jersey, Maryland, Virginia, Washington DC)"
+    - "the US Southeast"
+    - "the US Midwest"
+    - "Texas and the US Southwest"
+    - "the Rocky Mountain states (Colorado, Utah, Idaho, Montana, Wyoming)"
+    - "California"
+    - "the Pacific Northwest (Oregon, Washington)"
+    - "Ontario and Quebec, Canada"
+    - "Western and Atlantic Canada"
+  brand_tasks: false             # true = also one run per brand ("who stocks X?")
+  max_runs: 11                   # hard cap
+  budget_usd: 2.0                # agent calls stop once this is spent
+
+resolve:                         # one search per store known only by name or profile
+  enabled: true
+  max_requests: 300              # the rest are looked up on the next discovery
+
+out_dir: data/discover
+cache_dir: data/.cache/discover

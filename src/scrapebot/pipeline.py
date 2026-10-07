@@ -23,6 +23,7 @@ from pydantic import SecretStr
 from . import __version__
 from .acquire import acquire
 from .config import InputConfig, RunConfig
+from .extract.signals import is_knit
 from .fetch import Fetcher, HttpFetcher
 from .inputs.readers import InputError, InputRecord, read_file, read_text
 from .inputs.resolve import Resolution, ResolvedInput, resolve
@@ -119,6 +120,7 @@ def store_rows(run_id: str, target: Target, got: Acquired, fetched_at: str) -> I
         source_used=got.source_used,
         layers_tried=got.layers_tried,
         product_count=len(got.products),
+        knit_count=sum(is_knit(p) for p in got.products),
         page_count=len(got.read_pages),
         failed_page_count=len(got.pages) - len(got.read_pages),
         contact_count=len(got.contacts),
@@ -135,6 +137,7 @@ def store_rows(run_id: str, target: Target, got: Acquired, fetched_at: str) -> I
         yield ProductRow(
             run_id=run_id,
             domain=got.domain,
+            is_knitwear=is_knit(p),
             **p.model_dump(include=set(ProductRow.model_fields) - {"run_id", "domain"}),
         )
     for page in got.pages:

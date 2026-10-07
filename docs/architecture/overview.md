@@ -1,15 +1,17 @@
 # Architecture
 
-**Updated:** 2026-10-05
+**Updated:** 2026-10-07
 **Requirements:** [PRD](../product/prd.md)
 **Decisions:** [0001](../decisions/0001-layered-acquisition-llm-last.md) ·
 [0002](../decisions/0002-camoufox-for-rendering-only.md) ·
 [0003](../decisions/0003-plain-python-orchestration-file-output.md) ·
 [0004](../decisions/0004-llm-gateway-litellm-instructor.md) ·
 [0006](../decisions/0006-tidy-tables-multiformat-writers.md) ·
-[0007](../decisions/0007-typescript-web-ui-local-api.md)
+[0007](../decisions/0007-typescript-web-ui-local-api.md) ·
+[0008](../decisions/0008-store-discovery-paid-search.md)
 
-`scrapebot` takes a bulk list of store links in any format, collects raw data from each
+`scrapebot` finds knitwear stores through paid search APIs (`scrapebot discover`), or
+takes a bulk list of store links in any format, then collects raw data from each
 store (products, prices, vendors, wholesale pages, page text, contacts), and writes it
 to the formats the operator picks. The data feeds a later analysis: which stores are
 competitors and which are potential wholesale partners. The bot collects; people decide.
@@ -34,11 +36,14 @@ Each part below is marked:
 5. **Everything is an adapter.** Inputs, feeds, renderer, LLM provider and outputs are
    chosen in config.
 6. **Tests never touch the network.**
+7. **Knitwear is the focus, not a filter.** Discovery searches for knitwear stores; a
+   run flags knitwear products and keeps every product.
 
 ## 2. System view
 
 ```mermaid
 flowchart TD
+    DS[scrapebot discover<br/>Google Places, Tavily, LLM web search] -->|stores.csv| CLI
     UI[Web app<br/>React + TypeScript] --> API[Local API<br/>FastAPI]
     API --> CFG[Run config<br/>YAML + per-run secrets]
     CLI[CLI / n8n / cron] --> CFG
@@ -76,6 +81,7 @@ flowchart TD
 | Entry point | Role | Status |
 |---|---|---|
 | CLI | `scrapebot run <input>`, optionally with a YAML config. Used directly and by automation (n8n, cron) | Built |
+| Discovery | `scrapebot discover -c discover.yaml`: finds stores and writes `data/discover/<id>/stores.csv`, the input of a run (section 4.0) | Built (CLI only; web app planned) |
 | Web app + local API | `scrapebot serve`: React + TypeScript (`web/`) over a local FastAPI service (`api/`) on 127.0.0.1. Paste or upload links, preview, choose formats, test mode with a gate before untested full runs, live progress (SSE), history, downloads ([ADR 0007](../decisions/0007-typescript-web-ui-local-api.md)) | Built (LLM settings come with M3) |
 
 Both build the same `RunConfig`. The pipeline is split into `prepare` (read and
@@ -115,6 +121,36 @@ limit: 2                           # test mode; null for a full run
 ```
 
 ## 4. Stages
+
+### 4.0 Store discovery — Built (CLI)
+
+`discover/` ([ADR 0008](../decisions/0008-store-discovery-paid-search.md)) runs before
+a run and never opens a store's website.
+
+```mermaid
+flowchart LR
+    P[Google Places<br/>query x location] --> M
+    W[Tavily web search<br/>queries + brand seeds] --> M
+    S[Tavily, site:instagram.com /<br/>site:facebook.com] --> M
+    A[LLM with web search<br/>LiteLLM, one run per area] --> M
+    M[Merge<br/>website domain, profile,<br/>name + postal code or town] --> L[Website lookup<br/>for name- or profile-only stores]
+    L --> O[stores.csv + stores.json<br/>+ report.json]
+    O --> R[scrapebot run]
+```
+
+| Part | Module | Notes |
+|---|---|---|
+| Paid API client | `discover/paid.py` | Disk cache keyed on URL and body (never the key), written atomically; hard request cap, retries on 408/429/5xx, error text redacted |
+| Google Places | `discover/places.py` | Text Search (New); field mask: id, name, address parts, website, phone, business status |
+| Web and social search | `discover/search.py` | Tavily; `site:` becomes `include_domains`; profiles read from result titles and snippets only |
+| Agent | `discover/agent.py` | `litellm.completion(..., web_search_options=...)`; JSON store list; per-discovery cost cap; answers cached |
+| Merge | `discover/merge.py` | One row per store; drops other countries, closed places, excluded domains, bare names; stores the lookup gives one website are folded into one row |
+| Orchestration | `discover/run.py` | Sources in order; one failing or missing a key never stops the others |
+
+`stores.csv` puts `website` first, so `scrapebot run` finds the link column itself;
+the other columns (name, address, phone, profiles, sources, `found_by`, notes) become
+input metadata. A store without a website stays in the file and is skipped by the run
+as `no_website`, so the reconciliation still counts it.
 
 ### 4.1 Input and resolve — Built (Google Sheets planned)
 
@@ -265,6 +301,9 @@ by the chosen writers into `data/runs/<run_id>/export/`:
 Every writer has a round-trip contract test (`tests/contract/test_writers.py`). A
 failing writer is logged and reported; the other formats are still written.
 
+`products.is_knitwear` and `stores.knit_count` use the same knitwear rule as the
+summary (`extract/signals.py`): a flag beside the raw values, never a filter.
+
 `summary.csv` keeps v1's one-row-per-link qualification view (knitwear share, price
 band, contacts). It is derived while page HTML is in memory and will be replaced by
 the analysis phase.
@@ -304,6 +343,8 @@ the read result.
 - Camoufox renders JavaScript; it is not used to get past challenges. No CAPTCHA
   solving, no proxy rotation.
 - Only public page text goes to LLM providers. Keys stay in the session or `.env`.
+- Discovery reads search results about Instagram and Facebook profiles; it never opens
+  them. Paid search answers are cached locally without keys.
 - Contacting stores is outside this tool and is a commercial and CAN-SPAM decision for
   the operator.
 

@@ -63,3 +63,26 @@ class FakeRenderer:
 
     def close(self) -> None:
         self.closed = True
+
+
+class FakeSearchApi:
+    """Answers the paid search APIs (Google Places, Tavily) offline.
+
+    `routes` maps a URL to a function of the JSON body that returns `(status, answer)`.
+    An unknown URL is a 404. Every call is recorded in `calls` as `(url, headers, body)`.
+    """
+
+    def __init__(self, routes: dict):
+        self.routes = routes
+        self.calls: list[tuple[str, dict, dict]] = []
+
+    def __call__(self, method, url, headers, body, timeout):
+        import json
+
+        payload = json.loads(body) if body else {}
+        self.calls.append((url, dict(headers), payload))
+        route = self.routes.get(url)
+        if route is None:
+            return 404, '{"error": "not found"}'
+        status, answer = route(payload)
+        return status, answer if isinstance(answer, str) else json.dumps(answer)

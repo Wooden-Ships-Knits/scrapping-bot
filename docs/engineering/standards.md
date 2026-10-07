@@ -35,6 +35,7 @@ src/scrapebot/
   summary.py           # v1-layout summary.csv (until the analysis phase)
   report.py            # run report, reconciliation, manifest
   fetch.py             # Fetcher protocol + HttpFetcher: robots, cache, delay (fetch/ in M2)
+  discover/            # `scrapebot discover`: paid search sources, merge, links file (ADR 0008)
   inputs/              # readers (text, txt, csv, tsv, xlsx, json, jsonl, parquet) + resolve
   acquire/             # stage order for one store; feeds.py, discovery.py
     structured.py      # extruct, app state (planned, M2)

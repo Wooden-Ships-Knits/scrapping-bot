@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| **Versi** | 2.0 (draf) |
-| **Tanggal** | 5 Oktober 2026 |
+| **Versi** | 2.1 (draf) |
+| **Tanggal** | 7 Oktober 2026 (2.1: pencarian toko dan fokus rajutan, [ADR 0008](../decisions/0008-store-discovery-paid-search.md)) |
 | **Status** | Draf untuk ditinjau |
 | **Pemilik produk** | _(isi nama penanggung jawab)_ |
 | **Menggantikan** | [PRD 1.0 (PDF)](../archive/pdf/prd-akuisisi-data-mentah-v1.pdf) |
@@ -13,8 +13,10 @@
 
 ## 1. Ringkasan
 
-Operator menempelkan atau mengunggah daftar tautan toko dalam jumlah banyak, dalam
-format apa pun. Scrapebot mengunjungi setiap toko, mengumpulkan data produk, harga,
+Scrapebot mencari toko rajutan (knitwear) lewat Google Maps, pencarian web, profil
+Instagram dan Facebook di hasil pencarian, serta LLM yang mencari di web. Hasilnya
+berupa daftar tautan toko. Operator juga bisa menempelkan atau mengunggah daftar
+tautan sendiri dalam jumlah banyak, dalam format apa pun. Scrapebot mengunjungi setiap toko, mengumpulkan data produk, harga,
 merek yang dijual, halaman grosir, dan kontak **apa adanya**, lalu mengekspornya ke
 format yang dipilih operator (Excel, Parquet, JSON, basis data, Google Sheets, dan
 lainnya). Data ini menjadi bahan untuk tahap berikutnya: **menentukan toko mana yang
@@ -49,6 +51,7 @@ tetapi menerima banyak tautan sekaligus, atau lewat baris perintah (CLI).
 
 ```mermaid
 flowchart LR
+    S[Pencarian toko<br/>rajutan] --> A
     A[Tautan massal<br/>format bebas] --> B[Akuisisi<br/>data mentah]
     B --> C[Ekspor<br/>multi-format]
     C --> D[Deteksi perubahan<br/>antarjalan]
@@ -58,14 +61,14 @@ flowchart LR
     classDef inscope fill:#DCEBF7,stroke:#4A7FB0
     classDef next fill:#FCEFD4,stroke:#C28A1E
     classDef later fill:#EEF0F2,stroke:#9AA5B1,stroke-dasharray:3 2
-    class A,B,C,D inscope
+    class S,A,B,C,D inscope
     class E next
     class F later
 ```
 
 | Bagian | Status di PRD ini |
 |---|---|
-| Masukan massal, akuisisi, ekspor, deteksi perubahan | **Dalam cakupan** |
+| Pencarian toko, masukan massal, akuisisi, ekspor, deteksi perubahan | **Dalam cakupan** |
 | Analisis pesaing atau mitra | **Fase berikutnya**, dengan PRD sendiri. PRD ini wajib menyediakan datanya ([bagian 8.3](#83-data-yang-wajib-tersedia-untuk-analisis-berikutnya)) |
 | Reachout (surel, CRM) | **Belakangan**, di luar cakupan |
 
@@ -97,6 +100,8 @@ flowchart LR
 
 ### 5.1 Dalam cakupan
 
+- Pencarian toko rajutan otomatis dari sumber berbayar, dengan batas permintaan dan
+  biaya ([bagian 7.9](#79-pencarian-toko)).
 - Masukan massal dalam format bebas, lewat antarmuka web atau CLI.
 - Pilihan wilayah dan bahasa. Bawaannya Amerika Serikat dan bahasa Inggris.
 - Akuisisi berlapis: umpan platform, data terstruktur, sitemap, render peramban
@@ -117,7 +122,8 @@ flowchart LR
 | Reachout, pengiriman surel, CRM | Belakangan |
 | Menembus perlindungan antibot | Tidak ada pemecah CAPTCHA, tidak ada rotasi proksi, dan `robots.txt` dipatuhi ([ADR 0002](../decisions/0002-camoufox-for-rendering-only.md)) |
 | Login ke situs | Hanya halaman publik |
-| Mencari toko baru secara otomatis | Daftar tautan berasal dari operator |
+| Membuka atau mengambil data dari profil Instagram dan Facebook | Keduanya melarang pengumpulan otomatis. Profil hanya dibaca dari hasil mesin pencari |
+| Pencocokan dengan daftar pelanggan dan data penjualan | Masuk fase analisis ([ADR 0008](../decisions/0008-store-discovery-paid-search.md)) |
 | Antarmuka multi-pengguna dengan akun dan hak akses | Antarmuka v2 adalah alat internal yang dijalankan lokal |
 
 ## 6. Antarmuka pengguna
@@ -258,6 +264,22 @@ Prioritas:
 | OP-04 | CLI dan antarmuka memakai konfigurasi dan kode yang sama | Wajib | Konfigurasi yang diekspor dari antarmuka dapat dijalankan lewat CLI |
 | OP-05 | Konfigurasi run dapat disimpan dan dimuat ulang | Sebaiknya | Run bulanan memakai preset yang sama |
 
+### 7.9 Pencarian toko
+
+Ditambahkan di versi 2.1 ([ADR 0008](../decisions/0008-store-discovery-paid-search.md)).
+Bisnis hanya berfokus pada rajutan, jadi pencarian dan penandaan diarahkan ke sana.
+
+| ID | Kebutuhan | Prioritas | Kriteria penerimaan |
+|---|---|---|---|
+| DS-01 | `scrapebot discover` mencari toko dari Google Places, Tavily (web dan profil Instagram/Facebook di hasil pencarian), dan LLM dengan pencarian web lewat LiteLLM | Wajib | Sumber tanpa API key dilewati dan dicatat; sumber lain tetap berjalan |
+| DS-02 | Temuan dari semua sumber digabung menjadi satu baris per toko, berdasarkan domain website, profil sosial, atau nama + kode pos/kota | Wajib | Toko yang sama dari tiga sumber menjadi satu baris |
+| DS-03 | Hasilnya berupa berkas tautan (`stores.csv`) yang langsung bisa dipakai `scrapebot run`. Data toko ikut sebagai metadata masukan | Wajib | `scrapebot run stores.csv` tanpa opsi tambahan |
+| DS-04 | Setiap sumber berbayar punya batas permintaan, agen LLM punya batas biaya, dan jawaban yang berhasil disimpan di cache tanpa key | Wajib | Pencarian ulang dengan konfigurasi sama tidak memakai permintaan berbayar |
+| DS-05 | Toko yang hanya dikenal dari nama atau profil dicarikan websitenya (satu pencarian per toko) | Wajib | Kolom `website_source` = `lookup` |
+| DS-06 | Pencarian tidak pernah membuka website toko dan tidak menilai toko. Penilaian memakai data hasil run | Wajib | Tidak ada permintaan ke website toko selama `discover` |
+| DS-07 | Setiap produk diberi tanda `is_knitwear` dan setiap toko `knit_count`. Tidak ada produk yang dibuang | Wajib | Produk non-rajutan tetap ada di tabel `products` |
+| DS-08 | Pencarian toko dari antarmuka web | Sebaiknya | Operator menjalankan pencarian tanpa terminal |
+
 ## 8. Model data
 
 ### 8.1 Tabel
@@ -269,8 +291,8 @@ Semua format keluaran dibentuk dari tabel yang sama
 |---|---|---|
 | `runs` | run | `run_id`, waktu mulai dan selesai, konfigurasi (tanpa key), versi, total biaya |
 | `inputs` | baris masukan | `run_id`, `input_id`, tautan asli, `domain`, status, metadata masukan |
-| `stores` | toko per run | `run_id`, `domain`, status, platform, negara, bahasa, mata uang, `layers_tried`, `product_count`, `ssl_bypassed` |
-| `products` | produk | `run_id`, `domain`, `title`, `price_raw`, `currency`, `vendor`, `product_type`, `tags`, `url`, `source`, `evidence_url`, `needs_review`, `confidence`, `raw` (JSON) |
+| `stores` | toko per run | `run_id`, `domain`, status, platform, negara, bahasa, mata uang, `layers_tried`, `product_count`, `knit_count`, `ssl_bypassed` |
+| `products` | produk | `run_id`, `domain`, `title`, `price_raw`, `currency`, `vendor`, `product_type`, `tags`, `url`, `source`, `evidence_url`, `needs_review`, `confidence`, `is_knitwear`, `raw` (JSON) |
 | `pages` | halaman yang diambil | `run_id`, `domain`, `url`, `page_kind`, `http_status`, `via`, `language`, `text` |
 | `contacts` | kontak yang ditemukan | `run_id`, `domain`, `type`, `value`, `source_url` |
 | `changes` | perubahan antarjalan | `run_id`, `domain`, `change_type`, `key`, nilai lama, nilai baru |
