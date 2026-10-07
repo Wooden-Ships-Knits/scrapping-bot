@@ -1,6 +1,6 @@
 # Roadmap
 
-**Updated:** 2026-10-05
+**Updated:** 2026-10-07
 **Requirements:** [PRD](../product/prd.md) · **Design:** [Architecture](../architecture/overview.md)
 
 ## Where we are
@@ -15,6 +15,16 @@ list is not in the repo).
 operator's request so the team can run lists without a terminal. It covers every M0
 capability; LLM settings join it in M3. Verified offline by an end-to-end suite and on
 real Naples stores through the real interface.
+
+**Store discovery is built** (branch `feat/store-discovery`,
+[ADR 0008](../decisions/0008-store-discovery-paid-search.md)): `scrapebot discover`
+finds knitwear stores through Google Places, Tavily and an LLM with web search, and
+writes the links file a run reads. It replaces the separate knitwear store finder;
+the finder's labelling and scraper were not carried over. Every product is now flagged
+`is_knitwear`. The web app finds stores too (count, region, items; one click finds and starts a test
+run). Run for real on 2026-10-07 with the agent alone (`openai/gpt-5-search-api`): 5
+stores asked, 14 found for US$0.07, test run read 2 stores and 2,031 products. Google
+Places and Tavily have not run for real yet (no keys).
 
 v1 answered the question exactly and for free for Shopify stores.
 
@@ -47,6 +57,8 @@ boutiques publish no machine-readable product data, and v1 reads only JSON-LD.
 | 10 | Plain `logging` instead of `structlog`; config has no environment overrides | `cli.py`, `config.py` | Standards sections 4 and 7 not yet met; nothing needs secrets before M3 | M3 |
 | 11 | ~~A running run cannot be stopped from the interface, and an interrupted run cannot resume~~ | `api/manager.py`, `pipeline.py` | ~~Stopping the server is the only way to stop~~ | M2 ✓ |
 | 12 | Shopify's shared edge (23.227.38.x) limits a client IP across all stores: after a burst on 2026-10-05 it answered every Python request with a 429 challenge for a while, while curl still got 200 | `fetch.py` | Shopify stores turn `blocked` until the limit lapses. Mitigated by per-network politeness (one request at a time to 23.227.38.0/24) and the cache; never worked around (ADR 0002). Run large lists in batches | M2 (mitigated) |
+| 13 | Discovery has not run against the real Google Places, Tavily or LLM web search APIs | `discover/` | A request format the providers reject shows up only in a real discovery, as an `error` source in the summary | First real discovery |
+| 14 | ~~Discovery is CLI only~~ | `cli.py` | ~~Operators without a terminal cannot search for stores~~; the web app has a *Cari toko otomatis* tab | Built 2026-10-07 |
 
 ## Milestones
 
@@ -73,7 +85,9 @@ holds: the browser renders, it does not get past challenges.
 
 ## Next phase (separate PRD)
 
-**Competitor or partner analysis.** Classify each store from the raw data: own-brand
+**Competitor or partner analysis.** It also decides how the customer list (accounts,
+territories, sales) is matched to found stores, which discovery leaves out. Classify
+each store from the raw data: own-brand
 seller (competitor) or multi-brand retailer (potential partner), knitwear share, price
 fit, wholesale openness. Rules first, LLM for unclear cases, a confidence field and a
 human checkpoint on every label. Reach-out comes after that.

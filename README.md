@@ -1,8 +1,8 @@
 # Store Website Scraper
 
-Collects evidence about retail prospects from their websites: what they sell
-(especially knitwear, with prices) and how to contact them. Built for qualifying
-wholesale accounts for a knit sweater brand.
+Finds stores that sell knitwear, then collects evidence about them from their
+websites: what they sell (especially knitwear, with prices) and how to contact them.
+Built for qualifying wholesale accounts for a knit sweater brand.
 
 The bot **collects evidence only**. It does not judge whether a store is a good
 prospect — that is a human decision made against the collected data. That split is
@@ -44,6 +44,44 @@ Excel file, then press **Jalankan seluruh daftar** for the whole list. A full ru
 list that was never tested needs a deliberate confirmation. Progress updates live;
 closing the browser does not stop a run, and **Riwayat** lists every run with its
 downloads. The interface is local only (127.0.0.1) and in Indonesian.
+
+## Finding stores
+
+**In the interface**, the *Cari toko otomatis* tab of the Scrape page does it in one
+click: type how many stores, pick a region or continent, tick the items (knitwear,
+cashmere/wool, fall/winter, spring/summer, or *Lainnya* with your own words) and press
+**Cari toko & mulai uji**. It finds the stores, then starts a test run on the first two;
+the full list runs from the run page. The tab is the default when `.env` has at least
+one search key.
+
+**From the command line**, `scrapebot discover` finds knitwear stores and writes them as
+a links file for a run ([ADR 0008](docs/decisions/0008-store-discovery-paid-search.md)):
+
+```bash
+cp discover.example.yaml data/my-discover.yaml        # edit places, queries, brands
+uv run scrapebot discover -c data/my-discover.yaml    # all sources that have a key
+uv run scrapebot discover -c data/my-discover.yaml --only web_search,resolve
+uv run scrapebot run data/discover/<id>/stores.csv --limit 2   # then scrape them
+```
+
+| Source | Key in `.env` | Good at |
+|---|---|---|
+| `google_places` | `GOOGLE_MAPS_API_KEY` (Places API (New)) | Physical shops: name, address, phone, usually the website |
+| `web_search` | `TAVILY_API_KEY` | Online stores; retailers of the `brands` you list |
+| `social_search` | `TAVILY_API_KEY` | Boutiques known mainly by an Instagram or Facebook profile, read from search results only |
+| `ai_agent` | the key of `ai_agent.model`'s provider, e.g. `GEMINI_API_KEY` | Reading "best boutiques in ..." articles; one run per area |
+| `resolve` | `TAVILY_API_KEY` | The website of a store found only by name or profile |
+
+A source without its key is skipped; the others run. Every source is **paid per
+request**, so each has a hard cap in the config, the agent a cost cap, and every
+successful answer is cached in `data/.cache/discover`: repeating a discovery costs
+nothing. Start with two or three places and `ai_agent.max_runs: 1`.
+
+The output, `data/discover/<id>/`, holds `stores.csv` (one row per store, `website`
+first, then name, address, phone, profiles, which sources and searches found it),
+`stores.json` (every location and note) and `report.json` (per source: status, stores,
+paid and cached requests, cost). Discovery never opens a store's website: what a store
+sells is read by the run.
 
 ## Command line
 
@@ -133,8 +171,8 @@ overwritten:
 |---|---|---|
 | `runs` | run | config, version, mode |
 | `inputs` | input link | link as supplied, status or skip reason, the whole input row in `meta` |
-| `stores` | store | `status`, `platform`, `currency` and its source, `layers_tried`, `ssl_bypassed` |
-| `products` | product | `title`, `price_raw` exactly as the source wrote it, `currency`, `vendor`, `url`, `source`, `evidence_url`, full source object in `raw` |
+| `stores` | store | `status`, `platform`, `currency` and its source, `layers_tried`, `product_count`, `knit_count`, `focus_count`, `ssl_bypassed` |
+| `products` | product | `title`, `price_raw` exactly as the source wrote it, `currency`, `vendor`, `url`, `source`, `evidence_url`, `is_knitwear`, `matched_items` (the items ticked that it matches), full source object in `raw` |
 | `pages` | fetched page | `page_kind` (home, about, contact, wholesale, stockist, product, ...), full `text`. Never HTML |
 | `contacts` | contact | `email`, `phone`, `instagram`, `facebook`, `tiktok`, `linkedin`, `pinterest`, with the `source_url` it was found on |
 | `changes` | change between runs | empty until change detection lands (M5) |
@@ -181,7 +219,9 @@ Sites with broken TLS certificates are retried with verification disabled and fl
 ## Judging the results
 
 Sort by `knit_share` descending and read `knit_examples`, with `price_raw` in
-`products` for their prices. High share plus prices near yours is a strong prospect. Ignore rows where `is_chain` is True.
+`products` for their prices. In the exports, filter `products` on `is_knitwear` for the
+sweaters alone: every product is kept, knitwear is flagged. High share plus prices near
+yours is a strong prospect. Ignore rows where `is_chain` is True.
 
 `knit_count` is deliberately conservative about false positives: a product whose only
 knitwear signal is the word "wool" or "shawl" is excluded when its title names a clearly
@@ -206,7 +246,7 @@ network call. How code is written, tested and reviewed is in the
 
 ## Documentation
 
-- [docs/product/prd.md](docs/product/prd.md) — what v2 does and why (Indonesian)
+- [docs/product/prd.md](docs/product/prd.md) — what v2 does and why
 - [docs/architecture/overview.md](docs/architecture/overview.md) — the pipeline, stage by stage
 - [docs/engineering/standards.md](docs/engineering/standards.md) — how code is written and tested
 - [docs/planning/roadmap.md](docs/planning/roadmap.md) — milestones, gates, known issues

@@ -22,7 +22,9 @@ DEFAULT_WEB_DIST = Path(__file__).resolve().parents[2] / "web" / "dist"
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="scrapebot", description="Collect raw product and contact data from store websites."
+        prog="scrapebot",
+        description="Find knitwear stores, then collect raw product and contact data from "
+        "their websites.",
     )
     parser.add_argument("--version", action="version", version=f"scrapebot {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -62,6 +64,22 @@ def _parser() -> argparse.ArgumentParser:
         help="never open the browser; JavaScript-only stores stay js_required",
     )
     r.add_argument("-v", "--verbose", action="store_true", help="log every request decision")
+
+    d = sub.add_parser("discover", help="find stores to scrape with paid search APIs (ADR 0008)")
+    d.add_argument(
+        "-c",
+        "--config",
+        type=Path,
+        required=True,
+        help="YAML discovery config (copy discover.example.yaml)",
+    )
+    d.add_argument(
+        "--only",
+        help="comma-separated steps to run: google_places, web_search, social_search, "
+        "ai_agent, resolve (default: all that have a key)",
+    )
+    d.add_argument("--out", type=Path, help="where discovery folders go (default data/discover)")
+    d.add_argument("-v", "--verbose", action="store_true", help="debug logging")
 
     sv = sub.add_parser("survey", help="measure which stage can read which store (read-only)")
     sv.add_argument("input", nargs="?", help="links file, or '-' for pasted text on stdin")
@@ -174,6 +192,56 @@ def survey(args: argparse.Namespace) -> int:
     return 0
 
 
+def discover(args: argparse.Namespace) -> int:
+    from .discover import load_discover_config, run_discover
+    from .discover.run import STEP_NAMES
+
+    try:
+        config = load_discover_config(args.config)
+    except (OSError, ValidationError) as exc:
+        print(f"scrapebot: {exc}", file=sys.stderr)
+        return 2
+    if args.out:
+        config.out_dir = args.out
+    only = [s.strip() for s in args.only.split(",") if s.strip()] if args.only else None
+    unknown = [s for s in only or [] if s not in STEP_NAMES]
+    if unknown:
+        print(
+            f"scrapebot: unknown step(s) {unknown}; choose from {', '.join(STEP_NAMES)}",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        result = run_discover(config, load_keys(), only=only)
+    except KeyboardInterrupt:
+        print(
+            "\nStopped. Paid answers so far are cached: running the same discovery again "
+            "repeats them for free.",
+            file=sys.stderr,
+        )
+        return 130
+
+    print(f"\n{'source':<15}{'status':<16}{'found':>7}{'paid':>7}{'cached':>8}{'cost $':>9}")
+    for r in result.sources:
+        print(
+            f"{r.name:<15}{r.status:<16}{r.candidates:>7}{r.requests_sent:>7}"
+            f"{r.requests_cached:>8}{r.cost_usd:>9.4f}"
+        )
+        if r.error:
+            print(f"  {r.error}")
+    print(
+        f"\nStores: {len(result.stores)}, with a website: {result.with_website} "
+        f"({result.websites_looked_up} found by name lookup)."
+    )
+    print(f"Stores file: {result.stores_csv}")
+    print(f"Report:      {result.report_path}")
+    if not any(r.status in ("ok", "budget_reached") for r in result.sources):
+        print("No source ran: add the keys to .env or check the errors above.", file=sys.stderr)
+        return 1
+    print(f"Next, scrape them (test mode first): scrapebot run {result.stores_csv} --limit 2")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     logging.basicConfig(
@@ -186,6 +254,8 @@ def main(argv: list[str] | None = None) -> int:
         return serve(args)
     if args.command == "survey":
         return survey(args)
+    if args.command == "discover":
+        return discover(args)
     try:
         keys = load_keys()
         if args.command == "resume":

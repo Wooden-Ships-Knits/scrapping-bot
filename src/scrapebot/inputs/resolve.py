@@ -40,7 +40,8 @@ MARKETPLACE_NAMES = frozenset({
 HOSTED_STORE_DOMAINS = frozenset({
     "bigcartel.com", "squarespace.com", "mybigcommerce.com", "shoplightspeed.com",
     "webshopapp.com", "storenvy.com", "myshopline.com", "weebly.com", "godaddysites.com",
-    "jimdosite.com", "company.site", "business.site", "wordpress.com",
+    "jimdosite.com", "company.site", "business.site", "wordpress.com", "ueniweb.com",
+    "mystrikingly.com", "ecwid.com", "shopsettings.com",
 })  # fmt: skip
 
 _SCHEME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*://")

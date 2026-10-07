@@ -10,7 +10,7 @@ ADR 0005 chose Streamlit for the bulk interface. The operator has decided the
 interface should be written in **TypeScript** instead. The requirements for the screen
 do not change: paste or upload many links, choose region, language, LLM provider,
 API key and output formats, run test mode, follow progress per store, download
-results ([PRD section 6](../product/prd.md#6-antarmuka-pengguna)).
+results ([PRD section 6](../product/prd.md#6-user-interface)).
 
 The scraping pipeline stays in Python. v1 is built and tested there, and the
 libraries it depends on (`extruct`, `trafilatura`, LiteLLM, instructor, Camoufox,

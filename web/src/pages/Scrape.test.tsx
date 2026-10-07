@@ -60,14 +60,14 @@ describe("Scrape", () => {
     const user = userEvent.setup();
     render(<Scrape />);
 
-    const run = await screen.findByRole("button", { name: "START RUN UJI" });
+    const run = await screen.findByRole("button", { name: "Mulai run uji" });
     expect(run).toBeDisabled();
 
     await user.type(screen.getByRole("textbox", { name: "Tautan toko" }), "a.com b.com");
     const card = await screen.findByTestId("preview");
     expect(card).toHaveTextContent("3 tautan");
-    expect(card).toHaveTextContent('"https://a.com"');
-    expect(card).toHaveTextContent("dilewati: Media sosial");
+    expect(card).toHaveTextContent("https://a.com");
+    expect(card).toHaveTextContent("Dilewati: Media sosial");
     expect(screen.getByTestId("link-count")).toHaveTextContent("3 tautan · 2 toko");
 
     await waitFor(() => expect(run).toBeEnabled());
@@ -92,7 +92,7 @@ describe("Scrape", () => {
     await user.click(screen.getByRole("button", { name: "Mode uji" }));
     await user.click(screen.getByRole("checkbox", { name: "Jalankan beberapa toko pertama dulu" }));
 
-    const run = screen.getByRole("button", { name: "START RUN" });
+    const run = screen.getByRole("button", { name: "Mulai scrape" });
     expect(await screen.findByText(/belum pernah diuji/)).toBeInTheDocument();
     expect(run).toBeDisabled();
     await user.click(screen.getByRole("checkbox", { name: "Saya sengaja melewati mode uji" }));
@@ -105,7 +105,7 @@ describe("Scrape", () => {
     render(<Scrape />);
     await user.type(await screen.findByRole("textbox", { name: "Tautan toko" }), "a.com");
     expect(await screen.findByText(/Terlalu banyak/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /START RUN/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Mulai (run uji|scrape)/ })).toBeDisabled();
 
     await user.click(screen.getByRole("button", { name: "Format keluaran" }));
     await user.click(screen.getByRole("checkbox", { name: "Excel" }));
@@ -117,8 +117,8 @@ describe("Scrape", () => {
     mockApi();
     const user = userEvent.setup();
     render(<Scrape />);
-    await screen.findByRole("button", { name: "START RUN UJI" });
-    await user.click(screen.getByRole("button", { name: /GET CLI/ }));
+    await screen.findByRole("button", { name: "Mulai run uji" });
+    await user.click(screen.getByText("Perintah yang setara (CLI)"));
     expect(screen.getByText("uv run scrapebot run links.txt --limit 2 -f xlsx,csv")).toBeInTheDocument();
   });
 
@@ -127,9 +127,112 @@ describe("Scrape", () => {
     const user = userEvent.setup();
     render(<Scrape />);
     await user.type(await screen.findByRole("textbox", { name: "Tautan toko" }), "a.com");
-    const run = screen.getByRole("button", { name: /START RUN/ });
+    const run = screen.getByRole("button", { name: /Mulai (run uji|scrape)/ });
     await waitFor(() => expect(run).toBeEnabled());
     await user.click(run);
     expect(await screen.findByRole("alert")).toHaveTextContent("The input holds no links");
+  });
+});
+
+const FIND_OPTIONS = {
+  regions: ["north_america", "europe"],
+  default_region: "north_america",
+  items: ["knitwear", "cashmere_wool", "fall_winter", "spring_summer", "other"],
+  default_items: ["knitwear"],
+  max_count: 500,
+  agent_model: "openai/gpt-5-search-api",
+  sources: { google_places: false, web_search: false, social_search: false, ai_agent: true },
+};
+
+function discovery(overrides = {}) {
+  return {
+    discovery_id: "D1",
+    state: "searching",
+    count: 30,
+    step: "ai_agent",
+    found: 12,
+    stores_to_visit: 0,
+    sources: [],
+    cost_usd: 0,
+    run_id: null,
+    error: "",
+    ...overrides,
+  };
+}
+
+function mockFind(findOptions = FIND_OPTIONS) {
+  calls = [];
+  let polls = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((url: string, init?: RequestInit) => {
+      calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      if (url === "/api/options") return reply(OPTIONS);
+      if (url === "/api/discover/options") return reply(findOptions);
+      if (url === "/api/discover") return reply(discovery(), 202);
+      if (url === "/api/discover/D1") {
+        polls += 1;
+        return reply(polls < 2 ? discovery({ found: 25 }) : discovery({ state: "done", found: 31, stores_to_visit: 30, run_id: "R9" }));
+      }
+      return reply({}, 404);
+    }),
+  );
+}
+
+describe("Scrape: find stores", () => {
+  it("finds stores by count, region and items, then opens the test run", async () => {
+    mockFind();
+    const user = userEvent.setup();
+    render(<Scrape />);
+
+    const find = await screen.findByRole("button", { name: "Cari toko & mulai uji" });
+    expect(screen.getByRole("tab", { name: "Cari toko otomatis" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByTestId("find-sources")).toHaveTextContent("Agen AI (openai/gpt-5-search-api)");
+
+    const count = screen.getByRole("spinbutton", { name: /Jumlah toko/ });
+    await user.clear(count);
+    await user.type(count, "30");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Region" }), "europe");
+    await user.click(screen.getByRole("checkbox", { name: "Musim Fall/Winter" }));
+    await user.click(screen.getByRole("checkbox", { name: "Lainnya" }));
+    expect(find).toBeDisabled();
+    await user.type(screen.getByRole("textbox", { name: "Kata kunci item lainnya" }), "poncho, cape");
+    await waitFor(() => expect(find).toBeEnabled());
+    await user.click(find);
+
+    expect(await screen.findByTestId("discovery")).toHaveTextContent("12 toko ditemukan");
+    expect(calls.find((c) => c.url === "/api/discover")?.body).toEqual({
+      count: 30,
+      region: "europe",
+      items: ["knitwear", "fall_winter", "other"],
+      terms: ["poncho", "cape"],
+      writers: ["xlsx", "csv"],
+      test_limit: 2,
+    });
+    await waitFor(() => expect(window.location.hash).toBe("#/runs/R9"), { timeout: 4000 });
+  });
+
+  it("refuses a count that is not a whole number in range", async () => {
+    mockFind();
+    const user = userEvent.setup();
+    render(<Scrape />);
+    const find = await screen.findByRole("button", { name: "Cari toko & mulai uji" });
+    const count = screen.getByRole("spinbutton", { name: /Jumlah toko/ });
+    await user.clear(count);
+    await user.type(count, "0");
+    expect(find).toBeDisabled();
+    await user.clear(count);
+    await user.type(count, "501");
+    expect(find).toBeDisabled();
+  });
+
+  it("opens on pasted links when no search source has a key", async () => {
+    mockFind({ ...FIND_OPTIONS, agent_model: "", sources: { ...FIND_OPTIONS.sources, ai_agent: false } });
+    const user = userEvent.setup();
+    render(<Scrape />);
+    expect(await screen.findByRole("textbox", { name: "Tautan toko" })).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "Cari toko otomatis" }));
+    expect(screen.getByTestId("find-sources")).toHaveTextContent("Sumber aktif: tidak ada");
+    expect(screen.getByRole("button", { name: "Cari toko & mulai uji" })).toBeDisabled();
   });
 });

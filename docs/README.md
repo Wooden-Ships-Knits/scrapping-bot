@@ -18,10 +18,11 @@ docs/
 
 | Document | Language | What it covers |
 |---|---|---|
-| [PRD](product/prd.md) | Indonesian | Bulk links in, raw data out in any format; users, scope, requirements, data model, milestones, metrics, handover |
+| [PRD](product/prd.md) | English | Knitwear stores found or bulk links in, raw data out in any format; users, scope, requirements, data model, milestones, metrics, handover |
 | [Architecture](architecture/overview.md) | English | The pipeline stage by stage, marked Built, Planned or Gated; entry points, config, writers |
 | [Engineering standards](engineering/standards.md) | English | Tooling, code layout, design rules, testing, secrets, definition of done |
 | [Roadmap](planning/roadmap.md) | English | v1 findings, known issues, milestones M0–M6 with gates |
+| [System flow](system-flow.md) | English | A learning guide: how a list of links becomes tables, stage by stage, with the tools each stage uses |
 
 ## Decisions
 
@@ -34,6 +35,7 @@ docs/
 | [0005](decisions/0005-streamlit-bulk-interface.md) | Local Streamlit app for bulk runs, same pipeline as the CLI | Superseded by 0007 |
 | [0006](decisions/0006-tidy-tables-multiformat-writers.md) | Seven tidy tables, many output writers, no HTML | Accepted |
 | [0007](decisions/0007-typescript-web-ui-local-api.md) | TypeScript (React + Vite) web interface over a local FastAPI service | Accepted |
+| [0008](decisions/0008-store-discovery-paid-search.md) | Store discovery with paid search APIs before a run; knitwear flag, no product dropped | Accepted |
 
 ## Exports and archive
 

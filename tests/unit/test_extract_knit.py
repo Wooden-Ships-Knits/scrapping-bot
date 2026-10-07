@@ -227,3 +227,13 @@ def test_product_blob_still_cleans_genuine_description_text():
     blob = product_blob(p)
     assert "merino" in knit_terms_in(blob)
     assert "&" in blob
+
+
+def test_is_knit_agrees_with_knit_products():
+    from scrapebot.extract.signals import is_knit
+
+    sweater = Product(title="Cher Sweater")
+    wool_coat = Product(title="Wool Coat", tags=["wool"])
+    dress = Product(title="Linen Dress")
+    assert [is_knit(p) for p in (sweater, wool_coat, dress)] == [True, False, False]
+    assert knit_products([sweater, wool_coat, dress]) == [sweater]

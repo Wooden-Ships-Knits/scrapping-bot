@@ -140,7 +140,7 @@ def build_messages(domain: str, pages: list[Page]) -> list[dict[str, str]]:
     return [{"role": "user", "content": content}]
 
 
-def _usage(completion: Any) -> tuple[int, int]:
+def usage_of(completion: Any) -> tuple[int, int]:
     usage = getattr(completion, "usage", None)
     if usage is None:
         return 0, 0
@@ -148,7 +148,7 @@ def _usage(completion: Any) -> tuple[int, int]:
     return tokens_in, int(getattr(usage, "completion_tokens", 0) or 0)
 
 
-def _cost(completion: Any, model: str, tokens_in: int, tokens_out: int) -> tuple[float, bool]:
+def cost_of(completion: Any, model: str, tokens_in: int, tokens_out: int) -> tuple[float, bool]:
     """(cost in USD, whether it is an estimate). Local models are free."""
     import litellm
 
@@ -310,8 +310,8 @@ class LiteLLMExtractor:
             if answer is None:
                 continue  # the next model in the fallback order
             result, completion = answer
-            tokens_in, tokens_out = _usage(completion)
-            cost, estimated = _cost(completion, model, tokens_in, tokens_out)
+            tokens_in, tokens_out = usage_of(completion)
+            cost, estimated = cost_of(completion, model, tokens_in, tokens_out)
             self.budget.add(cost)
             records.append(
                 CallRecord(

@@ -1,22 +1,36 @@
 import {
-  AlertTriangle,
   ChevronDown,
+  ChevronRight,
   Columns3,
   FileSpreadsheet,
-  FlaskConical,
+  Info,
   Link2,
-  Terminal,
+  Play,
+  Search,
   Upload as UploadIcon,
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
-import { api, ApiError, type Options, type Preview, type Source, type Upload } from "../api/client";
+import {
+  api,
+  ApiError,
+  type DiscoverOptions,
+  type Discovery,
+  type Options,
+  type Preview,
+  type Source,
+  type Upload,
+} from "../api/client";
 import { Menu } from "../components/ui/Menu";
 import { formatNumber, skipReason, writerLabel } from "../labels";
 import { navigate } from "../router";
+import { DiscoveryCard, FindStoresFields, OTHER, parseCount, parseTerms, type FindForm } from "./FindStores";
 
 const PREVIEW_DELAY_MS = 400;
+const DISCOVERY_POLL_MS = 1000;
+
+type Mode = "find" | "links";
 
 export function Scrape() {
   const [options, setOptions] = useState<Options | null>(null);
@@ -32,6 +46,39 @@ export function Scrape() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
+  const [mode, setMode] = useState<Mode>("links");
+  const [findOptions, setFindOptions] = useState<DiscoverOptions | null>(null);
+  const [form, setForm] = useState<FindForm>({ count: "20", region: "", items: [], terms: "" });
+  const [discovery, setDiscovery] = useState<Discovery | null>(null);
+
+  // Finding stores is the default when at least one search source has a key.
+  useEffect(() => {
+    api
+      .discoverOptions()
+      .then((o) => {
+        setFindOptions(o);
+        setForm((f) => ({ ...f, region: o.default_region, items: o.default_items }));
+        if (Object.values(o.sources).some(Boolean)) setMode("find");
+      })
+      .catch(() => setFindOptions(null));
+  }, []);
+
+  // Follow a discovery until its test run starts, then open that run.
+  const discoveryId = discovery?.discovery_id;
+  const discovering = discovery !== null && (discovery.state === "searching" || discovery.state === "starting_run");
+  useEffect(() => {
+    if (!discoveryId || !discovering) return;
+    const timer = setInterval(() => {
+      api
+        .discovery(discoveryId)
+        .then((d) => {
+          setDiscovery(d);
+          if (d.state === "done" && d.run_id) navigate(`/runs/${d.run_id}`);
+        })
+        .catch((e) => setError(message(e)));
+    }, DISCOVERY_POLL_MS);
+    return () => clearInterval(timer);
+  }, [discoveryId, discovering]);
 
   useEffect(() => {
     api
@@ -93,8 +140,43 @@ export function Scrape() {
     !busy &&
     !previewing;
 
+  const findCount = findOptions ? parseCount(form.count, findOptions.max_count) : null;
+  const findTerms = parseTerms(form.terms);
+  const canFind =
+    findOptions !== null &&
+    Object.values(findOptions.sources).some(Boolean) &&
+    findCount !== null &&
+    form.items.length > 0 &&
+    (!form.items.includes(OTHER) || findTerms.length > 0) &&
+    writers.length > 0 &&
+    !busy &&
+    !discovering;
+
+  async function onFind() {
+    if (!canFind || findCount === null) return;
+    setBusy(true);
+    setError("");
+    try {
+      setDiscovery(
+        await api.startDiscovery({
+          count: findCount,
+          region: form.region,
+          items: form.items,
+          terms: form.items.includes(OTHER) ? findTerms : [],
+          writers,
+          test_limit: testLimit,
+        }),
+      );
+    } catch (e) {
+      setError(message(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
+    if (mode === "find") return void onFind();
     if (!canRun || !source) return;
     setBusy(true);
     setError("");
@@ -127,47 +209,84 @@ export function Scrape() {
     .filter(Boolean)
     .join(" ");
 
+  const outputLabel = writers.length
+    ? writers.slice(0, 2).map(writerLabel).join(", ") + (writers.length > 2 ? ` (+${writers.length - 2})` : "")
+    : "pilih format";
+
   return (
     <div className="page">
       <header className="page-head">
-        <h1>Scrape</h1>
-        <p className="mono muted">Tempel atau unggah banyak tautan toko; data produk, harga dan kontak dikumpulkan dari setiap toko.</p>
+        <div>
+          <h1>Scrape</h1>
+          <p>Tempel atau unggah banyak tautan toko; data produk, harga dan kontak dikumpulkan dari setiap toko.</p>
+        </div>
       </header>
 
       <form className="card composer" onSubmit={onSubmit}>
-        {upload ? (
-          <div className="upload-row">
-            <FileSpreadsheet size={18} />
-            <span className="mono">{upload.filename}</span>
-            <span className="muted mono small">terunggah</span>
-            <span className="spacer" />
-            <button type="button" className="icon-button" aria-label="Hapus file" onClick={() => setUpload(null)}>
-              <X size={16} />
-            </button>
+        {findOptions && (
+          <div className="tabs-row">
+            <div className="tabs" role="tablist" aria-label="Sumber toko">
+              <button type="button" role="tab" aria-selected={mode === "find"} onClick={() => setMode("find")}>
+                Cari toko otomatis
+              </button>
+              <button type="button" role="tab" aria-selected={mode === "links"} onClick={() => setMode("links")}>
+                Tempel tautan
+              </button>
+            </div>
           </div>
+        )}
+        {mode === "find" && findOptions ? (
+          <FindStoresFields options={findOptions} form={form} onChange={setForm} />
         ) : (
-          <label className="composer-input">
-            <span className="sr-only">Tautan toko</span>
-            <textarea
-              rows={4}
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => {
-                if (e.dataTransfer.files[0]) {
-                  e.preventDefault();
-                  void onFile(e.dataTransfer.files[0]);
-                }
-              }}
-              placeholder="https://monkeesofnaples.com  https://saracampbell.com  … tempel tautan atau teks apa pun, atau seret file ke sini"
-            />
-          </label>
+          <>
+            <div className="card-head">
+              <span className="label">
+                <Link2 size={14} /> Daftar tautan toko
+              </span>
+              <span className="spacer" />
+              <span className="muted small" title="Tautan dan toko unik yang terdeteksi" data-testid="link-count">
+                {preview ? `${formatNumber(preview.links)} tautan · ${formatNumber(preview.stores)} toko` : previewing ? "membaca…" : "0 tautan"}
+              </span>
+              {options && <span className="muted small">maks. {formatNumber(options.max_links)}</span>}
+            </div>
+
+            {upload ? (
+              <div className="upload-row">
+                <FileSpreadsheet size={18} />
+                <span className="mono">{upload.filename}</span>
+                <span className="muted small">terunggah</span>
+                <span className="spacer" />
+                <button type="button" className="icon-button" aria-label="Hapus file" onClick={() => setUpload(null)}>
+                  <X size={16} />
+                </button>
+              </div>
+            ) : (
+              <label className="composer-input">
+                <span className="sr-only">Tautan toko</span>
+                <textarea
+                  rows={6}
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    if (e.dataTransfer.files[0]) {
+                      e.preventDefault();
+                      void onFile(e.dataTransfer.files[0]);
+                    }
+                  }}
+                  placeholder={"https://monkeesofnaples.com\nhttps://saracampbell.com\n… tempel tautan atau teks apa pun, atau seret file ke sini"}
+                />
+              </label>
+            )}
+          </>
         )}
 
         <div className="toolbar">
-          <button type="button" className="chip" onClick={() => fileInput.current?.click()}>
-            <UploadIcon size={14} /> {upload ? "GANTI FILE" : "UNGGAH"}
-          </button>
+          {mode === "links" && (
+            <button type="button" className="chip" onClick={() => fileInput.current?.click()}>
+              <UploadIcon size={15} /> {upload ? "Ganti file" : "Unggah"}
+            </button>
+          )}
           <input
             ref={fileInput}
             type="file"
@@ -178,10 +297,41 @@ export function Scrape() {
           />
 
           <Menu
+            ariaLabel="Mode uji"
+            className={`chip ${testMode ? "on" : ""}`}
+            icon={<span className="dot" aria-hidden="true" />}
+            label={
+              mode === "find" || testMode ? `Mode uji: aktif (${testLimit} toko)` : "Mode uji: mati"
+            }
+          >
+            <p className="menu-title">Mode uji</p>
+            {mode === "find" ? (
+              <p className="menu-note">Toko yang ditemukan selalu diuji dulu; seluruh daftar dijalankan dari halaman run.</p>
+            ) : (
+              <label className="menu-check">
+                <input type="checkbox" checked={testMode} onChange={(e) => setTestMode(e.target.checked)} />
+                Jalankan beberapa toko pertama dulu
+              </label>
+            )}
+            {(mode === "find" || testMode) && (
+              <label className="menu-field">
+                Jumlah toko
+                <input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={testLimit}
+                  onChange={(e) => setTestLimit(Math.max(1, Math.min(50, Number(e.target.value) || 1)))}
+                />
+              </label>
+            )}
+          </Menu>
+
+          <Menu
             ariaLabel="Format keluaran"
             label={
               <>
-                {writers.length ? writers.map((w) => writerLabel(w).toUpperCase()).join(" · ") : "PILIH FORMAT"}
+                <span className="muted">Keluaran:</span> {outputLabel}
                 <ChevronDown size={14} />
               </>
             }
@@ -196,32 +346,12 @@ export function Scrape() {
             <p className="menu-note">Laporan dan ringkasan CSV selalu dibuat.</p>
           </Menu>
 
-          <Menu
-            ariaLabel="Mode uji"
-            icon={<FlaskConical size={14} />}
-            label={testMode ? `UJI · ${testLimit} TOKO` : "SEMUA TOKO"}
-          >
-            <p className="menu-title">Mode uji</p>
-            <label className="menu-check">
-              <input type="checkbox" checked={testMode} onChange={(e) => setTestMode(e.target.checked)} />
-              Jalankan beberapa toko pertama dulu
-            </label>
-            {testMode && (
-              <label className="menu-field">
-                Jumlah toko
-                <input
-                  type="number"
-                  min={1}
-                  max={50}
-                  value={testLimit}
-                  onChange={(e) => setTestLimit(Math.max(1, Math.min(50, Number(e.target.value) || 1)))}
-                />
-              </label>
-            )}
-          </Menu>
-
-          {upload && (
-            <Menu ariaLabel="Kolom URL" icon={<Columns3 size={14} />} label={urlColumn.trim() ? urlColumn.toUpperCase() : "KOLOM URL · OTOMATIS"}>
+          {mode === "links" && upload && (
+            <Menu
+              ariaLabel="Kolom URL"
+              icon={<Columns3 size={14} />}
+              label={urlColumn.trim() ? `Kolom: ${urlColumn.trim()}` : "Kolom URL: otomatis"}
+            >
               <p className="menu-title">Kolom yang berisi tautan</p>
               <label className="menu-field">
                 Nama kolom
@@ -232,41 +362,56 @@ export function Scrape() {
 
           <span className="spacer" />
 
-          <span className="chip static" title="Tautan dan toko unik yang terdeteksi" data-testid="link-count">
-            <Link2 size={14} />
-            {preview ? `${formatNumber(preview.links)} tautan · ${formatNumber(preview.stores)} toko` : previewing ? "membaca…" : "0 tautan"}
-          </span>
-
-          <Menu className="button ghost" align="right" icon={<Terminal size={14} />} label="GET CLI">
-            <p className="menu-title">Perintah yang setara</p>
-            <pre className="cli">{cli}</pre>
-            <p className="menu-note">Simpan tautan ke file dulu bila tidak memakai unggahan.</p>
-          </Menu>
-
-          <button type="submit" className="button primary" disabled={!canRun}>
-            {busy ? "MEMULAI…" : testMode ? "START RUN UJI" : "START RUN"}
-          </button>
+          {mode === "find" ? (
+            <button type="submit" className="button primary" disabled={!canFind}>
+              {busy ? "Memulai…" : discovering ? "Sedang mencari…" : "Cari toko & mulai uji"}
+              {!busy && !discovering && <Search size={14} />}
+            </button>
+          ) : (
+            <button type="submit" className="button primary" disabled={!canRun}>
+              {busy ? "Memulai…" : testMode ? "Mulai run uji" : "Mulai scrape"}
+              {!busy && <Play size={14} />}
+            </button>
+          )}
         </div>
-
-        {needsSkipConfirm && (
-          <div className="notice warn">
-            <AlertTriangle size={16} />
-            <span>Daftar ini belum pernah diuji. Sebaiknya jalankan mode uji dulu dan periksa hasilnya.</span>
-            <label className="menu-check">
-              <input type="checkbox" checked={skipTest} onChange={(e) => setSkipTest(e.target.checked)} />
-              Saya sengaja melewati mode uji
-            </label>
-          </div>
-        )}
-        {writers.length === 0 && options && <div className="notice bad">Pilih minimal satu format keluaran.</div>}
-        {error && (
-          <div className="notice bad" role="alert">
-            {error}
-          </div>
-        )}
       </form>
 
-      <PreviewCard preview={preview} loading={previewing} />
+      {mode === "links" && needsSkipConfirm && (
+        <div className="notice info">
+          <Info size={18} />
+          <span>
+            <strong>Daftar ini belum pernah diuji.</strong> Sebaiknya jalankan mode uji dulu dan periksa hasilnya sebelum
+            memulai unduhan skala penuh.
+          </span>
+          <span className="spacer" />
+          <label className="menu-check">
+            <input type="checkbox" checked={skipTest} onChange={(e) => setSkipTest(e.target.checked)} />
+            Saya sengaja melewati mode uji
+          </label>
+        </div>
+      )}
+      {writers.length === 0 && options && <div className="notice bad">Pilih minimal satu format keluaran.</div>}
+      {error && (
+        <div className="notice bad" role="alert">
+          {error}
+        </div>
+      )}
+
+      {mode === "find" ? (
+        discovery && <DiscoveryCard discovery={discovery} />
+      ) : (
+        <PreviewCard preview={preview} loading={previewing} />
+      )}
+
+      {mode === "links" && (
+        <details className="cli-details">
+          <summary>
+            <ChevronRight size={16} /> Perintah yang setara (CLI)
+          </summary>
+          <pre className="cli">{cli}</pre>
+          <p className="muted small">Simpan tautan ke file dulu bila tidak memakai unggahan.</p>
+        </details>
+      )}
     </div>
   );
 }
@@ -275,45 +420,63 @@ function PreviewCard({ preview, loading }: { preview: Preview | null; loading: b
   if (!preview) {
     return (
       <section className="card empty-card">
-        <p className="mono muted">{loading ? "Membaca tautan…" : "Tautan yang terdeteksi akan tampil di sini sebelum run dimulai."}</p>
+        <p className="muted">{loading ? "Membaca tautan…" : "Tautan yang terdeteksi akan tampil di sini sebelum run dimulai."}</p>
       </section>
     );
   }
   const skipped = Object.entries(preview.skipped);
+  const skippedTotal = skipped.reduce((sum, [, n]) => sum + n, 0);
+  const moreStores = preview.stores - preview.store_examples.length;
   return (
     <section className="card" data-testid="preview" aria-live="polite">
       <div className="card-head">
-        <span className="mono">Pratinjau masukan</span>
+        <h2>Pratinjau masukan</h2>
+        <span className="muted small">· {formatNumber(preview.links)} tautan terdeteksi</span>
         <span className="spacer" />
-        <span className="tag">{formatNumber(preview.links)} tautan</span>
-        <span className="tag">{formatNumber(preview.stores)} toko unik</span>
-        {preview.duplicates > 0 && <span className="tag">{formatNumber(preview.duplicates)} duplikat</span>}
+        <span className="small">
+          <strong>{formatNumber(preview.stores)} toko unik</strong>
+          <span className="muted"> / {formatNumber(skippedTotal)} dilewati</span>
+        </span>
       </div>
-      <p className="sr-only">
-        Terdeteksi {preview.links} tautan · {preview.stores} toko unik
-      </p>
       {preview.too_many && (
         <div className="notice bad">Terlalu banyak: maksimal {formatNumber(preview.max_links)} tautan per run. Pecah daftarnya.</div>
       )}
-      <pre className="json-body compact">
-        <code>
-          {preview.store_examples.map((d) => (
-            <span key={d} className="json-string">
-              {`"https://${d}",\n`}
-            </span>
-          ))}
-          {preview.stores > preview.store_examples.length && (
-            <span className="muted">{`… dan ${formatNumber(preview.stores - preview.store_examples.length)} toko lainnya\n`}</span>
-          )}
-          {preview.skipped_examples.map((s) => (
-            <span key={s.raw + s.reason} className="json-skip">
-              {`"${s.raw || "(kosong)"}"  // dilewati: ${skipReason(s.reason)}\n`}
-            </span>
-          ))}
-        </code>
-      </pre>
-      {skipped.length > 0 && (
-        <p className="mono muted small pad">Dilewati: {skipped.map(([reason, n]) => `${skipReason(reason)} ${n}`).join(", ")}</p>
+      <div className="table-wrap">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Tautan</th>
+              <th className="end">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {preview.store_examples.map((d) => (
+              <tr key={d}>
+                <td className="mono">https://{d}</td>
+                <td className="end">
+                  <span className="badge badge-neutral">Siap diproses</span>
+                </td>
+              </tr>
+            ))}
+            {preview.skipped_examples.map((s) => (
+              <tr key={s.raw + s.reason} className="skipped">
+                <td className="mono">
+                  <s>{s.raw || "(kosong)"}</s>
+                </td>
+                <td className="end">
+                  <span className="badge badge-bad">Dilewati: {skipReason(s.reason)}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {(moreStores > 0 || skipped.length > 0 || preview.duplicates > 0) && (
+        <div className="card-foot">
+          {moreStores > 0 && <span>… dan {formatNumber(moreStores)} toko lainnya</span>}
+          {preview.duplicates > 0 && <span>{formatNumber(preview.duplicates)} duplikat digabung</span>}
+          {skipped.length > 0 && <span>Dilewati: {skipped.map(([reason, n]) => `${skipReason(reason)} ${n}`).join(", ")}</span>}
+        </div>
       )}
     </section>
   );

@@ -20,7 +20,8 @@ def _no_browser(monkeypatch):
 def _no_real_keys(monkeypatch):
     """No test sees a developer's real provider keys. LiteLLM loads the project's .env
     into the environment when it is imported, so they would otherwise leak in."""
+    from scrapebot.keys import SEARCH_KEY_VARIABLES
     from scrapebot.llm.gateway import KEY_VARIABLES
 
-    for variable in KEY_VARIABLES.values():
+    for variable in (*KEY_VARIABLES.values(), *SEARCH_KEY_VARIABLES.values()):
         monkeypatch.delenv(variable, raising=False)

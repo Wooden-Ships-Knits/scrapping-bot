@@ -14,6 +14,9 @@ export type RunRequest = Schemas["RunIn"];
 export type Upload = Schemas["UploadOut"];
 export type Rows = Schemas["RowsOut"];
 export type Overview = Schemas["OverviewOut"];
+export type DiscoverOptions = Schemas["DiscoverOptionsOut"];
+export type Discovery = Schemas["DiscoveryOut"];
+export type DiscoverRequest = Schemas["DiscoverIn"];
 export type PreviewTable = "stores" | "products" | "contacts" | "pages" | "inputs";
 
 export const FINISHED: readonly RunState[] = ["done", "failed", "interrupted", "stopped"];
@@ -64,6 +67,9 @@ export const api = {
     return request<Upload>("/api/uploads", { method: "POST", body: form });
   },
   startRun: (body: RunRequest) => request<Run>("/api/runs", json(body)),
+  discoverOptions: () => request<DiscoverOptions>("/api/discover/options"),
+  startDiscovery: (body: DiscoverRequest) => request<Discovery>("/api/discover", json(body)),
+  discovery: (discoveryId: string) => request<Discovery>(`/api/discover/${discoveryId}`),
   startFullRun: (testRunId: string) =>
     request<Run>(`/api/runs/${testRunId}/full`, { method: "POST" }),
   stopRun: (runId: string) => request<Run>(`/api/runs/${runId}/stop`, { method: "POST" }),

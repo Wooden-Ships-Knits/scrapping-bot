@@ -10,6 +10,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from .extract.focus import DEFAULT_ITEMS, ITEMS, OTHER
 from .outputs import available_writers
 
 
@@ -61,6 +62,27 @@ class LLMConfig(_Section):
         return model
 
 
+class FocusConfig(_Section):
+    """The kinds of items looked for (ADR 0008). Products are flagged, never dropped."""
+
+    items: list[str] = Field(default_factory=lambda: list(DEFAULT_ITEMS))
+    terms: list[str] = Field(default_factory=list)  # the operator's own words, item "other"
+
+    @field_validator("items")
+    @classmethod
+    def _known_items(cls, items: list[str]) -> list[str]:
+        known = [*ITEMS, OTHER]
+        unknown = [i for i in items if i not in known]
+        if unknown:
+            raise ValueError(f"unknown item(s) {unknown}; choose from {', '.join(known)}")
+        return list(dict.fromkeys(items))
+
+    @field_validator("terms")
+    @classmethod
+    def _clean_terms(cls, terms: list[str]) -> list[str]:
+        return list(dict.fromkeys(t.strip() for t in terms if t.strip()))
+
+
 class OutputConfig(_Section):
     runs_dir: Path = Path("data/runs")
     writers: list[str] = Field(default_factory=lambda: ["xlsx", "csv"])
@@ -84,6 +106,7 @@ class RunConfig(_Section):
     output: OutputConfig = Field(default_factory=OutputConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     render: RenderConfig = Field(default_factory=RenderConfig)
+    focus: FocusConfig = Field(default_factory=FocusConfig)
     # Test mode (PRD OP-01): visit only the first N stores, end to end. None = full run.
     limit: int | None = Field(default=None, ge=1)
 

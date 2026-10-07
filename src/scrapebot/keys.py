@@ -16,12 +16,19 @@ from pydantic import SecretStr
 
 from .llm.gateway import KEY_VARIABLES
 
+# Keys of the paid search APIs used by `scrapebot discover` (ADR 0008).
+SEARCH_KEY_VARIABLES = {
+    "google_places": "GOOGLE_MAPS_API_KEY",
+    "tavily": "TAVILY_API_KEY",
+}
+
 # Shapes of real provider keys, masked even if a key was never registered here.
 KEY_PATTERNS = (
     re.compile(r"sk-ant-[A-Za-z0-9_\-]{16,}"),
     re.compile(r"sk-(?:proj-)?[A-Za-z0-9_\-]{16,}"),
     re.compile(r"AIza[0-9A-Za-z_\-]{30,}"),
     re.compile(r"gsk_[A-Za-z0-9]{20,}"),
+    re.compile(r"tvly-[A-Za-z0-9_\-]{16,}"),
     re.compile(
         r"(?i)\b(api[_-]?key|authorization|x-api-key)(\"?\s*[:=]\s*\"?)(?:Bearer\s+)?[^\s\"',}]{8,}"
     ),
@@ -96,7 +103,8 @@ def install_redaction() -> None:
 def load_keys(
     env_file: str | Path = ".env", given: Mapping[str, str] | None = None
 ) -> dict[str, SecretStr]:
-    """Provider keys: given ones (from the interface) win, then the environment, then `.env`.
+    """LLM provider and search API keys: given ones (from the interface) win, then the
+    environment, then `.env`.
 
     `.env` is read without touching `os.environ`, so keys never leak into child
     processes or other code.
@@ -107,7 +115,7 @@ def load_keys(
 
         from_file = dict(dotenv_values(env_file))
     keys: dict[str, SecretStr] = {}
-    for provider, variable in KEY_VARIABLES.items():
+    for provider, variable in {**KEY_VARIABLES, **SEARCH_KEY_VARIABLES}.items():
         value = (given or {}).get(provider) or os.environ.get(variable) or from_file.get(variable)
         if value:
             register(value)

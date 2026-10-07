@@ -15,7 +15,12 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError
 
-from ..config import InputConfig, RunConfig
+from ..config import FocusConfig, InputConfig, RunConfig
+from ..discover.agent import Completion, pick_agent_model
+from ..discover.paid import Transport
+from ..discover.regions import DEFAULT_REGION, REGIONS, discover_config
+from ..extract.focus import DEFAULT_ITEMS, OTHER
+from ..extract.focus import ITEMS as FOCUS_ITEMS
 from ..inputs.readers import SUPPORTED_SUFFIXES, InputError
 from ..inputs.resolve import DUPLICATE, resolve
 from ..keys import load_keys
@@ -23,8 +28,12 @@ from ..llm.gateway import KEY_VARIABLES, check_connection, key_for, provider_of
 from ..outputs import available_writers
 from ..pipeline import load_records, prepare, resume
 from . import library
+from .discovery import DiscoveryManager
 from .manager import FetcherFactory, RunManager
 from .schemas import (
+    DiscoverIn,
+    DiscoverOptionsOut,
+    DiscoveryOut,
     ErrorOut,
     LLMCheckIn,
     LLMCheckOut,
@@ -57,6 +66,7 @@ PROVIDERS = (
 )
 SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 EXAMPLES = 8
+MAX_DISCOVER_COUNT = 500
 FINISHED = ("done", "failed", "interrupted", "stopped")
 
 
@@ -69,6 +79,8 @@ class ApiSettings(BaseModel):
     max_upload_mb: int = 20
     poll_seconds: float = 0.5
     env_file: Path = Path(".env")  # provider keys; read, never written
+    discover_dir: Path = Path("data/discover")  # stores found from the interface
+    discover_cache_dir: Path = Path("data/.cache/discover")  # paid answers, without keys
 
 
 class ApiError(Exception):
@@ -77,16 +89,21 @@ class ApiError(Exception):
 
 
 def create_app(
-    settings: ApiSettings | None = None, fetcher_factory: FetcherFactory | None = None
+    settings: ApiSettings | None = None,
+    fetcher_factory: FetcherFactory | None = None,
+    discover_transport: Transport | None = None,
+    discover_completion: Completion | None = None,
 ) -> FastAPI:
     settings = settings or ApiSettings()
     manager = RunManager(fetcher_factory)
+    finder = DiscoveryManager(discover_transport, discover_completion)
     runs_dir = settings.base.output.runs_dir
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         yield
         manager.shutdown()
+        finder.shutdown()
 
     app = FastAPI(title="scrapebot", version="2", lifespan=lifespan)
     app.state.manager = manager
@@ -280,6 +297,76 @@ def create_app(
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
+
+    def discovery_sources(keys: dict[str, SecretStr]) -> dict[str, bool]:
+        tavily = "tavily" in keys
+        return {
+            "google_places": "google_places" in keys,
+            "web_search": tavily,
+            "social_search": tavily,
+            "ai_agent": bool(pick_agent_model(keys)),
+        }
+
+    @app.get("/api/discover/options")
+    def discover_options() -> DiscoverOptionsOut:
+        """What the interface offers for finding stores, and which sources have a key.
+        Keys themselves are never sent."""
+        keys = load_keys(settings.env_file)
+        return DiscoverOptionsOut(
+            regions=list(REGIONS),
+            default_region=DEFAULT_REGION,
+            items=[*FOCUS_ITEMS, OTHER],
+            default_items=list(DEFAULT_ITEMS),
+            max_count=MAX_DISCOVER_COUNT,
+            agent_model=pick_agent_model(keys),
+            sources=discovery_sources(keys),
+        )
+
+    @app.post("/api/discover", status_code=202)
+    def start_discovery(body: DiscoverIn) -> DiscoveryOut:
+        """Find stores, then start a test run on them; poll GET /api/discover/{id}."""
+        if body.region not in REGIONS:
+            raise ApiError(422, "bad_region", f"Region {body.region} tidak dikenal.")
+        if OTHER in body.items and not any(t.strip() for t in body.terms):
+            raise ApiError(422, "terms_required", "Isi kata kunci untuk item Lainnya.")
+        keys = load_keys(settings.env_file)
+        if not any(discovery_sources(keys).values()):
+            raise ApiError(
+                422,
+                "no_discovery_source",
+                "Belum ada API key untuk mencari toko. Isi OPENAI_API_KEY, GEMINI_API_KEY, "
+                "GOOGLE_MAPS_API_KEY atau TAVILY_API_KEY di .env, lalu jalankan ulang server.",
+            )
+        try:
+            focus = FocusConfig(items=body.items, terms=body.terms)
+            config = discover_config(
+                body.count, body.region, focus.items, focus.terms, pick_agent_model(keys)
+            ).model_copy(
+                update={"out_dir": settings.discover_dir, "cache_dir": settings.discover_cache_dir}
+            )
+            base = settings.base.model_dump()
+            base["output"]["writers"] = body.writers
+            base["focus"] = focus.model_dump()
+            base["limit"] = body.test_limit
+            RunConfig.model_validate(base)  # fail now, not after paying for the search
+        except ValidationError as exc:
+            raise ApiError(422, "bad_settings", exc.errors()[0]["msg"]) from exc
+
+        def start_test_run(links: Path) -> str:
+            data = {**base, "input": {**base["input"], "source": links, "text": None}}
+            data["input"]["url_column"] = "website"
+            prepared = prepare(RunConfig.model_validate(data))
+            manager.submit(prepared, keys)
+            return prepared.run_id
+
+        return finder.submit(config, keys, start_test_run).out()
+
+    @app.get("/api/discover/{discovery_id}")
+    def discovery(discovery_id: str) -> DiscoveryOut:
+        job = finder.get(discovery_id)
+        if job is None:
+            raise ApiError(404, "discovery_not_found", "Pencarian ini tidak ditemukan.")
+        return job.out()
 
     @app.get("/api/llm/providers")
     def llm_providers() -> list[ProviderOut]:

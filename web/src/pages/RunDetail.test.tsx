@@ -39,6 +39,9 @@ function run(overrides: Partial<Run> = {}): Run {
     error: "",
     config: { limit: 2, output: { writers: ["xlsx"] } },
     cli: "uv run scrapebot run links.txt --limit 2 -f xlsx",
+    llm_model: "",
+    llm_cost_usd: 0,
+    llm_stores: 0,
     ...overrides,
   };
 }
@@ -71,7 +74,7 @@ describe("RunDetail", () => {
     expect(screen.getByTestId("reconciliation")).toHaveTextContent("Tautan masuk 4 = diproses 2 + dilewati 2 ✓ seimbang");
     expect(screen.getByText("Di luar mode uji: 1")).toBeInTheDocument();
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "2");
-    expect(screen.getByText("(HTTP 403)")).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Perlu dilihat" })).getByText("HTTP 403")).toBeInTheDocument();
   });
 
   it("previews the data: table with status badges, then the raw JSON", async () => {
@@ -82,25 +85,24 @@ describe("RunDetail", () => {
     expect(within(result).getByText("Diblokir")).toHaveClass("badge-bad");
     expect(within(result).queryByText("run_id")).not.toBeInTheDocument();
 
-    await user.click(within(result).getByRole("tab", { name: "PRODUCTS" }));
+    await user.click(within(result).getByRole("tab", { name: /Produk/ }));
     expect(await within(result).findByText("Cher Sweater")).toBeInTheDocument();
-    await user.click(within(result).getByRole("tab", { name: "RESPONSE" }));
+    await user.click(within(result).getByRole("tab", { name: "JSON" }));
     expect(within(result).getByTestId("json-view")).toHaveTextContent('"title": "Cher Sweater"');
-    await user.click(within(result).getByRole("tab", { name: "PARAMS" }));
+    await user.click(within(result).getByRole("tab", { name: "PARAMETER" }));
     expect(within(result).getByText("uv run scrapebot run links.txt --limit 2 -f xlsx")).toBeInTheDocument();
   });
 
-  it("offers the full run and every download once a test run is done", async () => {
-    const user = userEvent.setup();
+  it("offers the full run and every download once a test run is done", () => {
     render(<RunDetail run={run()} />);
     expect(screen.getByRole("button", { name: "Jalankan seluruh daftar (4 tautan)" })).toBeEnabled();
-    await user.click(screen.getByRole("button", { name: "Unduh hasil" }));
-    expect(screen.getByRole("link", { name: "Excel (.xlsx)" })).toHaveAttribute("href", `/api/runs/${RUN_ID}/download/xlsx`);
+    expect(screen.getByRole("region", { name: "Unduh hasil" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Unduh Excel (.xlsx)" })).toHaveAttribute("href", `/api/runs/${RUN_ID}/download/xlsx`);
   });
 
   it("has no downloads and no full run while running", () => {
     render(<RunDetail run={run({ state: "running", stores_done: 1, downloads: [] })} />);
-    expect(screen.queryByRole("button", { name: "Unduh hasil" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Unduh hasil" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /seluruh daftar/ })).not.toBeInTheDocument();
   });
 
@@ -116,17 +118,17 @@ describe("RunDetail", () => {
 });
 
 describe("stop and resume", () => {
-  it("offers STOP while running and LANJUTKAN when stopped", async () => {
+  it("offers Hentikan while running and Lanjutkan when stopped", async () => {
     const user = userEvent.setup();
     const { unmount } = render(<RunDetail run={run({ state: "running", stores_done: 1, downloads: [] })} />);
-    await user.click(screen.getByRole("button", { name: /STOP/ }));
+    await user.click(screen.getByRole("button", { name: /Hentikan/ }));
     expect(vi.mocked(fetch)).toHaveBeenCalledWith(`/api/runs/${RUN_ID}/stop`, { method: "POST" });
     unmount();
 
     const onRestart = vi.fn();
     render(<RunDetail run={run({ state: "stopped", stores_done: 1, downloads: [] })} onRestart={onRestart} />);
     expect(screen.getByText(/1 dari 2 toko selesai/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /LANJUTKAN/ }));
+    await user.click(screen.getByRole("button", { name: /Lanjutkan/ }));
     expect(vi.mocked(fetch)).toHaveBeenCalledWith(`/api/runs/${RUN_ID}/resume`, { method: "POST" });
     expect(onRestart).toHaveBeenCalled();
   });
