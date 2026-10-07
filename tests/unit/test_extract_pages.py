@@ -1,4 +1,6 @@
-from scrapebot.extract.pages import about_snippet, find_wholesale_page, internal_links
+import pytest
+
+from scrapebot.extract.pages import about_snippet, find_wholesale_page, internal_links, page_kind
 from scrapebot.extract.text import html_to_text
 from scrapebot.models import Page
 
@@ -76,3 +78,28 @@ def test_about_snippet_unescapes_entities_in_the_meta_description():
         Page(url="https://x.com", html='<meta name="description" content="Women&#39;s &amp; kids">')
     ]
     assert about_snippet(pages) == "Women's & kids"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://www.knitfactory.com/en/women/clothing/pullover-sweaters",
+        "https://www.knitfactory.com/en/women",
+        "https://www.knitfactory.com/en/sale",
+        "https://www.herrlicher.com/en/women/clothing/knitwear/",
+    ],
+)
+def test_category_pages_are_collections(url):
+    """knitfactory.com, 7 Oct 2026: these pages list products with prices, but were
+    `other`, so the LLM was sent the customer-service and trade-fair pages instead."""
+    assert page_kind(url, "https://www.knitfactory.com") == "collection"
+
+
+def test_a_language_root_is_the_home_page():
+    assert page_kind("https://www.knitfactory.com/en", "https://www.knitfactory.com") == "home"
+    assert page_kind("https://x.com/en-gb/", "https://x.com") == "home"
+
+
+def test_pages_that_list_nothing_stay_other():
+    assert page_kind("https://www.knitfactory.com/en/customer-service") == "other"
+    assert page_kind("https://www.knitfactory.com/en/trade-fairs") == "other"

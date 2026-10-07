@@ -13,13 +13,12 @@ import html
 import re
 
 from ..acquire.discovery import url_key
-from ..extract.prices import parse_price
+from ..extract.prices import NUMBER_RE, parse_price, read_number
 from ..extract.values import currency_code
 from ..models import Page, Product
 from .schemas import ExtractedProduct, StoreExtraction
 
 _SPACE_RE = re.compile(r"\s+")
-_NUMBER_RE = re.compile(r"\d[\d,]*(?:\.\d{1,2})?")
 
 
 def normalise(text: str) -> str:
@@ -30,13 +29,13 @@ def normalise(text: str) -> str:
 
 
 def prices_in(text: str) -> set[float]:
-    """Every price-shaped number in a text, as floats."""
+    """Every price-shaped number in a text, read as parse_price reads one. A number
+    joined by a space ('2 100') is also read as its parts, in case the space was not
+    a thousands separator."""
     found = set()
-    for raw in _NUMBER_RE.findall(text or ""):
-        try:
-            found.add(round(float(raw.replace(",", "")), 2))
-        except ValueError:
-            continue
+    for token in NUMBER_RE.findall(text or ""):
+        for part in {token, *token.split()}:
+            found.add(round(read_number(part), 2))
     return found
 
 
@@ -55,13 +54,9 @@ def apply_evidence_rule(
         title = normalise(item.title)
         price = parse_price(item.price)
         price_on_page = price is not None and round(price, 2) in numbers.get(key, set())
-        if (
-            not page_text
-            or not title
-            or title not in page_text
-            or not price_on_page
-            or title in seen
-        ):
+        if title and title in seen:  # a second copy of a kept product is not a failure
+            continue
+        if not page_text or not title or title not in page_text or not price_on_page:
             dropped.append(item)
             continue
         seen.add(title)

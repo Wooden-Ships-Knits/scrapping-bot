@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
-from ..extract.pages import link_texts, page_kind
+from ..extract.pages import COLLECTION_RE, PRODUCT_RE, link_texts, page_kind
 from ..extract.text import html_to_text
 from ..fetch import Fetcher
 from ..models import FetchResult, Page
@@ -26,12 +26,6 @@ PRIORITY_RE = re.compile(
 )
 PRIORITY_TEXT_RE = re.compile(
     r"\b(contact|about|our story|wholesale|stockists?|retailers?|trade|brands|designers)\b", re.I
-)
-PRODUCT_RE = re.compile(r"/(products?|p|item|items|dp)/[^/?#]+|-p\d{3,}(\.html)?$|\.html$", re.I)
-COLLECTION_RE = re.compile(
-    r"/(collections?|shop|store|catalog|category|categories|products|womens?|mens?|new|sale|"
-    r"clothing|knitwear|sweaters?|accessories)(/|$)",
-    re.I,
 )
 IRRELEVANT_RE = re.compile(
     r"/(blogs?|news|journal|policies|privacy|terms|refund|returns|shipping|cart|checkout|"
