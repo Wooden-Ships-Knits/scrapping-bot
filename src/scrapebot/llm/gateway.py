@@ -6,7 +6,9 @@ per-run budget (LM-09), and each call is recorded with tokens, cost, model and
 prompt version (LM-11). Keys are passed per call and never stored or logged.
 """
 
+import bisect
 import logging
+import re
 import threading
 import time
 from collections.abc import Callable, Mapping
@@ -20,9 +22,12 @@ from .schemas import StoreExtraction
 
 log = logging.getLogger(__name__)
 
-PROMPT_VERSION = "extract-v2"  # prompts/extract_v2.md; earlier versions kept for history
+PROMPT_VERSION = "extract-v3"  # prompts/extract_v3.md; earlier versions kept for history
 MAX_PAGES = 6
 MAX_CHARS_PER_PAGE = 6000
+# A price as written on a page: a currency sign, or a number with two decimals.
+PRICE_MARK_RE = re.compile(r"[€$£¥₹]|\d[.,]\d{2}(?!\d)")
+WINDOW_LEAD = 300  # characters kept before the first price: a heading, a product name
 
 # Environment variable that holds each provider's key, as LiteLLM names them.
 KEY_VARIABLES = {
@@ -96,7 +101,12 @@ def _prompt_template() -> str:
 
 
 def condensed_text(page: Page, limit: int = MAX_CHARS_PER_PAGE) -> str:
-    """The page's main content (trafilatura), falling back to its full visible text."""
+    """The page's main content (trafilatura) when it keeps the page's prices; else the
+    stretch of its visible text with the most prices in it.
+
+    trafilatura is made for articles: on a category page it keeps the SEO paragraph and
+    drops the product grid (knitfactory.com), which is the part the model needs.
+    """
     text = ""
     if page.html:
         try:
@@ -105,9 +115,23 @@ def condensed_text(page: Page, limit: int = MAX_CHARS_PER_PAGE) -> str:
             text = trafilatura.extract(page.html, include_comments=False, include_tables=True) or ""
         except Exception:  # extraction is best effort; the visible text is always there
             text = ""
-    if len(text) < 200:
-        text = page.text
-    return text[:limit]
+    prices_on_page = len(PRICE_MARK_RE.findall(page.text))
+    if len(text) >= 200 and len(PRICE_MARK_RE.findall(text[:limit])) * 2 >= prices_on_page:
+        return text[:limit]
+    return densest_window(page.text, limit)
+
+
+def densest_window(text: str, limit: int) -> str:
+    """The `limit` characters of `text` holding the most prices, from a little before
+    the first of them, so a long cookie banner or filter list cannot fill the window."""
+    if len(text) <= limit:
+        return text
+    starts = [m.start() for m in PRICE_MARK_RE.finditer(text)]
+    if not starts:
+        return text[:limit]
+    best = max(range(len(starts)), key=lambda i: bisect.bisect_left(starts, starts[i] + limit) - i)
+    begin = max(0, starts[best] - WINDOW_LEAD)
+    return text[begin : begin + limit]
 
 
 def build_messages(domain: str, pages: list[Page]) -> list[dict[str, str]]:

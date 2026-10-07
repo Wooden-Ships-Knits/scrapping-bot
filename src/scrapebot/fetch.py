@@ -61,7 +61,7 @@ CHALLENGE_MARKERS = {
     "perimeterx": ("px-captcha", "_pxappid"),
     "incapsula": ("_incapsula_resource", "incap_ses"),
     "sucuri": ("sucuri website firewall", "sucuri_cloudproxy"),
-    "akamai": ("_abck", "bm-verify"),
+    "akamai": ("_abck", "bm-verify", "sec-if-cpt"),
 }
 # A real page can mention these words; a challenge page is short and little else.
 CHALLENGE_MAX_CHARS = 60_000

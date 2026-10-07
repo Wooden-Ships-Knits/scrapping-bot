@@ -34,7 +34,8 @@ class Product(_Record):
     """One product as its source declared it. Values are not cleaned or converted."""
 
     title: str = ""
-    price: float | None = None  # first positive number in `price_raw`
+    price: float | None = None  # read from the source, only to pick the cheapest variant
+    # and to check LLM evidence; never exported (raw means raw: conversion is downstream)
     price_raw: str = ""  # the price exactly as the source gave it
     currency: str = ""  # ISO 4217 as declared by the source; "" when unknown
     vendor: str = ""

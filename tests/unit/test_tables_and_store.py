@@ -30,7 +30,7 @@ def test_every_table_joins_on_run_id_and_all_but_runs_and_inputs_on_domain():
 def test_column_kinds_come_from_annotations():
     kinds = {c.name: c for c in columns(ProductRow)}
     assert kinds["title"] == Column("title", "str", False)
-    assert kinds["price"] == Column("price", "float", True)
+    assert kinds["confidence"] == Column("confidence", "float", True)
     assert kinds["needs_review"] == Column("needs_review", "bool", False)
     assert kinds["tags"].kind == "json"
     assert kinds["raw"].kind == "json"

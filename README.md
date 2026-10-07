@@ -172,7 +172,7 @@ overwritten:
 | `runs` | run | config, version, mode |
 | `inputs` | input link | link as supplied, status or skip reason, the whole input row in `meta` |
 | `stores` | store | `status`, `platform`, `currency` and its source, `layers_tried`, `product_count`, `knit_count`, `focus_count`, `ssl_bypassed` |
-| `products` | product | `title`, `price_raw` as found, `price`, `currency`, `vendor`, `url`, `source`, `evidence_url`, `is_knitwear`, `matched_items` (the items ticked that it matches), full source object in `raw` |
+| `products` | product | `title`, `price_raw` exactly as the source wrote it, `currency`, `vendor`, `url`, `source`, `evidence_url`, `is_knitwear`, `matched_items` (the items ticked that it matches), full source object in `raw` |
 | `pages` | fetched page | `page_kind` (home, about, contact, wholesale, stockist, product, ...), full `text`. Never HTML |
 | `contacts` | contact | `email`, `phone`, `instagram`, `facebook`, `tiktok`, `linkedin`, `pinterest`, with the `source_url` it was found on |
 | `changes` | change between runs | empty until change detection lands (M5) |
@@ -184,8 +184,6 @@ overwritten:
 | `knit_count` | How many products matched knitwear terms |
 | `knit_share` | That count as a percentage of the catalogue — the qualification signal |
 | `knit_examples` | Up to 5 actual product titles. **This is the evidence** — a count alone tells you nothing |
-| `knit_price_min` / `knit_price_max` | The price band of their *sweaters* specifically |
-| `price_min` / `price_max` / `price_median` | Store-wide range, for context |
 | `currency` / `currency_mixed` | Currency the store declares (ISO 4217), and whether products use more than one. Empty when the site does not say; a "$" alone is never trusted |
 | `emails`, `phone`, `instagram`, `facebook` | Contacts |
 | `is_chain` | True for national chains — not wholesale prospects |
@@ -196,8 +194,11 @@ overwritten:
 | `wholesale_page` | Usually empty for retailers; brands sometimes publish one |
 | `about_snippet` | First ~300 chars of their About page |
 
-Read `knit_price_min`/`knit_price_max`, not the store-wide range. A boutique spanning
-$2–$545 tells you nothing; sweaters at $39–$698 tells you whether your price point fits.
+Prices are exported only as written (`price_raw`): `119,99 €`, `$1,395.00`, `Rp 139.000`.
+Reading them into numbers, and converting currencies, is left to the system that
+analyses the data. Two sources give minor units: WooCommerce (`price_raw` `22900`, with
+`prices.currency_minor_unit` in `raw`) and APIs with a `priceCents`-style key (named
+in `raw`).
 
 ## Behaviour
 
@@ -217,14 +218,14 @@ Sites with broken TLS certificates are retried with verification disabled and fl
 
 ## Judging the results
 
-Sort by `knit_share` descending and read `knit_examples`. In the exports, filter
-`products` on `is_knitwear` for the sweaters alone: every product is kept, knitwear is
-flagged. High share plus a price band
-overlapping yours is a strong prospect. Ignore rows where `is_chain` is True.
+Sort by `knit_share` descending and read `knit_examples`, with `price_raw` in
+`products` for their prices. In the exports, filter `products` on `is_knitwear` for the
+sweaters alone: every product is kept, knitwear is flagged. High share plus prices near
+yours is a strong prospect. Ignore rows where `is_chain` is True.
 
 `knit_count` is deliberately conservative about false positives: a product whose only
 knitwear signal is the word "wool" or "shawl" is excluded when its title names a clearly
-woven garment (coat, trousers, vest). That keeps wool coats out of the sweater price band.
+woven garment (coat, trousers, vest). That keeps wool coats out of the sweater count.
 
 ## Development
 

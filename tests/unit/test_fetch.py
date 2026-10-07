@@ -287,6 +287,9 @@ def test_gzipped_bodies_are_decoded():
     assert _decode(gzip.compress(b"<urlset></urlset>"), None) == "<urlset></urlset>"
 
 
+JITTER = 0.003  # seconds
+
+
 def test_requests_to_one_host_never_overlap_and_keep_the_delay(tmp_path):
     """PRD AQ-11: parallel stores, but each host still sees one request at a time."""
     active, overlaps, starts = [0], [0], []
@@ -295,10 +298,11 @@ def test_requests_to_one_host_never_overlap_and_keep_the_delay(tmp_path):
     def transport(url, headers, verify, timeout):
         if url.endswith("robots.txt"):
             return (404, "", url)
+        started = time.monotonic()  # before the lock, so waiting for it adds no jitter
         with lock:
             active[0] += 1
             overlaps[0] = max(overlaps[0], active[0])
-            starts.append(time.monotonic())
+            starts.append(started)
         time.sleep(0.02)
         with lock:
             active[0] -= 1
@@ -312,7 +316,10 @@ def test_requests_to_one_host_never_overlap_and_keep_the_delay(tmp_path):
         t.join()
     assert overlaps[0] == 1
     gaps = [b - a for a, b in pairwise(starts)]
-    assert min(gaps) >= 0.05
+    # The fetcher stamps each request just before calling the transport; the moment
+    # between that stamp and this one varies by a few microseconds per thread, so a
+    # gap can read as 0.0499 under load. The delay itself is kept.
+    assert min(gaps) >= 0.05 - JITTER
 
 
 def test_sitemaps_declared_in_robots_txt(tmp_path):
@@ -375,3 +382,14 @@ def test_hosts_on_one_server_network_share_the_delay(tmp_path):
 def test_unresolvable_hosts_fall_back_to_the_host_name(tmp_path):
     f = Fetcher(cache_dir=tmp_path, delay=0, resolver=lambda host: None)
     assert f.throttle_key("https://www.x.com/a") == "www.x.com"
+
+
+def test_akamai_behavioural_challenge_is_a_challenge():
+    """next.co.uk, 7 Oct 2026: the browser was answered 200 with this page, and its
+    text ('Powered and protected by Privacy') was read as a store page."""
+    from pathlib import Path
+
+    body = (
+        Path(__file__).parents[1] / "fixtures/http/next.co.uk-2026-10-07-akamai-challenge.html"
+    ).read_text()
+    assert detect_challenge(200, body) == "akamai"
