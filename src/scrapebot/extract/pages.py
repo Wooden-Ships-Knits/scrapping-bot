@@ -14,6 +14,17 @@ META_DESC_RE = re.compile(
     r'<meta[^>]+name=["\']description["\'][^>]+content=["\']([^"\']*)["\']', re.I
 )
 
+# Product and collection URLs. Discovery picks pages to fetch with these, and
+# page_kind names fetched pages with them, so the two cannot disagree.
+PRODUCT_RE = re.compile(r"/(products?|p|item|items|dp)/[^/?#]+|-p\d{3,}(\.html)?$|\.html$", re.I)
+COLLECTION_RE = re.compile(
+    r"/(collections?|shop|store|catalog|category|categories|products|womens?|mens?|new|sale|"
+    r"clothing|knitwear|sweaters?|accessories)(/|$)",
+    re.I,
+)
+# '/en', '/en-gb', '/de_at': the home page in one language.
+LANGUAGE_ROOT_RE = re.compile(r"^/[a-z]{2}([\-_][a-z]{2})?$", re.I)
+
 # Checked in order against the URL path; the first match names the page.
 PAGE_KINDS = (
     ("wholesale", re.compile(r"wholesale|trade[\-_ ]?account|become[\-_ ]a", re.I)),
@@ -21,15 +32,15 @@ PAGE_KINDS = (
     ("contact", re.compile(r"contact", re.I)),
     ("about", re.compile(r"about|our[\-_ ]story", re.I)),
     ("brands", re.compile(r"/(brands?|designers?)(/|$)", re.I)),
-    ("product", re.compile(r"/products?/", re.I)),
-    ("collection", re.compile(r"/(collections?|shop|catalog|category)(/|$)", re.I)),
+    ("product", PRODUCT_RE),
+    ("collection", COLLECTION_RE),
 )
 
 
 def page_kind(url: str, home_url: str = "") -> str:
     """home | wholesale | stockist | contact | about | brands | product | collection | other."""
     path = urlparse(url).path.rstrip("/")
-    if not path or url.rstrip("/") == home_url.rstrip("/"):
+    if not path or url.rstrip("/") == home_url.rstrip("/") or LANGUAGE_ROOT_RE.match(path):
         return "home"
     for kind, rx in PAGE_KINDS:
         if rx.search(path):

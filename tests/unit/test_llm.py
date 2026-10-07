@@ -164,7 +164,7 @@ def test_gateway_parses_validates_and_records_the_call():
     assert (call.status, call.model, call.prompt_version) == (
         "ok",
         "openai/gpt-4o-mini",
-        "extract-v2",
+        "extract-v3",
     )
     assert call.input_tokens > 0
     assert call.cost_usd > 0
@@ -402,3 +402,84 @@ def test_a_failed_llm_says_why_the_store_has_no_products():
     assert got.status == "no_products"
     assert got.error.startswith("LLM: Penyedia sedang sibuk")
     assert "llm_failed" in got.layers_tried
+
+
+def test_price_evidence_reads_european_prices():
+    """knitfactory.com, 7 Oct 2026: the page says '€ 41,95' and the model wrote 41.95."""
+    page = Page(
+        url="https://x.com/w",
+        text="-30% Casy Pullover (2) 6 colours € 59,95 € 41,95 Luna Spencer € 1.069,95",
+    )
+    kept, dropped = apply_evidence_rule(
+        extraction(
+            ExtractedProduct(title="Casy Pullover", price="41.95", source_url="https://x.com/w"),
+            ExtractedProduct(title="Luna Spencer", price="€1069.95", source_url="https://x.com/w"),
+        ),
+        [page],
+        "m",
+        "v",
+    )
+    assert [(p.title, p.price) for p in kept] == [
+        ("Casy Pullover", 41.95),
+        ("Luna Spencer", 1069.95),
+    ]
+    assert dropped == []
+
+
+def test_a_repeated_title_is_not_counted_as_dropped():
+    """Dropped means failed the evidence rule; a second copy of a kept product did not."""
+    pages = [Page(url=f"https://x.com/{i}", text="Lambswool Crew 98.00") for i in range(2)]
+    claims = extraction(
+        *[
+            ExtractedProduct(title="Lambswool Crew", price="98.00", source_url=f"https://x.com/{i}")
+            for i in range(2)
+        ]
+    )
+    kept, dropped = apply_evidence_rule(claims, pages, "m", "v")
+    assert len(kept) == 1
+    assert dropped == []
+
+
+def test_a_category_page_sends_its_product_grid_to_the_model():
+    """knitfactory.com, 7 Oct 2026: trafilatura kept the SEO paragraph and dropped the
+    grid, so the model saw no products on six category pages."""
+    from pathlib import Path
+
+    from scrapebot.extract.text import html_to_text
+    from scrapebot.llm.gateway import MAX_CHARS_PER_PAGE, condensed_text
+
+    html = (
+        Path(__file__).parents[1] / "fixtures/http/knitfactory.com-2026-10-07-category.html"
+    ).read_text()
+    url = "https://www.knitfactory.com/en/women/clothing/pullover-sweaters"
+    text = condensed_text(Page(url=url, html=html, text=html_to_text(html), kind="collection"))
+    assert "Casy Pullover" in text
+    assert "41,95" in text
+    assert len(text) <= MAX_CHARS_PER_PAGE
+
+
+def test_an_article_page_still_sends_its_main_content():
+    prose = "".join(
+        f"<p>{line}</p>"
+        for line in (
+            "We knit every sweater by hand in our studio in Porto, one at a time.",
+            "Our wool comes from a small farm in the Serra da Estrela mountains.",
+            "Each piece takes two days, and we mend anything we make for free.",
+            "We started in 2011 with one machine and a rented room above a bakery.",
+        )
+    )
+    html = f"<html><body><nav>Home Shop Cart</nav><article>{prose}</article></body></html>"
+    from scrapebot.extract.text import html_to_text
+    from scrapebot.llm.gateway import condensed_text
+
+    text = condensed_text(Page(url="https://x.com/story", html=html, text=html_to_text(html)))
+    assert text.startswith("We knit every sweater")
+
+
+def test_prompt_asks_for_titles_in_the_page_language():
+    """herrlicher.com, 7 Oct 2026: the model wrote 'Model Winona Hoodie' for the German
+    'Modell Winona Hoodie', and the evidence rule rightly dropped 27 such products."""
+    content = build_messages("x.com", [Page(url="https://x.com", text="Modell Winona 89,95 €")])
+    text = content[0]["content"]
+    assert "Do not translate" in text
+    assert "Do not convert prices" in text

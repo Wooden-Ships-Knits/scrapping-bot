@@ -3,6 +3,7 @@ import csv
 from scrapebot.inputs.resolve import ResolvedInput
 from scrapebot.models import Acquired, Contact, Page, Product
 from scrapebot.summary import SUMMARY_COLUMNS, summary_row, write_summary_csv
+from scrapebot.tables import ProductRow, columns
 
 HOME = "https://monkeesofnaples.com"
 
@@ -49,8 +50,6 @@ def test_summary_computes_knit_signals():
     assert row["product_count"] == 4
     assert row["knit_share"] == "50%"
     assert "Cher Sweater in Eggnog" in row["knit_examples"]
-    assert (row["knit_price_min"], row["knit_price_max"]) == (139.0, 698.0)
-    assert (row["price_min"], row["price_max"]) == (39.0, 698.0)
     assert row["currency"] == "USD"
 
 
@@ -69,8 +68,6 @@ def test_summary_handles_a_store_with_no_products():
     assert (row["product_count"], row["knit_count"]) == (0, 0)
     assert row["knit_share"] == ""
     assert row["knit_examples"] == ""
-    assert row["price_min"] == ""
-    assert row["knit_price_min"] == ""
 
 
 def test_summary_flags_chains_by_store_name():
@@ -136,3 +133,11 @@ def test_summary_csv_for_pasted_links_has_a_link_column(tmp_path):
     )
     with path.open() as fh:
         assert next(csv.DictReader(fh))["link"] == "a.com"
+
+
+def test_prices_are_exported_as_written_never_as_numbers():
+    """Raw means raw: converting '119,99 €' to a number is left to the next system."""
+    assert not any("price" in c for c in SUMMARY_COLUMNS)
+    names = [c.name for c in columns(ProductRow)]
+    assert "price_raw" in names
+    assert "price" not in names

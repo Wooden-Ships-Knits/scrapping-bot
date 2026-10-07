@@ -153,7 +153,9 @@ parallel while each keeps its own delay.
 
 - A 401, 403 or 429 response sets `blocked`; a network or TLS failure sets `error`.
   **Built.**
-- Challenge pages (Cloudflare "Just a moment…", `cf-chl`) set `blocked`. **Planned.**
+- Challenge pages set `blocked`: Cloudflare, DataDome, PerimeterX, Incapsula, Sucuri
+  and Akamai (including its behavioural `sec-if-cpt` page, which the browser receives
+  with status 200). Markers are in `CHALLENGE_MARKERS` in `fetch.py`. **Built.**
 - Platform from homepage markers. **Built.**
 - Currency, with its source: Shopify `Shopify.currency.active`, OpenGraph
   `og:price:currency`, or JSON-LD `priceCurrency`. A currency symbol alone is never
@@ -227,10 +229,23 @@ For a store that still has no products after every earlier stage
 ([ADR 0004](../decisions/0004-llm-gateway-litellm-instructor.md)):
 
 - LiteLLM reaches any provider; instructor returns validated Pydantic objects.
-- Input: the page text the bot already holds, condensed with `trafilatura`.
+- Input: the page text the bot already holds, up to 6,000 characters a page. The
+  main content from `trafilatura` is sent when it keeps the page's prices; on a
+  category page it usually drops the product grid, so the stretch of visible text
+  with the most prices is sent instead.
 - Schema: `store_type`, `products[{title, price, currency, vendor, source_url}]`,
   `brands_carried`, `has_wholesale_page`, `confidence`.
-- Evidence rule: a product whose `source_url` is not one of the pages sent is dropped.
+- Pages sent: up to 6, collection and product pages first. A page is a collection or
+  product page by the same URL patterns discovery uses to pick it
+  (`extract/pages.py`), so a category page such as `/en/women/clothing/pullover-sweaters`
+  is sent before the customer-service page.
+- Evidence rule: a product is dropped unless its `source_url` is one of the pages
+  sent, its title is in that page's text, and its price is a number on that page.
+  Prices are compared as numbers, so `41.95` matches `€ 41,95`. A second copy of a
+  kept title is skipped, not counted as dropped.
+- The prompt (`llm/prompts/extract_v3.md`) asks for titles and prices copied
+  character for character in the page's language: a translated title fails the
+  evidence rule.
 - Every row gets `needs_review = true`. Model, prompt version, tokens and cost are
   recorded. A per-run budget stops LLM calls when reached; an optional fallback order
   covers provider failures. A passing failure (busy provider 503, rate limit, timeout,
@@ -242,7 +257,14 @@ For a store that still has no products after every earlier stage
 ### 4.10 Raw records — Built
 
 Acquisition stores values as found. No price conversion, no currency normalisation,
-no deduplication across sources. HTML is never stored; page text is.
+no deduplication across sources. HTML is never stored; page text is. Prices are
+exported only as `price_raw`, exactly as the source wrote it; reading them into
+numbers is left to the analysis system. Internally `extract/prices.py` reads a number
+(decimal comma or point: `119,99 €` is 119.99, `1.299,00 €` is 1299.0, `Rp 139.000`
+is 139000.0) only to pick a product's cheapest variant and to check LLM evidence.
+Contacts are as found, with their page: emails and `tel:` links from the HTML, phone
+numbers written out only from the visible text, since markup is full of digit runs
+(SVG paths, coordinates) that read like a US number.
 
 ### 4.11 Canonical tables and writers — Built (Sheets and PostgreSQL planned)
 
@@ -265,8 +287,8 @@ by the chosen writers into `data/runs/<run_id>/export/`:
 Every writer has a round-trip contract test (`tests/contract/test_writers.py`). A
 failing writer is logged and reported; the other formats are still written.
 
-`summary.csv` keeps v1's one-row-per-link qualification view (knitwear share, price
-band, contacts). It is derived while page HTML is in memory and will be replaced by
+`summary.csv` keeps v1's one-row-per-link qualification view (knitwear share,
+contacts). It is derived while page HTML is in memory and will be replaced by
 the analysis phase.
 
 ### 4.12 Change detection — Planned

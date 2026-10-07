@@ -60,3 +60,16 @@ def test_extract_emails_drops_placeholders_and_error_tracker_addresses():
         " name@domain.com hello@realshop.com"
     )
     assert extract_emails(html) == ["hello@realshop.com"]
+
+
+def test_numbers_in_markup_are_not_phones():
+    """knitfactory.com, 7 Oct 2026: SVG path data ('109.281 2184.97') in a data: URI
+    came out as four US phone numbers on every page."""
+    from pathlib import Path
+
+    html = (
+        Path(__file__).parents[1] / "fixtures/http/knitfactory.com-2026-10-07-category.html"
+    ).read_text()
+    assert extract_phones(html) == []
+    svg = "<svg><path d='M2137.67 70.4C2137.67 109.281 2184.97 140.8'/></svg><p>Hi</p>"
+    assert extract_phones(svg) == []

@@ -1,5 +1,4 @@
-from scrapebot.extract.prices import parse_price, price_stats
-from scrapebot.models import Product
+from scrapebot.extract.prices import parse_price
 
 
 def test_parse_price_handles_common_formats():
@@ -22,16 +21,21 @@ def test_parse_price_takes_first_number_in_a_range():
     assert parse_price("$120.00 - $180.00") == 120.0
 
 
-def test_price_stats_returns_min_max_median():
-    items = [
-        Product(title="a", price=10.0),
-        Product(title="b", price=30.0),
-        Product(title="c", price=20.0),
-        Product(title="d", price=None),
-    ]
-    assert price_stats(items) == (10.0, 30.0, 20.0)
+def test_parse_price_reads_a_decimal_comma():
+    """herrlicher.com, 7 Oct 2026: '119,99 €' was stored as 11999.0."""
+    assert parse_price("119,99 €") == 119.99
+    assert parse_price("€ 49,95") == 49.95
+    assert parse_price("€ 24,-") == 24.0
+    assert parse_price("1.299,00 €") == 1299.0
 
 
-def test_price_stats_on_empty_input():
-    assert price_stats([]) == (None, None, None)
-    assert price_stats([Product(title="a", price=None)]) == (None, None, None)
+def test_parse_price_reads_thousands_separators():
+    assert parse_price("1 299,00 kr") == 1299.0
+    assert parse_price("1 299,00 kr") == 1299.0
+    assert parse_price("CHF 1'299.00") == 1299.0
+    assert parse_price("Rp 139.000") == 139000.0
+    assert parse_price("$1,234,567") == 1234567.0
+
+
+def test_a_space_joins_only_groups_of_three_digits():
+    assert parse_price("36 38") == 36.0

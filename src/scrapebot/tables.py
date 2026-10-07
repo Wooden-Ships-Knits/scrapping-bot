@@ -76,8 +76,7 @@ class ProductRow(Row):
     run_id: str
     domain: str
     title: str
-    price_raw: str = ""
-    price: float | None = None
+    price_raw: str = ""  # as the source wrote it; never read into a number here
     currency: str = ""
     vendor: str = ""
     product_type: str = ""
