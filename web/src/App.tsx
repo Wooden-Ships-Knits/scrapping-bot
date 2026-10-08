@@ -2,16 +2,20 @@ import { useState } from "react";
 
 import { Sidebar } from "./components/shell/Sidebar";
 import { Topbar, type Crumb } from "./components/shell/Topbar";
+import { Detection } from "./pages/Detection";
 import { History } from "./pages/History";
 import { Overview } from "./pages/Overview";
 import { RunPage } from "./pages/RunPage";
 import { Scrape } from "./pages/Scrape";
+import { Traffic } from "./pages/Traffic";
 import { useRoute, type Route } from "./router";
 import { useTheme } from "./theme";
 
 const CRUMBS: Record<Route["page"], Crumb[]> = {
   new: [{ label: "Scrape" }, { label: "Mulai run baru" }],
   overview: [{ label: "Overview" }],
+  detection: [{ label: "Deteksi" }],
+  traffic: [{ label: "Traffic toko" }],
   history: [{ label: "Riwayat run" }],
   run: [{ label: "Riwayat run", href: "#/runs" }, { label: "Detail run" }],
 };
@@ -37,6 +41,8 @@ export function App() {
         <main>
           {route.page === "new" && <Scrape />}
           {route.page === "overview" && <Overview />}
+          {route.page === "detection" && <Detection />}
+          {route.page === "traffic" && <Traffic />}
           {route.page === "history" && <History />}
           {route.page === "run" && <RunPage key={route.runId} runId={route.runId} />}
         </main>

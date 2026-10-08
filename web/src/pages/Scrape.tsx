@@ -3,7 +3,6 @@ import {
   ChevronRight,
   Columns3,
   FileSpreadsheet,
-  Info,
   Link2,
   Play,
   Search,
@@ -38,9 +37,6 @@ export function Scrape() {
   const [upload, setUpload] = useState<Upload | null>(null);
   const [urlColumn, setUrlColumn] = useState("");
   const [writers, setWriters] = useState<string[]>([]);
-  const [testMode, setTestMode] = useState(true);
-  const [testLimit, setTestLimit] = useState(2);
-  const [skipTest, setSkipTest] = useState(false);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -63,7 +59,7 @@ export function Scrape() {
       .catch(() => setFindOptions(null));
   }, []);
 
-  // Follow a discovery until its test run starts, then open that run.
+  // Follow a discovery until its run starts, then open that run.
   const discoveryId = discovery?.discovery_id;
   const discovering = discovery !== null && (discovery.state === "searching" || discovery.state === "starting_run");
   useEffect(() => {
@@ -86,7 +82,6 @@ export function Scrape() {
       .then((o) => {
         setOptions(o);
         setWriters(o.default_writers);
-        setTestLimit(o.default_test_limit);
       })
       .catch(() => setError("Server tidak bisa dihubungi. Jalankan `make serve` lalu muat ulang."));
   }, []);
@@ -129,14 +124,12 @@ export function Scrape() {
     }
   }
 
-  const needsSkipConfirm = !testMode && preview !== null && !preview.tested;
   const canRun =
     source !== null &&
     preview !== null &&
     preview.stores > 0 &&
     !preview.too_many &&
     writers.length > 0 &&
-    (!needsSkipConfirm || skipTest) &&
     !busy &&
     !previewing;
 
@@ -164,7 +157,6 @@ export function Scrape() {
           items: form.items,
           terms: form.items.includes(OTHER) ? findTerms : [],
           writers,
-          test_limit: testLimit,
         }),
       );
     } catch (e) {
@@ -185,9 +177,6 @@ export function Scrape() {
         source,
         url_column: urlColumn.trim() || "auto",
         writers,
-        test_mode: testMode,
-        test_limit: testLimit,
-        skip_test_run: skipTest,
       });
       navigate(`/runs/${run.run_id}`);
     } catch (e) {
@@ -202,7 +191,6 @@ export function Scrape() {
   const cli = [
     "uv run scrapebot run",
     upload ? upload.filename : "links.txt",
-    testMode ? `--limit ${testLimit}` : "",
     writers.length ? `-f ${writers.join(",")}` : "",
     urlColumn.trim() ? `--url-column ${urlColumn.trim()}` : "",
   ]
@@ -297,37 +285,6 @@ export function Scrape() {
           />
 
           <Menu
-            ariaLabel="Mode uji"
-            className={`chip ${testMode ? "on" : ""}`}
-            icon={<span className="dot" aria-hidden="true" />}
-            label={
-              mode === "find" || testMode ? `Mode uji: aktif (${testLimit} toko)` : "Mode uji: mati"
-            }
-          >
-            <p className="menu-title">Mode uji</p>
-            {mode === "find" ? (
-              <p className="menu-note">Toko yang ditemukan selalu diuji dulu; seluruh daftar dijalankan dari halaman run.</p>
-            ) : (
-              <label className="menu-check">
-                <input type="checkbox" checked={testMode} onChange={(e) => setTestMode(e.target.checked)} />
-                Jalankan beberapa toko pertama dulu
-              </label>
-            )}
-            {(mode === "find" || testMode) && (
-              <label className="menu-field">
-                Jumlah toko
-                <input
-                  type="number"
-                  min={1}
-                  max={50}
-                  value={testLimit}
-                  onChange={(e) => setTestLimit(Math.max(1, Math.min(50, Number(e.target.value) || 1)))}
-                />
-              </label>
-            )}
-          </Menu>
-
-          <Menu
             ariaLabel="Format keluaran"
             label={
               <>
@@ -364,32 +321,18 @@ export function Scrape() {
 
           {mode === "find" ? (
             <button type="submit" className="button primary" disabled={!canFind}>
-              {busy ? "Memulai…" : discovering ? "Sedang mencari…" : "Cari toko & mulai uji"}
+              {busy ? "Memulai…" : discovering ? "Sedang mencari…" : "Cari toko & mulai scrape"}
               {!busy && !discovering && <Search size={14} />}
             </button>
           ) : (
             <button type="submit" className="button primary" disabled={!canRun}>
-              {busy ? "Memulai…" : testMode ? "Mulai run uji" : "Mulai scrape"}
+              {busy ? "Memulai…" : "Mulai scrape"}
               {!busy && <Play size={14} />}
             </button>
           )}
         </div>
       </form>
 
-      {mode === "links" && needsSkipConfirm && (
-        <div className="notice info">
-          <Info size={18} />
-          <span>
-            <strong>Daftar ini belum pernah diuji.</strong> Sebaiknya jalankan mode uji dulu dan periksa hasilnya sebelum
-            memulai unduhan skala penuh.
-          </span>
-          <span className="spacer" />
-          <label className="menu-check">
-            <input type="checkbox" checked={skipTest} onChange={(e) => setSkipTest(e.target.checked)} />
-            Saya sengaja melewati mode uji
-          </label>
-        </div>
-      )}
       {writers.length === 0 && options && <div className="notice bad">Pilih minimal satu format keluaran.</div>}
       {error && (
         <div className="notice bad" role="alert">

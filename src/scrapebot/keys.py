@@ -29,6 +29,7 @@ KEY_PATTERNS = (
     re.compile(r"AIza[0-9A-Za-z_\-]{30,}"),
     re.compile(r"gsk_[A-Za-z0-9]{20,}"),
     re.compile(r"tvly-[A-Za-z0-9_\-]{16,}"),
+    re.compile(r"shp(?:at|ss|ca|pa)_[A-Za-z0-9]{16,}"),  # Shopify Admin tokens and secrets
     re.compile(
         r"(?i)\b(api[_-]?key|authorization|x-api-key)(\"?\s*[:=]\s*\"?)(?:Bearer\s+)?[^\s\"',}]{8,}"
     ),

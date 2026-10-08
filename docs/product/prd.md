@@ -88,9 +88,10 @@ flowchart LR
 2. The operator picks region **United States**, language **English** and LLM provider
    **Gemini**, then enters its API key.
 3. The operator picks the **Excel + Parquet** formats.
-4. **Test mode** is on by default: the bot runs the first 2 links end to end. The
-   operator checks the results.
-5. The operator runs the rest. Progress shows per store.
+4. The operator checks the preview (links found, unique stores, skipped links) and
+   starts the scrape of the whole list.
+5. Progress shows per store. The operator checks the first stores as they finish and
+   can stop the run and resume it later.
 6. The operator downloads the result files. The run report shows: in = processed +
    skipped, coverage per source, and token cost.
 7. A month later, the same run is repeated. The bot flags new products, removed
@@ -145,7 +146,7 @@ as the CLI's; the interface only reads and writes configuration.
 │ Penyedia  [Gemini ▾]  │  Terdeteksi: 300 tautan · 287 domain unik ·        │
 │ Model     [.......]   │              13 duplikat                           │
 │ API key   [••••••]    │                                                    │
-│ [Tes koneksi]         │  [ ] Mode uji (2 tautan pertama)   [ Jalankan ]    │
+│ [Tes koneksi]         │                                  [ Mulai scrape ]  │
 │ Batas biaya [$5   ]   │                                                    │
 │                       │  Progres ─────────────────────────────  112 / 287  │
 │ Keluaran              │  domain              status   sumber      produk   │
@@ -260,11 +261,12 @@ Priorities:
 
 | ID | Requirement | Priority | Acceptance criteria |
 |---|---|---|---|
-| OP-01 | **Test mode (LIMIT)**: run the first N links (default 2) end to end before the full run. On by default in the interface | Must | A full run cannot start in the interface until test mode has run for that input, unless it is deliberately switched off |
+| OP-01 | **Test mode (LIMIT)**: run the first N links end to end (CLI `--limit`). The interface always runs the whole list and relies on the preview, live progress and stop/resume instead | Must | `--limit 2` visits exactly the first 2 stores; the interface offers no test step |
 | OP-02 | Run report: reconciliation (in = processed + skipped), count per status, coverage per source, the `needs_review` and `no_products` lists, duration and cost | Must | The reconciliation numbers always match |
 | OP-03 | A run can resume after it stops, without repeating stores already done | Must | Stopping a run midway and resuming it yields the same data |
 | OP-04 | The CLI and the interface use the same configuration and code | Must | A configuration exported from the interface runs through the CLI |
 | OP-05 | Run configuration can be saved and loaded again | Should | The monthly run uses the same preset |
+| OP-06 | Detection view: across every run, the share of store visits blocked, how stores block (challenge vendor or HTTP status), and per store whether it always, sometimes or no longer blocks | Should (built) | The operator can copy the stores that always block and leave them out of the next list |
 
 ### 7.9 Store discovery
 
@@ -280,7 +282,7 @@ The business focuses only on knitwear, so discovery and tagging aim at it.
 | DS-05 | Stores known only by name or profile get a website lookup (one search per store) | Must | Column `website_source` = `lookup` |
 | DS-06 | Discovery never opens store websites and never judges stores. Judging uses the run's data | Must | No requests to store websites during `discover` |
 | DS-07 | Every product gets an `is_knitwear` flag and every store a `knit_count`. No product is dropped | Must | Non-knitwear products stay in the `products` table |
-| DS-08 | Store discovery from the web interface: the operator types how many stores, picks a region or continent and ticks the items (knitwear, cashmere/wool, fall/winter, spring/summer, or their own words); one click finds the stores and starts a test run on them | Should (built) | The operator finds and tests stores without a terminal |
+| DS-08 | Store discovery from the web interface: the operator types how many stores, picks a region or continent and ticks the items (knitwear, cashmere/wool, fall/winter, spring/summer, or their own words); one click finds the stores and scrapes all of them | Should (built) | The operator finds and scrapes stores without a terminal |
 | DS-09 | The items ticked are recorded per product (`matched_items`) and counted per store (`focus_count`); nothing is dropped | Should (built) | A product's matched items are visible in every export |
 
 ## 8. Data model

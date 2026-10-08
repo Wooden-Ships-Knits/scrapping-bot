@@ -9,7 +9,6 @@ const OPTIONS = {
   default_writers: ["xlsx", "csv"],
   suffixes: [".txt", ".csv"],
   max_links: 1000,
-  default_test_limit: 2,
   max_upload_mb: 20,
 };
 
@@ -23,7 +22,6 @@ function preview(overrides = {}) {
     store_examples: ["a.com", "b.com"],
     max_links: 1000,
     too_many: false,
-    tested: false,
     ...overrides,
   };
 }
@@ -55,12 +53,12 @@ afterEach(() => {
 });
 
 describe("Scrape", () => {
-  it("previews pasted links, then starts a test run", async () => {
+  it("previews pasted links, then starts the scrape", async () => {
     mockApi();
     const user = userEvent.setup();
     render(<Scrape />);
 
-    const run = await screen.findByRole("button", { name: "Mulai run uji" });
+    const run = await screen.findByRole("button", { name: "Mulai scrape" });
     expect(run).toBeDisabled();
 
     await user.type(screen.getByRole("textbox", { name: "Tautan toko" }), "a.com b.com");
@@ -78,25 +76,7 @@ describe("Scrape", () => {
       source: { text: "a.com b.com" },
       url_column: "auto",
       writers: ["xlsx", "csv"],
-      test_mode: true,
-      test_limit: 2,
-      skip_test_run: false,
     });
-  });
-
-  it("asks for confirmation before a full run of an untested list", async () => {
-    mockApi(preview({ tested: false }));
-    const user = userEvent.setup();
-    render(<Scrape />);
-    await user.type(await screen.findByRole("textbox", { name: "Tautan toko" }), "a.com");
-    await user.click(screen.getByRole("button", { name: "Mode uji" }));
-    await user.click(screen.getByRole("checkbox", { name: "Jalankan beberapa toko pertama dulu" }));
-
-    const run = screen.getByRole("button", { name: "Mulai scrape" });
-    expect(await screen.findByText(/belum pernah diuji/)).toBeInTheDocument();
-    expect(run).toBeDisabled();
-    await user.click(screen.getByRole("checkbox", { name: "Saya sengaja melewati mode uji" }));
-    await waitFor(() => expect(run).toBeEnabled());
   });
 
   it("blocks lists over the limit and needs at least one format", async () => {
@@ -105,7 +85,7 @@ describe("Scrape", () => {
     render(<Scrape />);
     await user.type(await screen.findByRole("textbox", { name: "Tautan toko" }), "a.com");
     expect(await screen.findByText(/Terlalu banyak/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Mulai (run uji|scrape)/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Mulai scrape" })).toBeDisabled();
 
     await user.click(screen.getByRole("button", { name: "Format keluaran" }));
     await user.click(screen.getByRole("checkbox", { name: "Excel" }));
@@ -117,9 +97,9 @@ describe("Scrape", () => {
     mockApi();
     const user = userEvent.setup();
     render(<Scrape />);
-    await screen.findByRole("button", { name: "Mulai run uji" });
+    await screen.findByRole("button", { name: "Mulai scrape" });
     await user.click(screen.getByText("Perintah yang setara (CLI)"));
-    expect(screen.getByText("uv run scrapebot run links.txt --limit 2 -f xlsx,csv")).toBeInTheDocument();
+    expect(screen.getByText("uv run scrapebot run links.txt -f xlsx,csv")).toBeInTheDocument();
   });
 
   it("shows the server's explanation when a run cannot start", async () => {
@@ -127,7 +107,7 @@ describe("Scrape", () => {
     const user = userEvent.setup();
     render(<Scrape />);
     await user.type(await screen.findByRole("textbox", { name: "Tautan toko" }), "a.com");
-    const run = screen.getByRole("button", { name: /Mulai (run uji|scrape)/ });
+    const run = screen.getByRole("button", { name: "Mulai scrape" });
     await waitFor(() => expect(run).toBeEnabled());
     await user.click(run);
     expect(await screen.findByRole("alert")).toHaveTextContent("The input holds no links");
@@ -180,12 +160,12 @@ function mockFind(findOptions = FIND_OPTIONS) {
 }
 
 describe("Scrape: find stores", () => {
-  it("finds stores by count, region and items, then opens the test run", async () => {
+  it("finds stores by count, region and items, then opens the run", async () => {
     mockFind();
     const user = userEvent.setup();
     render(<Scrape />);
 
-    const find = await screen.findByRole("button", { name: "Cari toko & mulai uji" });
+    const find = await screen.findByRole("button", { name: "Cari toko & mulai scrape" });
     expect(screen.getByRole("tab", { name: "Cari toko otomatis" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByTestId("find-sources")).toHaveTextContent("Agen AI (openai/gpt-5-search-api)");
 
@@ -207,7 +187,6 @@ describe("Scrape: find stores", () => {
       items: ["knitwear", "fall_winter", "other"],
       terms: ["poncho", "cape"],
       writers: ["xlsx", "csv"],
-      test_limit: 2,
     });
     await waitFor(() => expect(window.location.hash).toBe("#/runs/R9"), { timeout: 4000 });
   });
@@ -216,7 +195,7 @@ describe("Scrape: find stores", () => {
     mockFind();
     const user = userEvent.setup();
     render(<Scrape />);
-    const find = await screen.findByRole("button", { name: "Cari toko & mulai uji" });
+    const find = await screen.findByRole("button", { name: "Cari toko & mulai scrape" });
     const count = screen.getByRole("spinbutton", { name: /Jumlah toko/ });
     await user.clear(count);
     await user.type(count, "0");
@@ -233,6 +212,6 @@ describe("Scrape: find stores", () => {
     expect(await screen.findByRole("textbox", { name: "Tautan toko" })).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "Cari toko otomatis" }));
     expect(screen.getByTestId("find-sources")).toHaveTextContent("Sumber aktif: tidak ada");
-    expect(screen.getByRole("button", { name: "Cari toko & mulai uji" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cari toko & mulai scrape" })).toBeDisabled();
   });
 });

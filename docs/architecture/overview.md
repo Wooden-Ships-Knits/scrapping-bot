@@ -1,6 +1,6 @@
 # Architecture
 
-**Updated:** 2026-10-07
+**Updated:** 2026-10-08
 **Requirements:** [PRD](../product/prd.md)
 **Decisions:** [0001](../decisions/0001-layered-acquisition-llm-last.md) ·
 [0002](../decisions/0002-camoufox-for-rendering-only.md) ·
@@ -8,7 +8,8 @@
 [0004](../decisions/0004-llm-gateway-litellm-instructor.md) ·
 [0006](../decisions/0006-tidy-tables-multiformat-writers.md) ·
 [0007](../decisions/0007-typescript-web-ui-local-api.md) ·
-[0008](../decisions/0008-store-discovery-paid-search.md)
+[0008](../decisions/0008-store-discovery-paid-search.md) ·
+[0009](../decisions/0009-own-store-traffic-from-shopify-analytics.md)
 
 `scrapebot` finds knitwear stores through paid search APIs (`scrapebot discover`), or
 takes a bulk list of store links in any format, then collects raw data from each
@@ -82,7 +83,8 @@ flowchart TD
 |---|---|---|
 | CLI | `scrapebot run <input>`, optionally with a YAML config. Used directly and by automation (n8n, cron) | Built |
 | Discovery | `scrapebot discover -c discover.yaml`, or the web app's *Cari toko otomatis* tab: finds stores and writes `data/discover/<id>/stores.csv`, the input of a run (section 4.0) | Built |
-| Web app + local API | `scrapebot serve`: React + TypeScript (`web/`) over a local FastAPI service (`api/`) on 127.0.0.1. Paste or upload links, preview, choose formats, test mode with a gate before untested full runs, live progress (SSE), history, downloads ([ADR 0007](../decisions/0007-typescript-web-ui-local-api.md)) | Built (LLM settings come with M3) |
+| Traffic toko | A page of the web app: live sessions on our own Shopify store from Shopify Analytics, separate from the pipeline (section 4.14) | Built |
+| Web app + local API | `scrapebot serve`: React + TypeScript (`web/`) over a local FastAPI service (`api/`) on 127.0.0.1. Paste or upload links, preview, choose formats, run the whole list, live progress (SSE), stop and resume, history, downloads ([ADR 0007](../decisions/0007-typescript-web-ui-local-api.md)) | Built (LLM settings come with M3) |
 
 Both build the same `RunConfig`. The pipeline is split into `prepare` (read and
 resolve the input, create the run folder with `config.json` and the `inputs` table)
@@ -93,8 +95,9 @@ so its presence marks a finished run; a folder without it and no live worker is 
 as *interrupted*.
 
 API routes: `GET /api/options`, `POST /api/uploads`, `POST /api/preview`,
-`POST /api/runs`, `POST /api/runs/{id}/full`, `GET /api/runs`, `GET /api/runs/{id}`,
-`GET /api/runs/{id}/events` (SSE), `GET /api/runs/{id}/download/{key}`. The web app's
+`POST /api/runs`, `GET /api/runs`, `GET /api/runs/{id}`,
+`GET /api/runs/{id}/events` (SSE), `GET /api/runs/{id}/download/{key}`,
+`GET /api/detection`, `GET /api/traffic?period=1h|24h|7d`. The web app's
 TypeScript types are generated from the API's OpenAPI schema (`make api-types`); CI
 fails when they drift.
 
@@ -103,6 +106,13 @@ the API returns. A store's status is drawn by shape as well as label: a filled b
 `ok`, an outlined one for `no_products` and `js_required`, and a dashed one for `blocked`,
 `error` and skipped links. The overview charts products per run for the last 14 runs,
 using `GET /api/runs`.
+
+The *Deteksi* page (`api/detection.py`) reads `stores.jsonl` of every run folder and
+counts the visits that ended `blocked`: how (the challenge vendor or HTTP status in the
+store's `error`), per run, and per store. A store is *always* blocking when every visit
+was blocked, *sometimes* when the last one was but an earlier one was not, and
+*recovered* when it blocked before but not on the last visit. It only reports blocks;
+the bot never works around them (ADR 0002).
 
 ```yaml
 # config.yaml (example)
@@ -158,7 +168,7 @@ From the web app, `POST /api/discover` takes a store count, a region and the ite
 and cost caps that grow with the count). The agent then runs area after area, telling
 the model which stores it already has, until the count is reached, a round finds
 nothing new, or a cap is hit. The stores with a website (the ones most sources agree on
-first) become `to_visit.csv`, and a test run starts on them; `GET /api/discover/{id}`
+first) become `to_visit.csv`, and a run starts on all of them; `GET /api/discover/{id}`
 reports progress until then. One discovery runs at a time, in its own thread.
 
 The items chosen also go into the run's config (`focus`): each product gets the items
@@ -361,6 +371,24 @@ store statuses, products by source, contacts by type, the `no_products`,
 `js_required`, blocked and `ssl_bypassed` lists, the stages this build cannot run,
 and the files written. `manifest.json`: config (never secrets), package versions,
 duration and row counts. **Planned:** LLM tokens and cost (M3), change summary (M5).
+
+### 4.14 Traffic on our own store — Built (web app)
+
+Not a pipeline stage: `traffic.py` reads our own store's Shopify Analytics
+([ADR 0009](../decisions/0009-own-store-traffic-from-shopify-analytics.md)) for the
+*Traffic toko* page, which polls `GET /api/traffic` every 30 seconds.
+
+| Part | How |
+|---|---|
+| Source | ShopifyQL through the Admin GraphQL API (`shopifyqlQuery`, API 2026-07); app scope `read_reports` |
+| Credentials | `SHOPIFY_STORE_DOMAIN` and a client ID + secret (client-credentials token, renewed before 24 h), or `SHOPIFY_ADMIN_TOKEN`; from `.env`, masked in logs |
+| Data | Sessions per minute (last 60 minutes); for 1 h, 24 h or 7 d: totals with cart and checkout sessions, top 25 cities, top 12 landing pages, referrer sources, devices |
+| Cache | One server-side cache for all open pages: the minute chart 30 s (2 points), the tables 5 min (about 46 points); Shopify allows about 1,000 points an hour |
+| Low quota or failure | The last answer is served with a `problem` code (`quota_low`, `unreachable`, `auth_failed`, `query_failed`) shown as a notice |
+| Bot hints | Cities in a fixed list of data-centre towns are `data_center`; Denpasar is `own_team`. The page also marks a city with 50 or more sessions and no cart addition |
+
+It cannot see clients that never run JavaScript, such as scrapers reading
+`/products.json`; the page says so.
 
 ## 5. Statuses
 

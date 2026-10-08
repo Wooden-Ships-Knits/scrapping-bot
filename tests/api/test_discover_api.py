@@ -1,5 +1,5 @@
 """Finding stores from the web API, offline: the agent is a LiteLLM mock response and
-the stores are a FakeFetcher. One request finds stores, then starts a test run."""
+the stores are a FakeFetcher. One request finds stores, then starts a run on all of them."""
 
 import json
 import time
@@ -97,7 +97,7 @@ def test_options_offer_regions_items_and_say_which_sources_have_a_key(client):
     assert "sk-test" not in json.dumps(body)
 
 
-def test_one_click_finds_stores_then_starts_a_test_run_on_them(client):
+def test_one_click_finds_stores_then_runs_all_of_them(client):
     resp = discover(client, items=["knitwear", "fall_winter"], count=2)
     assert resp.status_code == 202
     found = wait_for_discovery(client, resp.json()["discovery_id"])
@@ -111,20 +111,13 @@ def test_one_click_finds_stores_then_starts_a_test_run_on_them(client):
 
     run = wait_until_finished(client, found["run_id"])
     assert run["state"] == "done"
-    assert run["mode"] == "test"
+    assert run["mode"] == "full"
     assert run["links_in"] == 2
+    assert run["stores_done"] == 2
     assert run["config"]["focus"] == {"items": ["knitwear", "fall_winter"], "terms": []}
     rows = client.get(f"/api/runs/{run['run_id']}/rows/products").json()
     [cher] = [r for r in rows["rows"] if r["title"] == "Cher Sweater"]
     assert cher["matched_items"] == ["knitwear"]
-
-
-def test_a_full_run_follows_a_discovered_test_run(client):
-    found = wait_for_discovery(client, discover(client).json()["discovery_id"])
-    wait_until_finished(client, found["run_id"])
-    full = client.post(f"/api/runs/{found['run_id']}/full")
-    assert full.status_code == 202
-    assert wait_until_finished(client, full.json()["run_id"])["mode"] == "full"
 
 
 def test_other_needs_its_words(client):

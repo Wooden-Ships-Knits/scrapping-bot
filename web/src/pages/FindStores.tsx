@@ -104,7 +104,7 @@ export function FindStoresFields({
   );
 }
 
-/** Live state of a discovery until its test run starts. */
+/** Live state of a discovery until its run starts. */
 export function DiscoveryCard({ discovery }: { discovery: Discovery }) {
   const failed = discovery.state === "failed";
   return (
@@ -123,11 +123,11 @@ export function DiscoveryCard({ discovery }: { discovery: Discovery }) {
         {discovery.state === "searching" && (
           <p className="muted">
             {discovery.step ? `Sedang mencari lewat ${discoverySourceLabel(discovery.step)}… ` : "Memulai pencarian… "}
-            Ini bisa memakan beberapa menit; run uji dimulai otomatis setelahnya.
+            Ini bisa memakan beberapa menit; scrape semua toko yang ditemukan dimulai otomatis setelahnya.
           </p>
         )}
         {discovery.state === "starting_run" && (
-          <p className="muted">{formatNumber(discovery.stores_to_visit)} toko diserahkan ke run uji…</p>
+          <p className="muted">{formatNumber(discovery.stores_to_visit)} toko diserahkan ke run…</p>
         )}
         {failed && (
           <div className="notice bad" role="alert">

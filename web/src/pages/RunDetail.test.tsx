@@ -72,7 +72,7 @@ describe("RunDetail", () => {
   it("shows the reconciliation, the progress and what needs a look", () => {
     render(<RunDetail run={run()} />);
     expect(screen.getByTestId("reconciliation")).toHaveTextContent("Tautan masuk 4 = diproses 2 + dilewati 2 ✓ seimbang");
-    expect(screen.getByText("Di luar mode uji: 1")).toBeInTheDocument();
+    expect(screen.getByText("Di luar batas jumlah toko: 1")).toBeInTheDocument();
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "2");
     expect(within(screen.getByRole("region", { name: "Perlu dilihat" })).getByText("HTTP 403")).toBeInTheDocument();
   });
@@ -93,22 +93,15 @@ describe("RunDetail", () => {
     expect(within(result).getByText("uv run scrapebot run links.txt --limit 2 -f xlsx")).toBeInTheDocument();
   });
 
-  it("offers the full run and every download once a test run is done", () => {
+  it("offers every download once a run is done", () => {
     render(<RunDetail run={run()} />);
-    expect(screen.getByRole("button", { name: "Jalankan seluruh daftar (4 tautan)" })).toBeEnabled();
     expect(screen.getByRole("region", { name: "Unduh hasil" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Unduh Excel (.xlsx)" })).toHaveAttribute("href", `/api/runs/${RUN_ID}/download/xlsx`);
   });
 
-  it("has no downloads and no full run while running", () => {
+  it("has no downloads while running", () => {
     render(<RunDetail run={run({ state: "running", stores_done: 1, downloads: [] })} />);
     expect(screen.queryByRole("region", { name: "Unduh hasil" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /seluruh daftar/ })).not.toBeInTheDocument();
-  });
-
-  it("does not offer a full run after a full run", () => {
-    render(<RunDetail run={run({ mode: "full", limit: null })} />);
-    expect(screen.queryByRole("button", { name: /seluruh daftar/ })).not.toBeInTheDocument();
   });
 
   it("says when a run failed", () => {

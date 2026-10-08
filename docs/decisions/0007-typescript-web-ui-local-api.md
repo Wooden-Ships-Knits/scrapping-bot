@@ -32,7 +32,8 @@ libraries it depends on (`extruct`, `trafilatura`, LiteLLM, instructor, Camoufox
   run only. They are never written to disk, logs, config files or output.
 - The service binds to `127.0.0.1` only. In production mode it serves the built
   frontend itself, so the operator starts one command and opens one URL.
-- Test mode (LIMIT, first 2 links) is on by default.
+- Test mode (LIMIT, first 2 links) is on by default. *Update 2026-10-08: removed from
+  the interface; it always runs the whole list, and test mode stays in the CLI (`--limit`).*
 
 ## Rejected alternatives
 

@@ -1,4 +1,4 @@
-"""Discoveries started from the web app: find stores, then start a test run on them.
+"""Discoveries started from the web app: find stores, then start a run on them.
 
 One discovery at a time, in its own thread: it talks to paid search APIs, not to
 store websites, so it never competes with a run's per-domain politeness. Its state
@@ -24,7 +24,7 @@ from .schemas import DiscoveryOut, DiscoverySourceOut, DiscoveryState
 
 log = logging.getLogger(__name__)
 
-# (links file, discovery request) -> the run id of the test run started on it.
+# links file -> the run id of the run started on it.
 StartRun = Callable[[Path], str]
 
 

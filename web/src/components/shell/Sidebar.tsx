@@ -1,4 +1,4 @@
-import { ChartColumn, History, Play, Terminal } from "lucide-react";
+import { Activity, ChartColumn, History, Play, ShieldAlert, Terminal } from "lucide-react";
 import type { ReactNode } from "react";
 
 import type { Route } from "../../router";
@@ -15,6 +15,8 @@ export function Sidebar({ route, open, onNavigate }: { route: Route; open: boole
       icon: <History size={16} />,
       active: route.page === "history" || route.page === "run",
     },
+    { href: "#/detection", label: "Deteksi", icon: <ShieldAlert size={16} />, active: route.page === "detection" },
+    { href: "#/traffic", label: "Traffic toko", icon: <Activity size={16} />, active: route.page === "traffic" },
   ];
   return (
     <aside className={`sidebar ${open ? "open" : ""}`} aria-label="Navigasi utama">

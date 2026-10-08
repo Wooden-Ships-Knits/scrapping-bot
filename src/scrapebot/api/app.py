@@ -27,10 +27,13 @@ from ..keys import load_keys
 from ..llm.gateway import KEY_VARIABLES, check_connection, key_for, provider_of
 from ..outputs import available_writers
 from ..pipeline import load_records, prepare, resume
+from ..traffic import Period, TrafficError, TrafficService, TrafficSnapshot
 from . import library
+from .detection import detection
 from .discovery import DiscoveryManager
 from .manager import FetcherFactory, RunManager
 from .schemas import (
+    DetectionOut,
     DiscoverIn,
     DiscoverOptionsOut,
     DiscoveryOut,
@@ -93,11 +96,13 @@ def create_app(
     fetcher_factory: FetcherFactory | None = None,
     discover_transport: Transport | None = None,
     discover_completion: Completion | None = None,
+    traffic_transport: Transport | None = None,
 ) -> FastAPI:
     settings = settings or ApiSettings()
     manager = RunManager(fetcher_factory)
     finder = DiscoveryManager(discover_transport, discover_completion)
     runs_dir = settings.base.output.runs_dir
+    traffic = TrafficService(settings.env_file, traffic_transport)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -155,7 +160,6 @@ def create_app(
             default_writers=settings.base.output.writers,
             suffixes=list(SUPPORTED_SUFFIXES),
             max_links=settings.base.input.max_links,
-            default_test_limit=2,
             max_upload_mb=settings.max_upload_mb,
         )
 
@@ -196,28 +200,13 @@ def create_app(
             store_examples=[t.domain for t in resolution.targets[:EXAMPLES]],
             max_links=cfg.max_links,
             too_many=len(records) > cfg.max_links,
-            tested=library.fingerprint(r.value for r in records)
-            in library.tested_fingerprints(runs_dir),
         )
 
     @app.post("/api/runs", status_code=202)
     def create_run(body: RunIn) -> RunOut:
-        cfg_input = input_config(body.source, body.url_column)
-        if not body.test_mode and not body.skip_test_run:
-            try:
-                links = [r.value for r in load_records(cfg_input)]
-            except InputError as exc:
-                raise ApiError(422, "bad_input", str(exc)) from exc
-            if library.fingerprint(links) not in library.tested_fingerprints(runs_dir):
-                raise ApiError(
-                    409,
-                    "test_run_required",
-                    "Jalankan mode uji dulu untuk daftar ini, atau pilih untuk melewatinya.",
-                )
         data = settings.base.model_dump()
-        data["input"] = cfg_input.model_dump()
+        data["input"] = input_config(body.source, body.url_column).model_dump()
         data["output"]["writers"] = body.writers
-        data["limit"] = body.test_limit if body.test_mode else None
         keys: dict[str, SecretStr] = {}
         if body.llm and body.llm.enabled:
             data["llm"] = body.llm.model_dump(exclude={"api_key"})
@@ -229,20 +218,6 @@ def create_app(
         if cfg.llm.enabled and not keys:  # switched on in the server's config file
             keys = run_keys(cfg.llm.model, None)
         return start(cfg, keys)
-
-    @app.post("/api/runs/{run_id}/full", status_code=202)
-    def full_run(run_id: str) -> RunOut:
-        """Run the whole list of a finished test run, with the same input and formats."""
-        root = root_or_404(run_id)
-        test = load(run_id)
-        if test.mode != "test" or test.state != "done":
-            raise ApiError(
-                409, "not_a_finished_test", "Hanya run uji yang selesai bisa dilanjutkan."
-            )
-        cfg = RunConfig.model_validate_json((root / "config.json").read_text(encoding="utf-8"))
-        live = manager.get(run_id)
-        keys = dict(live.keys) if live and live.keys else run_keys(cfg.llm.model, None)
-        return start(cfg.model_copy(update={"limit": None}), keys)
 
     @app.post("/api/runs/{run_id}/stop", status_code=202)
     def stop_run(run_id: str) -> RunOut:
@@ -324,7 +299,7 @@ def create_app(
 
     @app.post("/api/discover", status_code=202)
     def start_discovery(body: DiscoverIn) -> DiscoveryOut:
-        """Find stores, then start a test run on them; poll GET /api/discover/{id}."""
+        """Find stores, then start a run on all of them; poll GET /api/discover/{id}."""
         if body.region not in REGIONS:
             raise ApiError(422, "bad_region", f"Region {body.region} tidak dikenal.")
         if OTHER in body.items and not any(t.strip() for t in body.terms):
@@ -347,19 +322,18 @@ def create_app(
             base = settings.base.model_dump()
             base["output"]["writers"] = body.writers
             base["focus"] = focus.model_dump()
-            base["limit"] = body.test_limit
             RunConfig.model_validate(base)  # fail now, not after paying for the search
         except ValidationError as exc:
             raise ApiError(422, "bad_settings", exc.errors()[0]["msg"]) from exc
 
-        def start_test_run(links: Path) -> str:
+        def start_run(links: Path) -> str:
             data = {**base, "input": {**base["input"], "source": links, "text": None}}
             data["input"]["url_column"] = "website"
             prepared = prepare(RunConfig.model_validate(data))
             manager.submit(prepared, keys)
             return prepared.run_id
 
-        return finder.submit(config, keys, start_test_run).out()
+        return finder.submit(config, keys, start_run).out()
 
     @app.get("/api/discover/{discovery_id}")
     def discovery(discovery_id: str) -> DiscoveryOut:
@@ -404,6 +378,22 @@ def create_app(
             contacts=sum(r.contacts for r in items),
             last_run=items[0] if items else None,
         )
+
+    @app.get("/api/detection")
+    def detection_view() -> DetectionOut:
+        """Which stores detect and block the bot, across every run."""
+        return detection(runs_dir)
+
+    @app.get("/api/traffic")
+    def traffic_view(period: Period = "24h") -> TrafficSnapshot:
+        """Sessions on our own Shopify store, from Shopify Analytics (ADR 0009). Answers are
+        cached, so polling this every few seconds costs no extra Shopify quota."""
+        try:
+            return traffic.snapshot(period)
+        except TrafficError as exc:
+            raise ApiError(
+                422 if exc.code == "not_configured" else 502, exc.code, exc.message
+            ) from exc
 
     @app.get("/api/runs/{run_id}/rows/{table}")
     def rows(

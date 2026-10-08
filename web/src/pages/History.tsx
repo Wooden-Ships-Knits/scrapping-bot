@@ -30,7 +30,7 @@ export function RunsTable({ runs }: { runs: RunListItem[] }) {
               <td>
                 {r.source_name}
                 <span className="sub">
-                  {r.mode === "test" ? "Uji" : "Penuh"} · {formatNumber(r.links_in)} tautan
+                  {r.mode === "test" ? "Terbatas" : "Penuh"} · {formatNumber(r.links_in)} tautan
                 </span>
               </td>
               <td className="mono small">{formatTime(r.started_at)}</td>

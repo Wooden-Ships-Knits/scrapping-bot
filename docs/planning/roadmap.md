@@ -1,6 +1,6 @@
 # Roadmap
 
-**Updated:** 2026-10-07
+**Updated:** 2026-10-08
 **Requirements:** [PRD](../product/prd.md) · **Design:** [Architecture](../architecture/overview.md)
 
 ## Where we are
@@ -25,6 +25,13 @@ the finder's labelling and scraper were not carried over. Every product is now f
 run). Run for real on 2026-10-07 with the agent alone (`openai/gpt-5-search-api`): 5
 stores asked, 14 found for US$0.07, test run read 2 stores and 2,031 products. Google
 Places and Tavily have not run for real yet (no keys).
+
+**Traffic on our own store is built** (branch `feat/own-store-traffic`,
+[ADR 0009](../decisions/0009-own-store-traffic-from-shopify-analytics.md)): the web
+app's *Traffic toko* page shows live sessions on our Shopify store from Shopify
+Analytics and marks likely bots. Checked against the real store on 2026-10-08 (3,722
+sessions in 24 hours, 254 from Council Bluffs with no cart addition). Scrapers reading
+`/products.json` stay invisible; that needs a proxy in front of the store.
 
 v1 answered the question exactly and for free for Shopify stores.
 

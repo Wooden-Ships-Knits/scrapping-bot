@@ -4,12 +4,10 @@ The run folder is the source of truth: a closed browser or a restarted server lo
 nothing. The in-memory manager only adds whether a run is queued or running.
 """
 
-import hashlib
 import json
 import re
 import zipfile
 from collections import Counter
-from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, Literal
 
@@ -56,12 +54,6 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
-def fingerprint(links: Iterable[str]) -> str:
-    """Identity of an input list, independent of order and repeats."""
-    unique = sorted({link.strip() for link in links if link.strip()})
-    return hashlib.sha256("\n".join(unique).encode()).hexdigest()
-
-
 def _config(root: Path) -> dict[str, Any]:
     return json.loads((root / CONFIG_FILE).read_text(encoding="utf-8"))
 
@@ -77,16 +69,8 @@ def is_finished(root: Path) -> bool:
     return (root / REPORT_FILE).exists()
 
 
-def tested_fingerprints(runs_dir: Path) -> set[str]:
-    """Inputs that already had a finished test run."""
-    found = set()
-    for root in _run_roots(runs_dir):
-        if is_finished(root) and _config(root).get("limit") is not None:
-            found.add(fingerprint(i["raw"] for i in read_jsonl(root / "tables" / "inputs.jsonl")))
-    return found
-
-
-def _run_roots(runs_dir: Path) -> list[Path]:
+def run_roots(runs_dir: Path) -> list[Path]:
+    """Run folders, newest first."""
     if not runs_dir.exists():
         return []
     roots = [
@@ -257,6 +241,11 @@ def _store_fields(stores: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [{k: v for k, v in s.items() if k in keep} for s in stores]
 
 
+def started_at(root: Path) -> str:
+    runs = read_jsonl(root / "tables" / "runs.jsonl")
+    return runs[0]["started_at"] if runs else _started_from_id(root.name)
+
+
 def _started_from_id(run_id: str) -> str:
     stamp = run_id.split("-")[0]
     return (
@@ -266,7 +255,7 @@ def _started_from_id(run_id: str) -> str:
 
 def list_runs(runs_dir: Path, live: dict[str, RunState]) -> list[RunListItem]:
     items = []
-    for root in _run_roots(runs_dir):
+    for root in run_roots(runs_dir):
         run = load_run(root, live.get(root.name), with_stores=False)
         items.append(
             RunListItem(

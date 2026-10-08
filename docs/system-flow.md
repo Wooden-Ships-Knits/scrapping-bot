@@ -34,7 +34,7 @@ Principles to keep in mind throughout the flow:
 
 | Entry point | Command | For whom |
 |---|---|---|
-| **Web** | `make serve` → http://127.0.0.1:8765 | Operators: paste links, preview, test mode, download results |
+| **Web** | `make serve` → http://127.0.0.1:8765 | Operators: find or paste links, preview, scrape, download results |
 | **CLI** | `uv run scrapebot run <input> --limit 2` | Developers, automation (n8n, cron) |
 
 Both build the same object, `RunConfig` ([config.py](../src/scrapebot/config.py)),

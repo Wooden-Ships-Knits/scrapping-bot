@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+    "/api/detection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Detection View
+         * @description Which stores detect and block the bot, across every run.
+         */
+        get: operations["detection_view_api_detection_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/discover": {
         parameters: {
             query?: never;
@@ -15,7 +35,7 @@ export interface paths {
         put?: never;
         /**
          * Start Discovery
-         * @description Find stores, then start a test run on them; poll GET /api/discover/{id}.
+         * @description Find stores, then start a run on all of them; poll GET /api/discover/{id}.
          */
         post: operations["start_discovery_api_discover_post"];
         delete?: never;
@@ -226,26 +246,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/runs/{run_id}/full": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Full Run
-         * @description Run the whole list of a finished test run, with the same input and formats.
-         */
-        post: operations["full_run_api_runs__run_id__full_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/runs/{run_id}/resume": {
         parameters: {
             query?: never;
@@ -303,6 +303,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/traffic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Traffic View
+         * @description Sessions on our own Shopify store, from Shopify Analytics (ADR 0009). Answers are
+         *     cached, so polling this every few seconds costs no extra Shopify quota.
+         */
+        get: operations["traffic_view_api_traffic_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/uploads": {
         parameters: {
             query?: never;
@@ -324,14 +345,69 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** BlockedStoreOut */
+        BlockedStoreOut: {
+            /** Blocked */
+            blocked: number;
+            /** Domain */
+            domain: string;
+            /** Last Method */
+            last_method: string;
+            /** Last Run Id */
+            last_run_id: string;
+            /** Last Seen */
+            last_seen: string;
+            /** Platform */
+            platform: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "always" | "sometimes" | "recovered";
+            /** Visits */
+            visits: number;
+        };
         /** Body_upload_api_uploads_post */
         Body_upload_api_uploads_post: {
             /** File */
             file: string;
         };
         /**
+         * DetectionOut
+         * @description How often stores detect and block the bot, across every run on disk.
+         */
+        DetectionOut: {
+            /** Blocked */
+            blocked: number;
+            /** Blocked Stores */
+            blocked_stores: components["schemas"]["BlockedStoreOut"][];
+            /** By Method */
+            by_method: {
+                [key: string]: number;
+            };
+            /** Runs */
+            runs: components["schemas"]["DetectionRunOut"][];
+            /** Stores */
+            stores: number;
+            /** Stores Blocked */
+            stores_blocked: number;
+            /** Visits */
+            visits: number;
+        };
+        /** DetectionRunOut */
+        DetectionRunOut: {
+            /** Blocked */
+            blocked: number;
+            /** Run Id */
+            run_id: string;
+            /** Started At */
+            started_at: string;
+            /** Visits */
+            visits: number;
+        };
+        /**
          * DiscoverIn
-         * @description Find stores, then start a test run on them (ADR 0008).
+         * @description Find stores, then start a run on them (ADR 0008).
          */
         DiscoverIn: {
             /** Count */
@@ -342,11 +418,6 @@ export interface components {
             region: string;
             /** Terms */
             terms?: string[];
-            /**
-             * Test Limit
-             * @default 2
-             */
-            test_limit: number;
             /** Writers */
             writers: string[];
         };
@@ -465,8 +536,6 @@ export interface components {
         };
         /** OptionsOut */
         OptionsOut: {
-            /** Default Test Limit */
-            default_test_limit: number;
             /** Default Writers */
             default_writers: string[];
             /** Max Links */
@@ -519,8 +588,6 @@ export interface components {
             store_examples: string[];
             /** Stores */
             stores: number;
-            /** Tested */
-            tested: boolean;
             /** Too Many */
             too_many: boolean;
         };
@@ -560,22 +627,7 @@ export interface components {
         /** RunIn */
         RunIn: {
             llm?: components["schemas"]["LLMIn"] | null;
-            /**
-             * Skip Test Run
-             * @default false
-             */
-            skip_test_run: boolean;
             source: components["schemas"]["SourceIn"];
-            /**
-             * Test Limit
-             * @default 2
-             */
-            test_limit: number;
-            /**
-             * Test Mode
-             * @default true
-             */
-            test_mode: boolean;
             /**
              * Url Column
              * @default auto
@@ -727,6 +779,110 @@ export interface components {
             /** Url */
             url: string;
         };
+        /** TrafficCity */
+        TrafficCity: {
+            /** Cart Sessions */
+            cart_sessions: number;
+            /** City */
+            city: string;
+            /** Country */
+            country: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "data_center" | "own_team" | "other";
+            /** Sessions */
+            sessions: number;
+        };
+        /** TrafficMinute */
+        TrafficMinute: {
+            /** Minute */
+            minute: string;
+            /** Sessions */
+            sessions: number;
+        };
+        /** TrafficPage */
+        TrafficPage: {
+            /** Cart Sessions */
+            cart_sessions: number;
+            /** Path */
+            path: string;
+            /** Sessions */
+            sessions: number;
+        };
+        /** TrafficPoint */
+        TrafficPoint: {
+            /** At */
+            at: string;
+            /** Sessions */
+            sessions: number;
+        };
+        /** TrafficQuota */
+        TrafficQuota: {
+            /** Available */
+            available: number;
+            /** Maximum */
+            maximum: number;
+            /** Resets At */
+            resets_at: string;
+        };
+        /** TrafficShare */
+        TrafficShare: {
+            /** Name */
+            name: string;
+            /** Sessions */
+            sessions: number;
+        };
+        /** TrafficSnapshot */
+        TrafficSnapshot: {
+            /** Breakdown At */
+            breakdown_at: string;
+            /** Cities */
+            cities: components["schemas"]["TrafficCity"][];
+            /** Data Center Sessions */
+            data_center_sessions: number;
+            /** Devices */
+            devices: components["schemas"]["TrafficShare"][];
+            /** Minutes */
+            minutes: components["schemas"]["TrafficMinute"][];
+            /** Minutes At */
+            minutes_at: string;
+            /** Pages */
+            pages: components["schemas"]["TrafficPage"][];
+            /**
+             * Period
+             * @enum {string}
+             */
+            period: "1h" | "24h" | "7d";
+            /**
+             * Problem
+             * @enum {string}
+             */
+            problem: "" | "quota_low" | "unreachable" | "auth_failed" | "query_failed";
+            quota: components["schemas"]["TrafficQuota"] | null;
+            /** Series */
+            series: components["schemas"]["TrafficPoint"][];
+            /**
+             * Series Grain
+             * @enum {string}
+             */
+            series_grain: "minute" | "hour";
+            /** Shop */
+            shop: string;
+            /** Sources */
+            sources: components["schemas"]["TrafficShare"][];
+            totals: components["schemas"]["TrafficTotals"];
+        };
+        /** TrafficTotals */
+        TrafficTotals: {
+            /** Cart Sessions */
+            cart_sessions: number;
+            /** Checkout Sessions */
+            checkout_sessions: number;
+            /** Sessions */
+            sessions: number;
+        };
         /** UploadOut */
         UploadOut: {
             /** Filename */
@@ -758,6 +914,26 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    detection_view_api_detection_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetectionOut"];
+                };
+            };
+        };
+    };
     start_discovery_api_discover_post: {
         parameters: {
             query?: never;
@@ -1115,37 +1291,6 @@ export interface operations {
             };
         };
     };
-    full_run_api_runs__run_id__full_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                run_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RunOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     resume_run_api_runs__run_id__resume_post: {
         parameters: {
             query?: never;
@@ -1231,6 +1376,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    traffic_view_api_traffic_get: {
+        parameters: {
+            query?: {
+                period?: "1h" | "24h" | "7d";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrafficSnapshot"];
                 };
             };
             /** @description Validation Error */
