@@ -303,6 +303,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/traffic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Traffic View
+         * @description Sessions on our own Shopify store, from Shopify Analytics (ADR 0009). Answers are
+         *     cached, so polling this every few seconds costs no extra Shopify quota.
+         */
+        get: operations["traffic_view_api_traffic_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/uploads": {
         parameters: {
             query?: never;
@@ -757,6 +778,110 @@ export interface components {
             status: string;
             /** Url */
             url: string;
+        };
+        /** TrafficCity */
+        TrafficCity: {
+            /** Cart Sessions */
+            cart_sessions: number;
+            /** City */
+            city: string;
+            /** Country */
+            country: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "data_center" | "own_team" | "other";
+            /** Sessions */
+            sessions: number;
+        };
+        /** TrafficMinute */
+        TrafficMinute: {
+            /** Minute */
+            minute: string;
+            /** Sessions */
+            sessions: number;
+        };
+        /** TrafficPage */
+        TrafficPage: {
+            /** Cart Sessions */
+            cart_sessions: number;
+            /** Path */
+            path: string;
+            /** Sessions */
+            sessions: number;
+        };
+        /** TrafficPoint */
+        TrafficPoint: {
+            /** At */
+            at: string;
+            /** Sessions */
+            sessions: number;
+        };
+        /** TrafficQuota */
+        TrafficQuota: {
+            /** Available */
+            available: number;
+            /** Maximum */
+            maximum: number;
+            /** Resets At */
+            resets_at: string;
+        };
+        /** TrafficShare */
+        TrafficShare: {
+            /** Name */
+            name: string;
+            /** Sessions */
+            sessions: number;
+        };
+        /** TrafficSnapshot */
+        TrafficSnapshot: {
+            /** Breakdown At */
+            breakdown_at: string;
+            /** Cities */
+            cities: components["schemas"]["TrafficCity"][];
+            /** Data Center Sessions */
+            data_center_sessions: number;
+            /** Devices */
+            devices: components["schemas"]["TrafficShare"][];
+            /** Minutes */
+            minutes: components["schemas"]["TrafficMinute"][];
+            /** Minutes At */
+            minutes_at: string;
+            /** Pages */
+            pages: components["schemas"]["TrafficPage"][];
+            /**
+             * Period
+             * @enum {string}
+             */
+            period: "1h" | "24h" | "7d";
+            /**
+             * Problem
+             * @enum {string}
+             */
+            problem: "" | "quota_low" | "unreachable" | "auth_failed" | "query_failed";
+            quota: components["schemas"]["TrafficQuota"] | null;
+            /** Series */
+            series: components["schemas"]["TrafficPoint"][];
+            /**
+             * Series Grain
+             * @enum {string}
+             */
+            series_grain: "minute" | "hour";
+            /** Shop */
+            shop: string;
+            /** Sources */
+            sources: components["schemas"]["TrafficShare"][];
+            totals: components["schemas"]["TrafficTotals"];
+        };
+        /** TrafficTotals */
+        TrafficTotals: {
+            /** Cart Sessions */
+            cart_sessions: number;
+            /** Checkout Sessions */
+            checkout_sessions: number;
+            /** Sessions */
+            sessions: number;
         };
         /** UploadOut */
         UploadOut: {
@@ -1251,6 +1376,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    traffic_view_api_traffic_get: {
+        parameters: {
+            query?: {
+                period?: "1h" | "24h" | "7d";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrafficSnapshot"];
                 };
             };
             /** @description Validation Error */

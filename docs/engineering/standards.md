@@ -43,6 +43,7 @@ src/scrapebot/
   extract/             # pure functions: text, prices, products, profile, pages, contacts, signals
   llm/                 # LiteLLM + instructor gateway, schemas, prompts (planned, M3)
   api/                 # FastAPI service for the web app; imports the pipeline, never the reverse
+  traffic.py           # our own store's Shopify Analytics for the Traffic page (ADR 0009); not the pipeline
   outputs/             # writers: json, jsonl, csv, tsv, xlsx, parquet, sqlite, duckdb
   region.py            # pycountry, babel, phonenumbers (planned, M5)
   changes.py           # run-to-run comparison (planned, M5)

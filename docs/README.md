@@ -36,6 +36,7 @@ docs/
 | [0006](decisions/0006-tidy-tables-multiformat-writers.md) | Seven tidy tables, many output writers, no HTML | Accepted |
 | [0007](decisions/0007-typescript-web-ui-local-api.md) | TypeScript (React + Vite) web interface over a local FastAPI service | Accepted |
 | [0008](decisions/0008-store-discovery-paid-search.md) | Store discovery with paid search APIs before a run; knitwear flag, no product dropped | Accepted |
+| [0009](decisions/0009-own-store-traffic-from-shopify-analytics.md) | Live traffic on our own store from Shopify Analytics, cached to stay inside the ShopifyQL quota | Accepted |
 
 ## Exports and archive
 

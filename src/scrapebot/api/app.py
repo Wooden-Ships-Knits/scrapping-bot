@@ -27,6 +27,7 @@ from ..keys import load_keys
 from ..llm.gateway import KEY_VARIABLES, check_connection, key_for, provider_of
 from ..outputs import available_writers
 from ..pipeline import load_records, prepare, resume
+from ..traffic import Period, TrafficError, TrafficService, TrafficSnapshot
 from . import library
 from .detection import detection
 from .discovery import DiscoveryManager
@@ -95,11 +96,13 @@ def create_app(
     fetcher_factory: FetcherFactory | None = None,
     discover_transport: Transport | None = None,
     discover_completion: Completion | None = None,
+    traffic_transport: Transport | None = None,
 ) -> FastAPI:
     settings = settings or ApiSettings()
     manager = RunManager(fetcher_factory)
     finder = DiscoveryManager(discover_transport, discover_completion)
     runs_dir = settings.base.output.runs_dir
+    traffic = TrafficService(settings.env_file, traffic_transport)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -380,6 +383,17 @@ def create_app(
     def detection_view() -> DetectionOut:
         """Which stores detect and block the bot, across every run."""
         return detection(runs_dir)
+
+    @app.get("/api/traffic")
+    def traffic_view(period: Period = "24h") -> TrafficSnapshot:
+        """Sessions on our own Shopify store, from Shopify Analytics (ADR 0009). Answers are
+        cached, so polling this every few seconds costs no extra Shopify quota."""
+        try:
+            return traffic.snapshot(period)
+        except TrafficError as exc:
+            raise ApiError(
+                422 if exc.code == "not_configured" else 502, exc.code, exc.message
+            ) from exc
 
     @app.get("/api/runs/{run_id}/rows/{table}")
     def rows(
