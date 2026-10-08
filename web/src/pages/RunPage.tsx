@@ -6,8 +6,6 @@ import {
   Download,
   FileSpreadsheet,
   FileText,
-  ListChecks,
-  Play,
   RotateCw,
   Square,
 } from "lucide-react";
@@ -18,7 +16,6 @@ import { useRun } from "../api/useRun";
 import { DataTable, type Renderers } from "../components/ui/DataTable";
 import { JsonView } from "../components/ui/JsonView";
 import { formatNumber, formatTime, runState, skipReason, storeStatus, tone, writerLabel } from "../labels";
-import { navigate } from "../router";
 
 const LOOK_AT = ["no_products", "js_required", "blocked", "error"];
 const TABLES: { key: PreviewTable; label: string; count: (run: Run) => number }[] = [
@@ -80,7 +77,7 @@ export function RunDetail({
         <div className="card-body">
           <div className="run-head">
             <div>
-              <h1>{run.mode === "test" ? `Run uji: ${run.limit} toko pertama` : "Run penuh"}</h1>
+              <h1>{run.mode === "test" ? `Run terbatas: ${run.limit} toko pertama` : "Run penuh"}</h1>
               <p className="run-meta">
                 <span className={`badge badge-${tone(run.state)}`}>{runState(run.state)}</span>
                 <span>
@@ -140,8 +137,6 @@ export function RunDetail({
         <Stat label="Diblokir" value={count("blocked")} sub="toko menolak akses" alert={count("blocked") > 0} />
         <Stat label="Gagal" value={count("error")} sub="galat saat mengambil" alert={count("error") > 0} />
       </dl>
-
-      {finished && run.mode === "test" && <ContinueFullRun run={run} balanced={balanced} />}
 
       {needsLook.length > 0 && (
         <section className="card" aria-label="Perlu dilihat">
@@ -224,65 +219,6 @@ function Stat({ label, value, sub, alert = false }: { label: string; value: numb
       <dd>{formatNumber(value)}</dd>
       <p className="sub">{sub}</p>
     </div>
-  );
-}
-
-function ContinueFullRun({ run, balanced }: { run: Run; balanced: boolean }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  async function start() {
-    setBusy(true);
-    setError("");
-    try {
-      const full = await api.startFullRun(run.run_id);
-      navigate(`/runs/${full.run_id}`);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Server tidak bisa dihubungi.");
-      setBusy(false);
-    }
-  }
-
-  // The first item is checked by the run itself; the other two are the operator's to tick.
-  return (
-    <section className="card callout">
-      <div className="card-head">
-        <ListChecks size={16} />
-        <h2>Periksa hasil uji, lalu lanjutkan</h2>
-      </div>
-      <div className="card-body">
-        <ul className="checklist">
-          <li>
-            <label>
-              <input type="checkbox" checked={balanced} readOnly disabled />
-              <span>
-                Rekonsiliasi seimbang <span className="muted">(diperiksa otomatis)</span>
-              </span>
-            </label>
-          </li>
-          <li>
-            <label>
-              <input type="checkbox" />
-              <span>Toko yang Anda tahu punya katalog berstatus “Ada produk”.</span>
-            </label>
-          </li>
-          <li>
-            <label>
-              <input type="checkbox" />
-              <span>Di tab Produk atau file Excel: judul, harga dan mata uang sama dengan situsnya.</span>
-            </label>
-          </li>
-        </ul>
-        <button type="button" className="button" onClick={start} disabled={busy}>
-          <Play size={14} /> {busy ? "Memulai…" : `Jalankan seluruh daftar (${formatNumber(run.links_in)} tautan)`}
-        </button>
-        {error && (
-          <div className="notice bad" role="alert">
-            {error}
-          </div>
-        )}
-      </div>
-    </section>
   );
 }
 

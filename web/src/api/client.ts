@@ -70,8 +70,6 @@ export const api = {
   discoverOptions: () => request<DiscoverOptions>("/api/discover/options"),
   startDiscovery: (body: DiscoverRequest) => request<Discovery>("/api/discover", json(body)),
   discovery: (discoveryId: string) => request<Discovery>(`/api/discover/${discoveryId}`),
-  startFullRun: (testRunId: string) =>
-    request<Run>(`/api/runs/${testRunId}/full`, { method: "POST" }),
   stopRun: (runId: string) => request<Run>(`/api/runs/${runId}/stop`, { method: "POST" }),
   resumeRun: (runId: string) => request<Run>(`/api/runs/${runId}/resume`, { method: "POST" }),
   runs: () => request<RunListItem[]>("/api/runs"),

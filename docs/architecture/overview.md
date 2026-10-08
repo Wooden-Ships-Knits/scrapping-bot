@@ -82,7 +82,7 @@ flowchart TD
 |---|---|---|
 | CLI | `scrapebot run <input>`, optionally with a YAML config. Used directly and by automation (n8n, cron) | Built |
 | Discovery | `scrapebot discover -c discover.yaml`, or the web app's *Cari toko otomatis* tab: finds stores and writes `data/discover/<id>/stores.csv`, the input of a run (section 4.0) | Built |
-| Web app + local API | `scrapebot serve`: React + TypeScript (`web/`) over a local FastAPI service (`api/`) on 127.0.0.1. Paste or upload links, preview, choose formats, test mode with a gate before untested full runs, live progress (SSE), history, downloads ([ADR 0007](../decisions/0007-typescript-web-ui-local-api.md)) | Built (LLM settings come with M3) |
+| Web app + local API | `scrapebot serve`: React + TypeScript (`web/`) over a local FastAPI service (`api/`) on 127.0.0.1. Paste or upload links, preview, choose formats, run the whole list, live progress (SSE), stop and resume, history, downloads ([ADR 0007](../decisions/0007-typescript-web-ui-local-api.md)) | Built (LLM settings come with M3) |
 
 Both build the same `RunConfig`. The pipeline is split into `prepare` (read and
 resolve the input, create the run folder with `config.json` and the `inputs` table)
@@ -93,7 +93,7 @@ so its presence marks a finished run; a folder without it and no live worker is 
 as *interrupted*.
 
 API routes: `GET /api/options`, `POST /api/uploads`, `POST /api/preview`,
-`POST /api/runs`, `POST /api/runs/{id}/full`, `GET /api/runs`, `GET /api/runs/{id}`,
+`POST /api/runs`, `GET /api/runs`, `GET /api/runs/{id}`,
 `GET /api/runs/{id}/events` (SSE), `GET /api/runs/{id}/download/{key}`. The web app's
 TypeScript types are generated from the API's OpenAPI schema (`make api-types`); CI
 fails when they drift.
@@ -158,7 +158,7 @@ From the web app, `POST /api/discover` takes a store count, a region and the ite
 and cost caps that grow with the count). The agent then runs area after area, telling
 the model which stores it already has, until the count is reached, a round finds
 nothing new, or a cap is hit. The stores with a website (the ones most sources agree on
-first) become `to_visit.csv`, and a test run starts on them; `GET /api/discover/{id}`
+first) become `to_visit.csv`, and a run starts on all of them; `GET /api/discover/{id}`
 reports progress until then. One discovery runs at a time, in its own thread.
 
 The items chosen also go into the run's config (`focus`): each product gets the items

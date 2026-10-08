@@ -64,11 +64,6 @@ class RunIn(_In):
     source: SourceIn
     url_column: str = "auto"
     writers: list[str] = Field(min_length=1)
-    test_mode: bool = True
-    test_limit: int = Field(default=2, ge=1, le=50)
-    # PRD OP-01: a full run needs a test run of the same input first, unless the
-    # operator deliberately skips it.
-    skip_test_run: bool = False
     llm: LLMIn | None = None
 
 
@@ -92,7 +87,6 @@ class PreviewOut(BaseModel):
     store_examples: list[str]
     max_links: int
     too_many: bool
-    tested: bool  # a finished test run of exactly these links exists
 
 
 class StoreOut(BaseModel):
@@ -163,7 +157,6 @@ class OptionsOut(BaseModel):
     default_writers: list[str]
     suffixes: list[str]
     max_links: int
-    default_test_limit: int
     max_upload_mb: int
 
 
@@ -193,14 +186,13 @@ class ErrorOut(BaseModel):
 
 
 class DiscoverIn(_In):
-    """Find stores, then start a test run on them (ADR 0008)."""
+    """Find stores, then start a run on them (ADR 0008)."""
 
     count: int = Field(ge=1, le=500)  # how many stores to find and visit
     region: str
     items: list[str] = Field(min_length=1)
     terms: list[str] = Field(default_factory=list)  # the operator's own words, item "other"
     writers: list[str] = Field(min_length=1)
-    test_limit: int = Field(default=2, ge=1, le=50)
 
 
 class DiscoverySourceOut(BaseModel):

@@ -15,7 +15,7 @@ export interface paths {
         put?: never;
         /**
          * Start Discovery
-         * @description Find stores, then start a test run on them; poll GET /api/discover/{id}.
+         * @description Find stores, then start a run on all of them; poll GET /api/discover/{id}.
          */
         post: operations["start_discovery_api_discover_post"];
         delete?: never;
@@ -226,26 +226,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/runs/{run_id}/full": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Full Run
-         * @description Run the whole list of a finished test run, with the same input and formats.
-         */
-        post: operations["full_run_api_runs__run_id__full_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/runs/{run_id}/resume": {
         parameters: {
             query?: never;
@@ -331,7 +311,7 @@ export interface components {
         };
         /**
          * DiscoverIn
-         * @description Find stores, then start a test run on them (ADR 0008).
+         * @description Find stores, then start a run on them (ADR 0008).
          */
         DiscoverIn: {
             /** Count */
@@ -342,11 +322,6 @@ export interface components {
             region: string;
             /** Terms */
             terms?: string[];
-            /**
-             * Test Limit
-             * @default 2
-             */
-            test_limit: number;
             /** Writers */
             writers: string[];
         };
@@ -465,8 +440,6 @@ export interface components {
         };
         /** OptionsOut */
         OptionsOut: {
-            /** Default Test Limit */
-            default_test_limit: number;
             /** Default Writers */
             default_writers: string[];
             /** Max Links */
@@ -519,8 +492,6 @@ export interface components {
             store_examples: string[];
             /** Stores */
             stores: number;
-            /** Tested */
-            tested: boolean;
             /** Too Many */
             too_many: boolean;
         };
@@ -560,22 +531,7 @@ export interface components {
         /** RunIn */
         RunIn: {
             llm?: components["schemas"]["LLMIn"] | null;
-            /**
-             * Skip Test Run
-             * @default false
-             */
-            skip_test_run: boolean;
             source: components["schemas"]["SourceIn"];
-            /**
-             * Test Limit
-             * @default 2
-             */
-            test_limit: number;
-            /**
-             * Test Mode
-             * @default true
-             */
-            test_mode: boolean;
             /**
              * Url Column
              * @default auto
@@ -1102,37 +1058,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    full_run_api_runs__run_id__full_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                run_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RunOut"];
                 };
             };
             /** @description Validation Error */

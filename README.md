@@ -37,11 +37,11 @@ make install        # Python + web dependencies, Camoufox, test browser, git hoo
 make serve          # builds the web app, starts it on http://127.0.0.1:8765 and opens it
 ```
 
-Paste links or upload a file, pick the output formats, and press **Jalankan uji**:
-test mode visits the first 2 stores. Check the result page (the reconciliation must
-say *seimbang*, the stores you know have a catalogue must show *Ada produk*), open the
-Excel file, then press **Jalankan seluruh daftar** for the whole list. A full run of a
-list that was never tested needs a deliberate confirmation. Progress updates live;
+Paste links or upload a file, check the preview, pick the output formats, and press
+**Mulai scrape**: every store in the list is visited. Watch the run page as it fills
+(the reconciliation must say *seimbang*, the stores you know have a catalogue must
+show *Ada produk*); **Hentikan** stops it if something looks wrong, and **Lanjutkan**
+picks it up later without revisiting finished stores. Progress updates live;
 closing the browser does not stop a run, and **Riwayat** lists every run with its
 downloads. The interface is local only (127.0.0.1) and in Indonesian.
 
@@ -50,9 +50,9 @@ downloads. The interface is local only (127.0.0.1) and in Indonesian.
 **In the interface**, the *Cari toko otomatis* tab of the Scrape page does it in one
 click: type how many stores, pick a region or continent, tick the items (knitwear,
 cashmere/wool, fall/winter, spring/summer, or *Lainnya* with your own words) and press
-**Cari toko & mulai uji**. It finds the stores, then starts a test run on the first two;
-the full list runs from the run page. The tab is the default when `.env` has at least
-one search key.
+**Cari toko & mulai scrape**. It finds the stores, then scrapes all of them and opens
+the run page. The tab is the default when `.env` has at least one search key. To try a
+few stores first, use the command line: `scrapebot run <input> --limit 2`.
 
 **From the command line**, `scrapebot discover` finds knitwear stores and writes them as
 a links file for a run ([ADR 0008](docs/decisions/0008-store-discovery-paid-search.md)):

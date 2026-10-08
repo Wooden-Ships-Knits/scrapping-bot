@@ -1,12 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// Each test uses its own links, so the "already tested" state never leaks between tests.
-
 async function waitDone(page: Page) {
   await expect(page.getByText("Selesai", { exact: true })).toBeVisible({ timeout: 20_000 });
 }
 
-test("main scenario: paste, preview, test run, check the data, full run, download", async ({ page }) => {
+test("main scenario: paste, preview, scrape, check the data, download", async ({ page }) => {
   await page.goto("/");
   await page
     .getByRole("textbox", { name: "Tautan toko" })
@@ -15,12 +13,14 @@ test("main scenario: paste, preview, test run, check the data, full run, downloa
   await expect(page.getByTestId("link-count")).toHaveText("4 tautan · 3 toko");
   await expect(page.getByTestId("preview")).toContainText("https://monkees.com");
   await expect(page.getByTestId("preview")).toContainText("Dilewati: Media sosial");
-  await page.getByRole("button", { name: "Mulai run uji" }).click();
+  await page.getByRole("button", { name: "Mulai scrape" }).click();
 
   await expect(page).toHaveURL(/#\/runs\//);
-  await expect(page.getByRole("heading", { name: /Run uji: 2 toko pertama/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Run penuh/ })).toBeVisible();
   await waitDone(page);
-  await expect(page.getByTestId("reconciliation")).toContainText("Tautan masuk 4 = diproses 2 + dilewati 2 ✓ seimbang");
+  await expect(page.getByText("Toko dikunjungi: 3 dari 3")).toBeVisible();
+  await expect(page.getByTestId("reconciliation")).toContainText("Tautan masuk 4 = diproses 3 + dilewati 1 ✓ seimbang");
+  await expect(page.getByRole("region", { name: "Perlu dilihat" }).getByText("HTTP 403")).toBeVisible();
 
   const result = page.getByRole("region", { name: "Hasil" });
   await expect(result.getByRole("row", { name: /monkees\.com.*Ada produk/ })).toBeVisible();
@@ -34,12 +34,6 @@ test("main scenario: paste, preview, test run, check the data, full run, downloa
   const download = page.waitForEvent("download");
   await page.getByRole("region", { name: "Unduh hasil" }).getByRole("link", { name: "Unduh Excel (.xlsx)" }).click();
   expect((await download).suggestedFilename()).toBe("tables.xlsx");
-
-  await page.getByRole("button", { name: /Jalankan seluruh daftar/ }).click();
-  await expect(page.getByRole("heading", { name: /Run penuh/ })).toBeVisible();
-  await waitDone(page);
-  await expect(page.getByText("Toko dikunjungi: 3 dari 3")).toBeVisible();
-  await expect(page.getByRole("region", { name: "Perlu dilihat" }).getByText("HTTP 403")).toBeVisible();
 
   await page.goto("/#/runs");
   await expect(page.getByRole("heading", { name: "Riwayat run" })).toBeVisible();
@@ -57,29 +51,12 @@ test("an uploaded spreadsheet keeps its columns and runs", async ({ page }) => {
   await expect(page.getByTestId("link-count")).toHaveText("2 tautan · 1 toko");
   await expect(page.getByTestId("preview")).toContainText("Tanpa situs 1");
 
-  await page.getByRole("button", { name: /Mulai (run uji|scrape)/ }).click();
+  await page.getByRole("button", { name: "Mulai scrape" }).click();
   await waitDone(page);
   await expect(page.getByText(/prospek\.csv · dimulai/)).toBeVisible();
   const result = page.getByRole("region", { name: "Hasil" });
   await result.getByRole("tab", { name: /Masukan/ }).click();
   await expect(result.getByRole("row", { name: /Tanpa situs/ })).toBeVisible();
-});
-
-test("a full run of an untested list needs a deliberate confirmation", async ({ page }) => {
-  await page.goto("/");
-  await page.getByRole("textbox", { name: "Tautan toko" }).fill("https://knitshop.com https://boutique.com/new");
-  await page.getByRole("button", { name: "Mode uji" }).click();
-  await page.getByRole("checkbox", { name: "Jalankan beberapa toko pertama dulu" }).uncheck();
-  await page.keyboard.press("Escape");
-
-  const runAll = page.getByRole("button", { name: "Mulai scrape", exact: true });
-  await expect(page.getByText(/belum pernah diuji/)).toBeVisible();
-  await expect(runAll).toBeDisabled();
-  await page.getByRole("checkbox", { name: "Saya sengaja melewati mode uji" }).check();
-  await expect(runAll).toBeEnabled();
-  await runAll.click();
-  await expect(page.getByRole("heading", { name: /Run penuh/ })).toBeVisible();
-  await waitDone(page);
 });
 
 test("overview and theme switch", async ({ page }) => {

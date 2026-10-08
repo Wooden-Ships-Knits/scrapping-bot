@@ -10,7 +10,7 @@ const STORE_STATUS: Record<string, string> = {
 
 const SKIP_REASON: Record<string, string> = {
   duplicate: "Duplikat domain",
-  over_limit: "Di luar mode uji",
+  over_limit: "Di luar batas jumlah toko",
   no_website: "Tanpa situs",
   invalid_url: "URL tidak valid",
   social_only: "Media sosial",
@@ -78,7 +78,7 @@ const DISCOVERY_SOURCE: Record<string, string> = {
 
 const DISCOVERY_STATE: Record<string, string> = {
   searching: "Mencari toko",
-  starting_run: "Memulai run uji",
+  starting_run: "Memulai run",
   done: "Selesai",
   failed: "Gagal",
 };

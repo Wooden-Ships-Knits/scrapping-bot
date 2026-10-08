@@ -59,7 +59,6 @@ def test_options_list_the_writers_and_defaults(client):
     body = client.get("/api/options").json()
     assert "parquet" in body["writers"]
     assert body["default_writers"] == ["xlsx", "csv"]
-    assert body["default_test_limit"] == 2
 
 
 def test_preview_counts_links_before_anything_is_fetched(client):
@@ -70,32 +69,18 @@ def test_preview_counts_links_before_anything_is_fetched(client):
     assert body["stores"] == 3
     assert body["duplicates"] == 1
     assert body["skipped"] == {"social_only": 1}
-    assert body["tested"] is False
 
 
-def test_main_scenario_test_run_then_full_run(client):
-    """PRD section 4: paste, test the first 2 stores, check, run the rest, download."""
-    resp = start(client, test_mode=True, test_limit=2)
+def test_main_scenario_run_check_download(client):
+    """PRD section 4: paste, run every store, check the data, download."""
+    resp = start(client)
     assert resp.status_code == 202
-    test_run = wait_until_finished(client, resp.json()["run_id"])
-    assert test_run["state"] == "done"
-    assert test_run["mode"] == "test"
-    assert test_run["stores_done"] == 2
-    assert test_run["links_in"] == test_run["processed"] + test_run["skipped"]
-    assert test_run["skipped_by_reason"] == {"over_limit": 1, "social_only": 1}
-    assert {s["domain"]: s["status"] for s in test_run["stores"]} == {
-        "monkees.com": "ok",
-        "boutique.com": "no_products",
-    }
-
-    preview = client.post("/api/preview", json={"source": {"text": LINKS}}).json()
-    assert preview["tested"] is True, "the same links now count as tested"
-
-    full = client.post(f"/api/runs/{test_run['run_id']}/full")
-    assert full.status_code == 202
-    full_run = wait_until_finished(client, full.json()["run_id"])
+    full_run = wait_until_finished(client, resp.json()["run_id"])
+    assert full_run["state"] == "done"
     assert full_run["mode"] == "full"
     assert full_run["stores_done"] == 3
+    assert full_run["links_in"] == full_run["processed"] + full_run["skipped"]
+    assert full_run["skipped_by_reason"] == {"social_only": 1}
     assert full_run["status_counts"] == {"ok": 1, "no_products": 1, "blocked": 1}
     assert full_run["products"] == 1
     assert {d["key"] for d in full_run["downloads"]} >= {
@@ -125,18 +110,7 @@ def test_main_scenario_test_run_then_full_run(client):
     assert "products.csv" in zipfile.ZipFile(io.BytesIO(csv_zip.content)).namelist()
 
     listed = client.get("/api/runs").json()
-    assert [r["run_id"] for r in listed] == [full_run["run_id"], test_run["run_id"]]
-
-
-def test_full_run_needs_a_test_run_first(client):
-    """PRD OP-01: no full run of an untested list unless the operator skips the test on purpose."""
-    resp = start(client, test_mode=False)
-    assert resp.status_code == 409
-    assert resp.json()["detail"]["code"] == "test_run_required"
-
-    resp = start(client, test_mode=False, skip_test_run=True)
-    assert resp.status_code == 202
-    assert wait_until_finished(client, resp.json()["run_id"])["mode"] == "full"
+    assert [r["run_id"] for r in listed] == [full_run["run_id"]]
 
 
 def test_upload_then_run_a_spreadsheet(client):
@@ -153,7 +127,7 @@ def test_upload_then_run_a_spreadsheet(client):
 
     resp = client.post(
         "/api/runs",
-        json={"source": {"upload_id": upload["upload_id"]}, "writers": ["json"], "test_limit": 1},
+        json={"source": {"upload_id": upload["upload_id"]}, "writers": ["json"]},
     )
     run = wait_until_finished(client, resp.json()["run_id"])
     assert run["source_kind"] == "file"
@@ -215,9 +189,7 @@ def test_a_run_survives_a_server_restart(client, tmp_path):
 
 
 def test_rows_preview_pages_through_a_table_without_raw_objects(client):
-    run = wait_until_finished(
-        client, start(client, test_mode=False, skip_test_run=True).json()["run_id"]
-    )
+    run = wait_until_finished(client, start(client).json()["run_id"])
     body = client.get(f"/api/runs/{run['run_id']}/rows/products?limit=1").json()
     assert body["total"] == 1
     assert body["rows"][0]["title"] == "Cher Sweater"
@@ -248,7 +220,7 @@ def test_rows_preview_shortens_long_text(client, tmp_path):
 
 def test_run_detail_carries_params_and_the_equivalent_cli(client):
     run = wait_until_finished(client, start(client).json()["run_id"])
-    assert run["cli"] == "uv run scrapebot run links.txt --limit 2 -f xlsx,csv"
+    assert run["cli"] == "uv run scrapebot run links.txt -f xlsx,csv"
     assert run["config"]["input"]["text"].endswith("characters of pasted links"), (
         "pasted text is summarised"
     )
@@ -257,8 +229,8 @@ def test_run_detail_carries_params_and_the_equivalent_cli(client):
 def test_overview_totals(client):
     wait_until_finished(client, start(client).json()["run_id"])
     body = client.get("/api/overview").json()
-    assert (body["runs"], body["runs_done"], body["stores"], body["products"]) == (1, 1, 2, 1)
-    assert body["last_run"]["mode"] == "test"
+    assert (body["runs"], body["runs_done"], body["stores"], body["products"]) == (1, 1, 3, 1)
+    assert body["last_run"]["mode"] == "full"
 
 
 def test_stop_then_resume_from_the_interface(tmp_path):
@@ -284,8 +256,6 @@ def test_stop_then_resume_from_the_interface(tmp_path):
         body = {
             "source": {"text": LINKS},
             "writers": ["json"],
-            "test_mode": False,
-            "skip_test_run": True,
         }
         run_id = c.post("/api/runs", json=body).json()["run_id"]
         assert c.post(f"/api/runs/{run_id}/stop").status_code == 202
@@ -348,8 +318,6 @@ def test_llm_run_through_the_interface_never_leaks_the_key(tmp_path, caplog):
         body = {
             "source": {"text": "rose.com"},
             "writers": ["json", "csv", "xlsx"],
-            "test_mode": False,
-            "skip_test_run": True,
             "llm": {
                 "enabled": True,
                 "model": "openai/gpt-4o-mini",
@@ -419,7 +387,7 @@ def test_llm_switched_on_in_the_server_config_uses_the_env_key(tmp_path):
         route = mock.post("https://api.openai.com/v1/chat/completions").respond(
             200, json=completion
         )
-        body = {"source": {"text": "rose.com"}, "writers": ["json"], "test_mode": True}
+        body = {"source": {"text": "rose.com"}, "writers": ["json"]}
         run = wait_until_finished(c, c.post("/api/runs", json=body).json()["run_id"])
 
     assert route.called

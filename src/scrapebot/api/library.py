@@ -4,12 +4,10 @@ The run folder is the source of truth: a closed browser or a restarted server lo
 nothing. The in-memory manager only adds whether a run is queued or running.
 """
 
-import hashlib
 import json
 import re
 import zipfile
 from collections import Counter
-from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, Literal
 
@@ -56,12 +54,6 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
-def fingerprint(links: Iterable[str]) -> str:
-    """Identity of an input list, independent of order and repeats."""
-    unique = sorted({link.strip() for link in links if link.strip()})
-    return hashlib.sha256("\n".join(unique).encode()).hexdigest()
-
-
 def _config(root: Path) -> dict[str, Any]:
     return json.loads((root / CONFIG_FILE).read_text(encoding="utf-8"))
 
@@ -75,15 +67,6 @@ def _source(config: dict[str, Any]) -> tuple[Literal["text", "file"], str]:
 
 def is_finished(root: Path) -> bool:
     return (root / REPORT_FILE).exists()
-
-
-def tested_fingerprints(runs_dir: Path) -> set[str]:
-    """Inputs that already had a finished test run."""
-    found = set()
-    for root in _run_roots(runs_dir):
-        if is_finished(root) and _config(root).get("limit") is not None:
-            found.add(fingerprint(i["raw"] for i in read_jsonl(root / "tables" / "inputs.jsonl")))
-    return found
 
 
 def _run_roots(runs_dir: Path) -> list[Path]:
