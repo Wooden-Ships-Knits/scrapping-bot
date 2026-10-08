@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { parseRoute } from "./router";
-import { skipReason, sourceLabel, storeStatus, tone } from "./labels";
+import { blockMethod, blockState, skipReason, sourceLabel, storeStatus, tone } from "./labels";
 
 describe("labels", () => {
   it("translates known codes and passes unknown ones through", () => {
@@ -10,6 +10,8 @@ describe("labels", () => {
     expect(storeStatus("something_new")).toBe("something_new");
     expect(sourceLabel("bigcartel_feed")).toBe("Feed Big Cartel");
     expect(sourceLabel("render")).toBe("Browser (Camoufox)");
+    expect(blockMethod("http_403")).toBe("HTTP 403 (ditolak)");
+    expect(blockState("recovered")).toBe("Pulih");
   });
 
   it("gives every store status a tone", () => {
@@ -24,6 +26,7 @@ describe("parseRoute", () => {
   it("maps hashes to pages", () => {
     expect(parseRoute("")).toEqual({ page: "new" });
     expect(parseRoute("#/runs")).toEqual({ page: "history" });
+    expect(parseRoute("#/detection")).toEqual({ page: "detection" });
     expect(parseRoute("#/runs/20261005T085253123Z-56162b")).toEqual({
       page: "run",
       runId: "20261005T085253123Z-56162b",

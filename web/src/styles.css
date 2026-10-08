@@ -1537,3 +1537,23 @@ input:not([type]) {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Detection */
+
+.rate {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.rate .progress {
+  display: block;
+  flex: 1;
+  min-width: 60px;
+  max-width: 140px;
+  height: 6px;
+}
+
+.rate .progress-bar {
+  display: block;
+}

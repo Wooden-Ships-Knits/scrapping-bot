@@ -94,7 +94,8 @@ as *interrupted*.
 
 API routes: `GET /api/options`, `POST /api/uploads`, `POST /api/preview`,
 `POST /api/runs`, `GET /api/runs`, `GET /api/runs/{id}`,
-`GET /api/runs/{id}/events` (SSE), `GET /api/runs/{id}/download/{key}`. The web app's
+`GET /api/runs/{id}/events` (SSE), `GET /api/runs/{id}/download/{key}`,
+`GET /api/detection`. The web app's
 TypeScript types are generated from the API's OpenAPI schema (`make api-types`); CI
 fails when they drift.
 
@@ -103,6 +104,13 @@ the API returns. A store's status is drawn by shape as well as label: a filled b
 `ok`, an outlined one for `no_products` and `js_required`, and a dashed one for `blocked`,
 `error` and skipped links. The overview charts products per run for the last 14 runs,
 using `GET /api/runs`.
+
+The *Deteksi* page (`api/detection.py`) reads `stores.jsonl` of every run folder and
+counts the visits that ended `blocked`: how (the challenge vendor or HTTP status in the
+store's `error`), per run, and per store. A store is *always* blocking when every visit
+was blocked, *sometimes* when the last one was but an earlier one was not, and
+*recovered* when it blocked before but not on the last visit. It only reports blocks;
+the bot never works around them (ADR 0002).
 
 ```yaml
 # config.yaml (example)

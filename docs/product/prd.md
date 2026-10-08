@@ -266,6 +266,7 @@ Priorities:
 | OP-03 | A run can resume after it stops, without repeating stores already done | Must | Stopping a run midway and resuming it yields the same data |
 | OP-04 | The CLI and the interface use the same configuration and code | Must | A configuration exported from the interface runs through the CLI |
 | OP-05 | Run configuration can be saved and loaded again | Should | The monthly run uses the same preset |
+| OP-06 | Detection view: across every run, the share of store visits blocked, how stores block (challenge vendor or HTTP status), and per store whether it always, sometimes or no longer blocks | Should (built) | The operator can copy the stores that always block and leave them out of the next list |
 
 ### 7.9 Store discovery
 

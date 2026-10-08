@@ -38,6 +38,12 @@ test("main scenario: paste, preview, scrape, check the data, download", async ({
   await page.goto("/#/runs");
   await expect(page.getByRole("heading", { name: "Riwayat run" })).toBeVisible();
   await expect(page.getByRole("row", { name: /Penuh/ }).first()).toBeVisible();
+
+  await page.goto("/#/detection");
+  await expect(page.getByRole("heading", { name: "Deteksi" })).toBeVisible();
+  const blockedRow = page.getByRole("region", { name: "Toko yang memblokir" }).getByRole("row", { name: /blocked\.com/ });
+  await expect(blockedRow).toContainText("Selalu");
+  await expect(blockedRow).toContainText("HTTP 403 (ditolak)");
 });
 
 test("an uploaded spreadsheet keeps its columns and runs", async ({ page }) => {

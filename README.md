@@ -43,7 +43,10 @@ Paste links or upload a file, check the preview, pick the output formats, and pr
 show *Ada produk*); **Hentikan** stops it if something looks wrong, and **Lanjutkan**
 picks it up later without revisiting finished stores. Progress updates live;
 closing the browser does not stop a run, and **Riwayat** lists every run with its
-downloads. The interface is local only (127.0.0.1) and in Indonesian.
+downloads. **Deteksi** shows how often stores detect and block the bot, across every
+run: the share of visits blocked, how (Cloudflare, Akamai, HTTP 403…), and which stores
+always block, so they can be left out of the next list. The interface is local only
+(127.0.0.1) and in Indonesian.
 
 ## Finding stores
 

@@ -17,6 +17,7 @@ export type Overview = Schemas["OverviewOut"];
 export type DiscoverOptions = Schemas["DiscoverOptionsOut"];
 export type Discovery = Schemas["DiscoveryOut"];
 export type DiscoverRequest = Schemas["DiscoverIn"];
+export type Detection = Schemas["DetectionOut"];
 export type PreviewTable = "stores" | "products" | "contacts" | "pages" | "inputs";
 
 export const FINISHED: readonly RunState[] = ["done", "failed", "interrupted", "stopped"];
@@ -75,6 +76,7 @@ export const api = {
   runs: () => request<RunListItem[]>("/api/runs"),
   run: (runId: string) => request<Run>(`/api/runs/${runId}`),
   overview: () => request<Overview>("/api/overview"),
+  detection: () => request<Detection>("/api/detection"),
   rows: (runId: string, table: PreviewTable, offset = 0, limit = 50) =>
     request<Rows>(`/api/runs/${runId}/rows/${table}?offset=${offset}&limit=${limit}`),
   eventsUrl: (runId: string) => `/api/runs/${runId}/events`,

@@ -28,9 +28,11 @@ from ..llm.gateway import KEY_VARIABLES, check_connection, key_for, provider_of
 from ..outputs import available_writers
 from ..pipeline import load_records, prepare, resume
 from . import library
+from .detection import detection
 from .discovery import DiscoveryManager
 from .manager import FetcherFactory, RunManager
 from .schemas import (
+    DetectionOut,
     DiscoverIn,
     DiscoverOptionsOut,
     DiscoveryOut,
@@ -373,6 +375,11 @@ def create_app(
             contacts=sum(r.contacts for r in items),
             last_run=items[0] if items else None,
         )
+
+    @app.get("/api/detection")
+    def detection_view() -> DetectionOut:
+        """Which stores detect and block the bot, across every run."""
+        return detection(runs_dir)
 
     @app.get("/api/runs/{run_id}/rows/{table}")
     def rows(

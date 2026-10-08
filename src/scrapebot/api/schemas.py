@@ -223,3 +223,36 @@ class DiscoverOptionsOut(BaseModel):
     max_count: int
     agent_model: str  # "" when no LLM key is set
     sources: dict[str, bool]  # source -> its key is set
+
+
+BlockState = Literal["always", "sometimes", "recovered"]
+
+
+class DetectionRunOut(BaseModel):
+    run_id: str
+    started_at: str
+    visits: int  # stores visited in the run
+    blocked: int
+
+
+class BlockedStoreOut(BaseModel):
+    domain: str
+    platform: str
+    visits: int  # runs that visited the store
+    blocked: int  # of those, runs where the store blocked the bot
+    state: BlockState  # always blocks | blocked last time only sometimes | no longer blocks
+    last_method: str  # how it blocked most recently: cloudflare, akamai, http_403, …
+    last_run_id: str
+    last_seen: str
+
+
+class DetectionOut(BaseModel):
+    """How often stores detect and block the bot, across every run on disk."""
+
+    visits: int
+    blocked: int
+    stores: int  # unique stores visited
+    stores_blocked: int  # stores that blocked at least once
+    by_method: dict[str, int]  # blocked visits per method, most first
+    runs: list[DetectionRunOut]  # newest first
+    blocked_stores: list[BlockedStoreOut]

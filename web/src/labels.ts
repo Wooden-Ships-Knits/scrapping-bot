@@ -91,6 +91,25 @@ const SOURCE_STATUS: Record<string, string> = {
   error: "Gagal",
 };
 
+const BLOCK_METHOD: Record<string, string> = {
+  cloudflare: "Cloudflare",
+  akamai: "Akamai",
+  datadome: "DataDome",
+  perimeterx: "PerimeterX",
+  incapsula: "Imperva (Incapsula)",
+  sucuri: "Sucuri",
+  http_401: "HTTP 401 (perlu login)",
+  http_403: "HTTP 403 (ditolak)",
+  http_429: "HTTP 429 (terlalu sering)",
+  other: "Lainnya",
+};
+
+const BLOCK_STATE: Record<string, string> = {
+  always: "Selalu",
+  sometimes: "Kadang",
+  recovered: "Pulih",
+};
+
 const pick = (table: Record<string, string>) => (code: string) => table[code] ?? code;
 
 export const storeStatus = pick(STORE_STATUS);
@@ -103,6 +122,8 @@ export const itemLabel = pick(ITEM);
 export const discoverySourceLabel = pick(DISCOVERY_SOURCE);
 export const discoveryState = pick(DISCOVERY_STATE);
 export const sourceStatus = pick(SOURCE_STATUS);
+export const blockMethod = pick(BLOCK_METHOD);
+export const blockState = pick(BLOCK_STATE);
 
 /** Tone for a status badge: good, warn, bad or neutral. */
 export function tone(code: string): "good" | "warn" | "bad" | "neutral" {
