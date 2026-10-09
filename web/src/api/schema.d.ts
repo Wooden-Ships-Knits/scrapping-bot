@@ -679,8 +679,14 @@ export interface components {
             downloads: components["schemas"]["DownloadOut"][];
             /** Error */
             error: string;
+            /** Final Products */
+            final_products: number;
+            /** Final Stores */
+            final_stores: number;
             /** Finished At */
             finished_at: string;
+            /** Knit Products */
+            knit_products: number;
             /** Limit */
             limit: number | null;
             /** Links In */

@@ -13,6 +13,7 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from .final import EXCLUSIONS, exclusion
 from .tables import RunRow
 
 if TYPE_CHECKING:
@@ -25,10 +26,7 @@ MANIFEST_PACKAGES = (
 
 # Stages in the architecture that this build cannot run yet. Listed in every report
 # so an empty result is never mistaken for "nothing there".
-UNAVAILABLE_STAGES = (
-    "Browser render (gated on the M1 survey, M4)",
-    "Change detection against earlier runs (planned, M5)",
-)
+UNAVAILABLE_STAGES = ("Change detection against earlier runs (planned, M5)",)
 
 
 @dataclass
@@ -95,24 +93,56 @@ def _table(header: tuple[str, str], counts: Counter[str]) -> list[str]:
     return rows if counts else ["- none"]
 
 
-def _llm_section(stats: RunStats) -> list[str]:
+def _final_section(stats: RunStats) -> list[str]:
+    """ADR 0010: how many stores made the final list, and why the others did not."""
+    final = [s for s in stats.stores if not exclusion(s)]
+    reasons: Counter[str] = Counter(exclusion(s) for s in stats.stores if exclusion(s))
+    unclear = [s["domain"] for s in stats.stores if exclusion(s) == "not_judged"]
+    lines = [
+        "## Final list",
+        "",
+        "Multi-brand stores that sell knitwear (`export/final/`): "
+        f"**{len(final)} stores, {sum(s.get('knit_kind_count', 0) for s in final)} "
+        "knitwear products**.",
+        "",
+        "Every knitwear product of every store that was read, on the list or not "
+        f"(`export/knit/`): {sum(s.get('knit_kind_count', 0) for s in stats.stores)}.",
+        "",
+    ]
+    if reasons:
+        lines += [
+            "| Not on the list because | Stores |",
+            "|---|---:|",
+            *[f"| {EXCLUSIONS[key]} | {n} |" for key, n in reasons.most_common()],
+            "",
+        ]
+    if unclear:
+        lines += ["Sell knitwear, store type unclear (check by hand):", "", *_bullets(unclear), ""]
+    return lines
+
+
+def _llm_section(stats: RunStats, run: RunRow) -> list[str]:
     """PRD LM-06, LM-09, LM-11: who used the LLM, what it cost, where the budget stopped."""
     calls = stats.llm_calls
+    if run.llm_skipped:
+        return ["## LLM", "", f"**Not used: {run.llm_skipped}.** Add the key to `.env`.", ""]
     if not calls:
         return []
     ok = [c for c in calls if c["status"] == "ok"]
     skipped = sorted({c["domain"] for c in calls if c["status"] == "skipped_budget"})
     failed = [c for c in calls if c["status"] == "error"]
-    used = [s for s in stats.stores if s.get("llm_used")]
+    used = [s for s in stats.stores if "llm" in s.get("layers_tried", [])]
     with_products = [s for s in used if s["source_used"] == "llm"]
+    judged = {c["domain"] for c in calls if c["prompt_version"].startswith("store-type")}
     dropped = sum(s.get("llm_products_dropped", 0) for s in used)
     cost = sum(c["cost_usd"] for c in calls)
     estimated = any(c["cost_estimated"] for c in calls)
     lines = [
         "## LLM",
         "",
-        f"- Stores sent to the LLM (no products from any other stage): {len(used)}",
+        f"- Stores sent to the LLM for products (none from any other stage): {len(used)}",
         f"- Stores the LLM found products for: {len(with_products)}",
+        f"- Stores whose type the LLM judged (vendors unclear, knitwear found): {len(judged)}",
         f"- Products dropped by the evidence rule: {dropped}",
         f"- Calls: {len(ok)} answered, {len(failed)} failed, {len(skipped)} skipped for budget",
         f"- Tokens: {sum(c['input_tokens'] for c in calls)} in, "
@@ -124,7 +154,7 @@ def _llm_section(stats: RunStats) -> list[str]:
     if skipped:
         lines += [
             "",
-            f"**Budget reached.** {len(skipped)} stores were not sent to the LLM:",
+            f"**Budget reached.** {len(skipped)} stores got no LLM call:",
             "",
             *[f"- {d}" for d in skipped],
         ]
@@ -175,6 +205,7 @@ def build_report(
         "",
         *_table(("Status", "Stores"), by_status),
         "",
+        *_final_section(stats),
         "## Data collected",
         "",
         f"- Products: {stats.counts['products']}"
@@ -223,7 +254,7 @@ def build_report(
         "",
         *_bullets([s["domain"] for s in stores if s["ssl_bypassed"]]),
         "",
-        *_llm_section(stats),
+        *_llm_section(stats, run),
         "## Stages not available in this build",
         "",
         *_bullets(list(UNAVAILABLE_STAGES)),

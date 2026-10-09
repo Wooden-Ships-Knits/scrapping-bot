@@ -1,9 +1,18 @@
 # Roadmap
 
-**Updated:** 2026-10-08
+**Updated:** 2026-10-09
 **Requirements:** [PRD](../product/prd.md) · **Design:** [Architecture](../architecture/overview.md)
 
 ## Where we are
+
+**The final list is built** (branch `feat/final-knitwear-list`,
+[ADR 0010](../decisions/0010-final-list-multi-brand-knitwear.md)): every run ends with
+the multi-brand stores that sell knitwear and their knitwear products, beside the raw
+tables, and the LLM is on by default (`openai/gpt-4o-mini`, US$1 per run) to read
+custom sites and judge unclear store types. On the 808 stores of the 2026-10-08 run
+the vendor rule alone settled 176 of 267 readable stores as multi-brand, and 171 of
+them sell knitwear (21,156 knitwear products). Across all stores the strict rule finds
+24,643 knitwear products where the broad flag finds 45,108.
 
 **M0 (foundation) is built** on branch `feat/m0-foundation`: bulk input in any format,
 seven tables, eight writers, test mode, reconciled report, and v1 issues 1, 2, 3 and 6
@@ -58,7 +67,7 @@ boutiques publish no machine-readable product data, and v1 reads only JSON-LD.
 | 4 | v1 design gaps: OpenGraph price, depth-2 crawl, link-text ranking, parallel domains | `acquire/`, `extract/` | Lower coverage than designed | M2 |
 | 5 | Phone regex matches US formats only | `extract/contacts.py` | No phones outside the US | M5 |
 | 6 | ~~Only 5,000 characters of text kept per page~~ | `pages` table | ~~Later analysis sees truncated pages~~ | M0 ✓ |
-| 7 | For Shopify stores only the homepage (and input deep links) is fetched | `acquire/__init__.py` | Contacts, about and wholesale pages of feed stores are missed (PRD AQ-07) | M2 |
+| 7 | ~~For Shopify stores only the homepage (and input deep links) is fetched~~ | `acquire/__init__.py` | ~~Contacts, about and wholesale pages of feed stores are missed~~; priority pages are fetched feed or not (`39ae657`) | M2 ✓ |
 | 8 | Pages that fail to load are not recorded, only the stage in `layers_tried` | `acquire/discovery.py` | A broken contact or deep link is invisible in the output | M2 |
 | 9 | Export loads every table of a run into memory | `pipeline.py`, `store.py` | Fine for hundreds of stores; a 1,000-link run with long pages may need streaming writers | M2 |
 | 10 | Plain `logging` instead of `structlog`; config has no environment overrides | `cli.py`, `config.py` | Standards sections 4 and 7 not yet met; nothing needs secrets before M3 | M3 |
@@ -66,6 +75,9 @@ boutiques publish no machine-readable product data, and v1 reads only JSON-LD.
 | 12 | Shopify's shared edge (23.227.38.x) limits a client IP across all stores: after a burst on 2026-10-05 it answered every Python request with a 429 challenge for a while, while curl still got 200 | `fetch.py` | Shopify stores turn `blocked` until the limit lapses. Mitigated by per-network politeness (one request at a time to 23.227.38.0/24) and the cache; never worked around (ADR 0002). Run large lists in batches | M2 (mitigated) |
 | 13 | Discovery has not run against the real Google Places, Tavily or LLM web search APIs | `discover/` | A request format the providers reject shows up only in a real discovery, as an `error` source in the summary | First real discovery |
 | 14 | ~~Discovery is CLI only~~ | `cli.py` | ~~Operators without a terminal cannot search for stores~~; the web app has a *Cari toko otomatis* tab | Built 2026-10-07 |
+| 15 | Cloudflare puts `/cdn-cgi/challenge-platform/` into ordinary pages; any page under 60,000 characters that holds it is read as a challenge | `fetch.py` `detect_challenge` | Small stores behind Cloudflare turn `blocked` though they answer 200 with their page (shopluxboutique.com, panachenaples.com, shadyandkatie.com on 2026-10-09) | Next |
+| 16 | A rate limit on our IP and a store's own block share the status `blocked` | `fetch.py`, Detection page | 306 of 376 `blocked` stores on 2026-10-08 were Shopify stores behind 23.227.38.x, in waves, and opened normally the next day; the Detection page tells the operator to drop them | Next |
+| 17 | The HTTP cache never expires | `fetch.py` | A monthly rerun reads last month's pages, so change detection (M5) would see no change | Before M5 |
 
 ## Milestones
 

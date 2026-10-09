@@ -27,3 +27,16 @@ class StoreExtraction(BaseModel):
     brands_carried: list[str] = Field(default_factory=list)
     has_wholesale_page: bool = False
     confidence: float = Field(ge=0, le=1, description="How sure you are, 0 to 1")
+
+
+class StoreTypeJudgement(BaseModel):
+    """Whether a store sells its own label or resells other brands (ADR 0010)."""
+
+    store_type: Literal["own_brand", "multi_brand", "unknown"] = Field(
+        description="own_brand: sells mostly its own label; multi_brand: resells other brands"
+    )
+    brands_carried: list[str] = Field(
+        default_factory=list, description="Other brands the pages or products name; empty if none"
+    )
+    confidence: float = Field(ge=0, le=1, description="How sure you are, 0 to 1")
+    reason: str = Field(default="", description="One short sentence: what decided it")

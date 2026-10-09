@@ -11,6 +11,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Literal
 
+from ..config import DEFAULT_LLM_MODEL, LLMConfig
+from ..final import qualifies
 from ..pipeline import CONFIG_FILE, REPORT_FILE, STOPPED_FILE
 from .schemas import DownloadOut, RunListItem, RunOut, RunState, StoreOut
 
@@ -18,6 +20,13 @@ RUN_ID_RE = re.compile(r"^\d{8}T\d{9}Z-[0-9a-f]{6}$")  # 20261005T085253123Z-561
 
 # key -> (label, path inside the run folder). Directories are served as a zip.
 DOWNLOADS: dict[str, tuple[str, str]] = {
+    "final_xlsx": (
+        "Daftar final: toko multi-brand + produk rajut (.xlsx)",
+        "export/final/tables.xlsx",
+    ),
+    "final_csv": ("Daftar final (CSV .zip)", "export/final/csv"),
+    "knit_xlsx": ("Produk rajut saja, semua toko (.xlsx)", "export/knit/tables.xlsx"),
+    "knit_csv": ("Produk rajut saja, semua toko (CSV .zip)", "export/knit/csv"),
     "report": ("Laporan run (.md)", REPORT_FILE),
     "summary": ("Ringkasan per tautan (.csv)", "summary.csv"),
     "xlsx": ("Excel (.xlsx)", "export/tables.xlsx"),
@@ -92,7 +101,12 @@ def downloads(root: Path) -> list[DownloadOut]:
     for key, (label, rel) in DOWNLOADS.items():
         path = root / rel
         if path.is_file() or (path.is_dir() and any(path.iterdir())):
-            filename = path.name if path.is_file() else f"{root.name}-{key}.zip"
+            if path.is_dir():
+                filename = f"{root.name}-{key}.zip"
+            elif key.startswith(("final_", "knit_")):  # not another "tables.xlsx"
+                filename = f"{root.name}-{key.split('_')[0]}{path.suffix}"
+            else:
+                filename = path.name
             out.append(DownloadOut(key=key, label=label, filename=filename))
     return out
 
@@ -117,7 +131,10 @@ def download_path(root: Path, key: str) -> Path | None:
 
 
 PREVIEW_MAX_CHARS = 600
-PREVIEW_TABLES = ("stores", "products", "contacts", "pages", "inputs")
+PREVIEW_TABLES = (
+    "final_stores", "final_products", "knit_products",
+    "stores", "products", "contacts", "pages", "inputs",
+)  # fmt: skip
 
 
 def _shorten(value: Any) -> tuple[Any, bool]:
@@ -134,9 +151,10 @@ def read_rows(
     Long text is shortened and the bulky `raw` source object is left out unless asked
     for: the preview is for looking, the downloads hold everything.
     """
-    from ..tables import TABLES
+    from ..tables import FINAL_TABLES, KNIT_TABLES, TABLES
 
-    columns = [c for c in TABLES[table].model_fields if include_raw or c != "raw"]
+    model = {**TABLES, **FINAL_TABLES, **KNIT_TABLES}[table]
+    columns = [c for c in model.model_fields if include_raw or c != "raw"]
     rows: list[dict[str, Any]] = []
     total, truncated = 0, False
     path = root / "tables" / f"{table}.jsonl"
@@ -169,10 +187,14 @@ def cli_command(config: dict[str, Any]) -> str:
     if config["input"].get("url_column", "auto") != "auto":
         parts.append(f"--url-column {config['input']['url_column']}")
     llm = config.get("llm") or {}
-    if llm.get("enabled") and llm.get("model"):
-        parts.append(f"--llm {llm['model']}")
+    if not (llm.get("enabled") and llm.get("model")):
+        parts.append("--no-llm")
+    else:  # only what differs from the defaults (LLMConfig)
+        if llm["model"] != DEFAULT_LLM_MODEL:
+            parts.append(f"--llm {llm['model']}")
         parts += [f"--llm-fallback {m}" for m in llm.get("fallbacks", [])]
-        parts.append(f"--llm-budget {llm.get('budget_usd', 1.0)}")
+        if llm.get("budget_usd", 1.0) != LLMConfig().budget_usd:
+            parts.append(f"--llm-budget {llm['budget_usd']}")
         if llm.get("api_base"):
             parts.append(f"--llm-api-base {llm['api_base']}")
     return " ".join(parts)
@@ -214,6 +236,9 @@ def load_run(
         products=sum(s["product_count"] for s in stores),
         pages=sum(s["page_count"] for s in stores),
         contacts=sum(s["contact_count"] for s in stores),
+        final_stores=sum(1 for s in stores if qualifies(s)),
+        final_products=sum(s.get("knit_kind_count", 0) for s in stores if qualifies(s)),
+        knit_products=sum(s.get("knit_kind_count", 0) for s in stores),
         stores=[StoreOut.model_validate(s, from_attributes=False) for s in _store_fields(stores)]
         if with_stores
         else [],

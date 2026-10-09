@@ -147,6 +147,26 @@ const TRAFFIC_PROBLEM: Record<string, string> = {
   not_configured: "Kredensial Shopify belum diisi di .env.",
 };
 
+// What kind of shop a store is (ADR 0010); the final list keeps multi-brand stores.
+const STORE_TYPE: Record<string, string> = {
+  multi_brand: "Multi-brand",
+  own_brand: "Merek sendiri",
+  unknown: "Belum jelas",
+  "": "—",
+};
+
+const STORE_TYPE_SOURCE: Record<string, string> = {
+  vendors: "Dari vendor produk",
+  llm: "Dinilai LLM",
+  "": "—",
+};
+
+const KNIT_KIND: Record<string, string> = {
+  garment: "Pakaian rajut",
+  accessory: "Aksesori rajut",
+  "": "Bukan rajutan",
+};
+
 const pick = (table: Record<string, string>) => (code: string) => table[code] ?? code;
 
 export const storeStatus = pick(STORE_STATUS);
@@ -166,10 +186,13 @@ export const trafficSource = pick(TRAFFIC_SOURCE);
 export const trafficDevice = pick(TRAFFIC_DEVICE);
 export const trafficPeriod = pick(TRAFFIC_PERIOD);
 export const trafficProblem = pick(TRAFFIC_PROBLEM);
+export const storeType = pick(STORE_TYPE);
+export const storeTypeSource = pick(STORE_TYPE_SOURCE);
+export const knitKind = pick(KNIT_KIND);
 
 /** Tone for a status badge: good, warn, bad or neutral. */
 export function tone(code: string): "good" | "warn" | "bad" | "neutral" {
-  if (code === "ok" || code === "done") return "good";
+  if (code === "ok" || code === "done" || code === "multi_brand") return "good";
   if (["no_products", "js_required", "interrupted", "stopped"].includes(code)) return "warn";
   if (code === "blocked" || code === "error" || code === "failed") return "bad";
   return "neutral";

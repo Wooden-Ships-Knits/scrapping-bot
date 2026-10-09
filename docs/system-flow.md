@@ -159,8 +159,10 @@ delay, and images, media and fonts are not loaded. Camoufox is **not** used to g
 challenges.
 
 **Stage 7: LLM** ([llm/](../src/scrapebot/llm/)). Only for stores that still have 0
-products, and only when the LLM is switched on (`--llm openai/gpt-4o-mini`, or
-`serve -c data/llm.yaml`). The details are in [section 4](#4-the-llm-stage-up-close).
+products. On by default with `openai/gpt-4o-mini` and a US$1 budget (`--no-llm` turns
+it off); without the key in `.env` the run skips it and the report says so. The same
+model also judges the store type of a knitwear store its vendors leave unclear, for
+the final list (ADR 0010). The details are in [section 4](#4-the-llm-stage-up-close).
 
 ### Step 4. Contacts ([extract/contacts.py](../src/scrapebot/extract/contacts.py))
 

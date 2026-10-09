@@ -52,9 +52,11 @@ def _parser() -> argparse.ArgumentParser:
     r.add_argument(
         "--llm",
         metavar="PROVIDER/MODEL",
-        help="read stores nothing else could with this model, e.g. gemini/gemini-2.5-flash "
-        "or ollama/qwen2.5:3b. Keys come from .env or the environment",
+        help="the model that reads stores nothing else could and judges unclear store types "
+        "(default openai/gpt-4o-mini), e.g. gemini/gemini-2.5-flash or ollama/qwen2.5:3b. "
+        "Keys come from .env or the environment",
     )
+    r.add_argument("--no-llm", action="store_true", help="never call a model (no API cost)")
     r.add_argument("--llm-fallback", action="append", metavar="MODEL", help="tried in order")
     r.add_argument("--llm-budget", type=float, metavar="USD", help="stop LLM calls at this cost")
     r.add_argument("--llm-api-base", metavar="URL", help="server for local models (Ollama)")
@@ -133,6 +135,8 @@ def build_config(args: argparse.Namespace) -> RunConfig:
         data["llm"]["budget_usd"] = args.llm_budget
     if getattr(args, "llm_api_base", None):
         data["llm"]["api_base"] = args.llm_api_base
+    if getattr(args, "no_llm", False):
+        data["llm"]["enabled"] = False
     if getattr(args, "no_render", False):
         data["render"]["enabled"] = False
     return RunConfig.model_validate(data)

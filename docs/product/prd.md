@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| **Version** | 2.1 (draft) |
-| **Date** | 7 October 2026 (2.1: store discovery and knitwear focus, [ADR 0008](../decisions/0008-store-discovery-paid-search.md)) |
+| **Version** | 2.2 (draft) |
+| **Date** | 9 October 2026 (2.2: final list of multi-brand knitwear stores, LLM on by default, [ADR 0010](../decisions/0010-final-list-multi-brand-knitwear.md); 2.1: store discovery and knitwear focus, [ADR 0008](../decisions/0008-store-discovery-paid-search.md)) |
 | **Status** | Draft for review |
 | **Product owner** | _(fill in the owner's name)_ |
 | **Supersedes** | [PRD 1.0 (PDF)](../archive/pdf/prd-akuisisi-data-mentah-v1.pdf) |
@@ -19,8 +19,10 @@ a list of store links. The operator can also paste or upload their own list of l
 in bulk and in any format. Scrapebot visits each store, collects product data, prices,
 the brands sold, wholesale pages and contacts **as they are**, then exports them to
 the formats the operator picks (Excel, Parquet, JSON, databases, Google Sheets and
-more). This data feeds the next stage: **deciding which stores are competitors and
-which are worth partnering with**. Reachout comes later.
+more). Every run ends with a **final list**: the stores that resell other brands and
+sell knitwear, with their knitwear products. The raw data feeds the next stage:
+**deciding which stores are competitors and which are worth partnering with**.
+Reachout comes later.
 
 The bot can be used through a simple web interface similar to the ScrapeGraph
 *playground*, but one that accepts many links at once, or through the command line
@@ -113,13 +115,15 @@ flowchart LR
 - Export to many formats at once.
 - Change detection between runs.
 - Test mode (LIMIT), run report, and count reconciliation.
+- A final list per run: multi-brand stores that sell knitwear, with their knitwear
+  products ([section 7.10](#710-final-list)).
 
 ### 5.2 Out of scope
 
 | Item | Reason |
 |---|---|
 | Storing or exporting **HTML** | Not needed for analysis. What is stored is page text and structured data |
-| Competitor or partner classification | Next phase. Its data is prepared in this PRD |
+| Competitor or partner classification | Next phase. Its data is prepared in this PRD. Only the store type the final list needs (multi-brand or own label) is decided here ([section 7.10](#710-final-list)) |
 | Reachout, sending email, CRM | Later |
 | Getting past anti-bot protection | No CAPTCHA solver, no proxy rotation, and `robots.txt` is respected ([ADR 0002](../decisions/0002-camoufox-for-rendering-only.md)) |
 | Logging in to sites | Public pages only |
@@ -219,7 +223,8 @@ Priorities:
 | LM-03 | The model is written freely in the format `provider/model` | Must | A new model can be used without code changes |
 | LM-04 | The API key is entered in the interface (kept only in session memory) or read from `.env` | Must | The key never appears in logs, output files, reports or the cache |
 | LM-05 | A "Tes koneksi" (Test connection) button validates the key and model before the run | Must | A wrong key gives a clear message, not a raw error |
-| LM-06 | The LLM is called only for stores that still have zero products after the other layers | Must | The report shows how many stores used the LLM |
+| LM-06 | The LLM is called only for stores that still have zero products after the other layers, and to judge the store type of a knitwear store its vendors leave unclear (FL-03) | Must | The report shows how many stores used the LLM for each |
+| LM-12 | The LLM is on by default with a low-cost model (`openai/gpt-4o-mini`, US$1 per run) and can be turned off (`--no-llm`). Without the key the run goes on and the report says the LLM was not used | Must | A run without a key finishes and its report names the missing key |
 | LM-07 | Evidence rule: a product without an evidence URL from the pages sent is dropped | Must | Test with a recorded response that contains made-up products |
 | LM-08 | Every LLM result is flagged `needs_review` and has a `confidence` | Must | The columns exist in every output format |
 | LM-09 | Cost limit per run. The LLM stops being called when the limit is reached | Must | The report records the stopping point and the remaining stores |
@@ -285,6 +290,23 @@ The business focuses only on knitwear, so discovery and tagging aim at it.
 | DS-08 | Store discovery from the web interface: the operator types how many stores, picks a region or continent and ticks the items (knitwear, cashmere/wool, fall/winter, spring/summer, or their own words); one click finds the stores and scrapes all of them | Should (built) | The operator finds and scrapes stores without a terminal |
 | DS-09 | The items ticked are recorded per product (`matched_items`) and counted per store (`focus_count`); nothing is dropped | Should (built) | A product's matched items are visible in every export |
 
+### 7.10 Final list
+
+Added in version 2.2 ([ADR 0010](../decisions/0010-final-list-multi-brand-knitwear.md)).
+The operator wants each run to end in a list to act on: stores that sell many brands,
+not one label like Nike or a designer's own shop, and sell knitwear.
+
+| ID | Requirement | Priority | Acceptance criteria |
+|---|---|---|---|
+| FL-01 | A store is on the final list when it was read (`ok`), is `multi_brand`, and has at least one knitwear product (FL-02) | Must | `final_stores` holds exactly those stores |
+| FL-02 | Strict knitwear per product (`knit_kind`: `garment` or `accessory`) from the title and product type: sweaters, cardigans, pullovers, knit jumpers, turtlenecks, ponchos, knit tops; beanies and knitted scarves, hats, gloves. Sweatshirts, jersey basics, woven wool garments, yarn and home goods are not knitwear | Must | Tests with real titles from the 2026-10-08 run pass |
+| FL-03 | Store type from product vendors first (three or more outside brands, none above 90%); the store's own name and placeholders do not count. Unclear knitwear stores are judged by the LLM; an answer below 0.6 confidence leaves the store `unknown` | Must | `stores.store_type_source` is `vendors` or `llm` for every judged store |
+| FL-04 | The final list is derived: the raw tables keep every store and product | Must | `products` row count is unchanged by the final list |
+| FL-05 | `final_stores` carries the brands, knitwear counts, emails, phones, Instagram, Facebook, wholesale pages and the input's store name; `final_products` carries only knitwear | Must | Columns exist in every format |
+| FL-06 | The final list is exported in every chosen format under `export/final/`, offered first in the interface, and the interface opens a run on it | Must | A download button "Daftar final" |
+| FL-07 | The report gives the final list's size, why the other stores are not on it, and the knitwear stores whose type is unclear | Must | The `Final list` section is in every report |
+| FL-08 | A knitwear-only download: every knitwear product (FL-02) of every store that was read, final list or not, with the store's name, type and whether it is on the final list | Must | `knit_products` in `export/knit/`; a "Produk rajut saja" download |
+
 ## 8. Data model
 
 ### 8.1 Tables
@@ -296,11 +318,14 @@ All output formats are built from the same tables
 |---|---|---|
 | `runs` | run | `run_id`, start and end time, configuration (without keys), version, total cost |
 | `inputs` | input row | `run_id`, `input_id`, original link, `domain`, status, input metadata |
-| `stores` | store per run | `run_id`, `domain`, status, platform, country, language, currency, `layers_tried`, `product_count`, `knit_count`, `ssl_bypassed` |
-| `products` | product | `run_id`, `domain`, `title`, `price_raw`, `currency`, `vendor`, `product_type`, `tags`, `url`, `source`, `evidence_url`, `needs_review`, `confidence`, `is_knitwear`, `raw` (JSON) |
+| `stores` | store per run | `run_id`, `domain`, status, platform, country, language, currency, `layers_tried`, `product_count`, `knit_count`, `knit_kind_count`, `store_type`, `store_type_source`, `brands`, `ssl_bypassed` |
+| `products` | product | `run_id`, `domain`, `title`, `price_raw`, `currency`, `vendor`, `product_type`, `tags`, `url`, `source`, `evidence_url`, `needs_review`, `confidence`, `is_knitwear`, `knit_kind`, `raw` (JSON) |
 | `pages` | fetched page | `run_id`, `domain`, `url`, `page_kind`, `http_status`, `via`, `language`, `text` |
 | `contacts` | contact found | `run_id`, `domain`, `type`, `value`, `source_url` |
 | `changes` | change between runs | `run_id`, `domain`, `change_type`, `key`, old value, new value |
+| `final_stores` | store on the final list | `run_id`, `domain`, `store_type`, `brands`, `knit_products`, contacts, `wholesale_pages` (derived, section 7.10) |
+| `final_products` | knitwear product of a final store | `run_id`, `domain`, `knit_kind`, `title`, `price_raw`, `vendor`, `url` (derived, section 7.10) |
+| `knit_products` | knitwear product of any store that was read | `run_id`, `domain`, `store_name`, `store_type`, `on_final_list`, `knit_kind`, `title`, `price_raw`, `vendor`, `url` (derived, FL-08) |
 
 In flat formats (CSV, TSV, Excel), nested columns such as `raw` and `tags` are stored
 as JSON text. In JSON and JSONL, the structure stays intact.

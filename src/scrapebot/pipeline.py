@@ -24,8 +24,10 @@ from . import __version__
 from .acquire import acquire
 from .config import FocusConfig, InputConfig, RunConfig
 from .extract.focus import matched_items
+from .extract.knitwear import knit_kind
 from .extract.signals import is_knit
 from .fetch import Fetcher, HttpFetcher
+from .final import build_final, build_knit, judge_store
 from .inputs.readers import InputError, InputRecord, read_file, read_text
 from .inputs.resolve import Resolution, ResolvedInput, resolve
 from .models import Acquired, Target
@@ -117,6 +119,7 @@ def store_rows(
     """Every table row one visited store produces."""
     focus = focus or FocusConfig()
     matches = [matched_items(p, focus.items, focus.terms) for p in got.products]
+    kinds = [knit_kind(p) for p in got.products]
     yield StoreRow(
         run_id=run_id,
         domain=got.domain,
@@ -138,16 +141,21 @@ def store_rows(
         llm_used=bool(got.llm_calls),
         llm_products_dropped=got.llm_products_dropped,
         store_type=got.store_type,
+        store_type_source=got.store_type_source,
+        brand_count=got.brand_count,
+        brands=got.brands,
+        knit_kind_count=sum(bool(k) for k in kinds),
         input_ids=target.input_ids,
         fetched_at=fetched_at,
     )
     for call in got.llm_calls:
         yield LLMCallRow(run_id=run_id, domain=got.domain, **call.model_dump())
-    for p, matched in zip(got.products, matches, strict=True):
+    for p, matched, kind in zip(got.products, matches, kinds, strict=True):
         yield ProductRow(
             run_id=run_id,
             domain=got.domain,
             is_knitwear=is_knit(p),
+            knit_kind=kind,
             matched_items=matched,
             **p.model_dump(include=set(ProductRow.model_fields) - {"run_id", "domain"}),
         )
@@ -269,6 +277,34 @@ def _safe_acquire(
         )
 
 
+def _visit(
+    target: Target,
+    fetcher: Fetcher,
+    llm: "LLMExtractor | None" = None,
+    renderer: "Renderer | None" = None,
+    render_pages: int = 10,
+) -> Acquired:
+    """Read one store, then judge its type for the final list (ADR 0010). A failed
+    judgement leaves the store `unknown`; what was read is kept."""
+    got = _safe_acquire(target, fetcher, llm, renderer, render_pages)
+    try:
+        judge_store(got, llm)
+    except Exception:
+        log.exception("Unexpected error while judging %s", target.domain)
+        got.store_type, got.store_type_source = ("unknown" if got.status == "ok" else ""), ""
+    return got
+
+
+def llm_missing_key(config: RunConfig, keys: Mapping[str, SecretStr]) -> str:
+    """Why the LLM stage cannot run for lack of a key, or "" when it can."""
+    from .llm.gateway import is_local, key_for, provider_of
+
+    model = config.llm.model
+    if not config.llm.enabled or is_local(model) or key_for(model, keys):
+        return ""
+    return f"no API key for {provider_of(model)} ({model})"
+
+
 def build_llm(config: RunConfig, keys: Mapping[str, SecretStr]) -> "tuple[LLMExtractor, Budget]":
     """The LLM stage for a run, with its budget."""
     from .llm.gateway import Budget, LiteLLMExtractor
@@ -327,13 +363,20 @@ def execute(
         timeout=config.fetch.timeout_seconds,
         retries=config.fetch.retries,
     )
+    llm_skipped = ""
     if llm is None and config.llm.enabled:
-        llm, _ = build_llm(config, keys or {})
+        llm_skipped = llm_missing_key(config, keys or {})
+        if llm_skipped:
+            # Portability (PRD section 9): the other stages still run, and the report says
+            # what was skipped. Stores the LLM would have read or judged stay as they are.
+            log.warning("LLM stage skipped: %s. Add the key to .env to use it.", llm_skipped)
+        else:
+            llm, _ = build_llm(config, keys or {})
     own_renderer = renderer is None
     if renderer is None:
         renderer = build_renderer(config, fetcher)
     try:
-        return _visit_and_write(prepared, fetcher, progress, stop, llm, renderer, t0)
+        return _visit_and_write(prepared, fetcher, progress, stop, llm, renderer, t0, llm_skipped)
     finally:
         if own_renderer and renderer is not None:
             renderer.close()
@@ -347,6 +390,7 @@ def _visit_and_write(
     llm: "LLMExtractor | None",
     renderer: "Renderer | None",
     t0: float,
+    llm_skipped: str = "",
 ) -> RunResult:
     config, run_id, store, resolution = (
         prepared.config,
@@ -373,9 +417,7 @@ def _visit_and_write(
                 if target is None:
                     return
                 running[
-                    pool.submit(
-                        _safe_acquire, target, fetcher, llm, renderer, config.render.max_pages
-                    )
+                    pool.submit(_visit, target, fetcher, llm, renderer, config.render.max_pages)
                 ] = target
 
         fill()
@@ -436,10 +478,15 @@ def _visit_and_write(
         store_count=total,
         limit=config.limit,
         llm_cost_usd=round(llm_cost, 6),
+        llm_skipped=llm_skipped,
     )
     store.append([run_row])
 
     exports = export(store.load_tables(), config.output.writers, store.root / "export")
+    final = export(build_final(store), config.output.writers, store.root / "export" / "final")
+    exports |= {f"final_{name}": paths for name, paths in final.items()}
+    knit = export(build_knit(store), config.output.writers, store.root / "export" / "knit")
+    exports |= {f"knit_{name}": paths for name, paths in knit.items()}
     summary_path = write_summary_csv(
         resolution.inputs, list(JsonlRows(summary_file)), store.root / "summary.csv"
     )

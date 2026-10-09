@@ -1,5 +1,7 @@
 """The tidy tables every run produces (ADR 0006, PRD section 8): the seven of the PRD
-plus `llm_calls`, which records every model call (PRD LM-11).
+plus `llm_calls`, which records every model call (PRD LM-11), and three derived at the end
+of a run (ADR 0010): the two tables of the final list (`FINAL_TABLES`) and every knitwear
+product of every store that was read (`KNIT_TABLES`).
 
 Each table is a Pydantic model whose fields are its columns, in order. Writers
 derive column types from the annotations, so a new column is added here and
@@ -31,6 +33,7 @@ class RunRow(Row):
     store_count: int = 0
     limit: int | None = None
     llm_cost_usd: float = 0.0
+    llm_skipped: str = ""  # why the LLM stage was on but could not run, e.g. no key
 
 
 class InputRow(Row):
@@ -66,9 +69,14 @@ class StoreRow(Row):
     failed_page_count: int = 0  # pages that could not be read; see `pages.error`
     contact_count: int = 0
     ssl_bypassed: bool = False
-    llm_used: bool = False  # the LLM stage was called for this store
+    llm_used: bool = False  # a model was called for this store (products or store type)
     llm_products_dropped: int = 0  # products the LLM named that failed the evidence rule
-    store_type: str = ""  # own_brand | multi_brand | unknown, when the LLM judged it
+    # own_brand | multi_brand | unknown for a readable store; "" otherwise (ADR 0010)
+    store_type: str = ""
+    store_type_source: str = ""  # vendors | llm: what decided `store_type`
+    brand_count: int = 0  # distinct outside brands among the product vendors
+    brands: list[str] = Field(default_factory=list)  # the first ten, most products first
+    knit_kind_count: int = 0  # products that are knitted garments or accessories (`knit_kind`)
     input_ids: list[int] = Field(default_factory=list)
     fetched_at: str
 
@@ -92,6 +100,9 @@ class ProductRow(Row):
     # Knit terms in the title, type, tags or description (`extract.signals.is_knit`).
     # A flag beside the raw values, never a filter: every product is kept.
     is_knitwear: bool = False
+    # Strict: the title or product type names a knitted garment or accessory
+    # (`extract.knitwear`). garment | accessory | "". The final list reads this one.
+    knit_kind: str = ""
     # The run's chosen items this product matches (`config.focus`), e.g. ["knitwear"].
     matched_items: list[str] = Field(default_factory=list)
     raw: dict[str, Any] = Field(default_factory=dict)
@@ -146,6 +157,49 @@ class LLMCallRow(Row):
     error: str = ""
 
 
+class FinalStoreRow(Row):
+    """A store on the final list: multi-brand and selling knitwear (ADR 0010)."""
+
+    table: ClassVar[str] = "final_stores"
+    run_id: str
+    domain: str
+    url: str
+    store_name: str = ""  # from the input row, when it had one
+    platform: str = ""
+    currency: str = ""
+    store_type: str
+    store_type_source: str
+    brand_count: int = 0
+    brands: list[str] = Field(default_factory=list)
+    product_count: int = 0
+    knit_products: int = 0
+    knit_garments: int = 0
+    knit_accessories: int = 0
+    emails: list[str] = Field(default_factory=list)
+    phones: list[str] = Field(default_factory=list)
+    instagram: list[str] = Field(default_factory=list)
+    facebook: list[str] = Field(default_factory=list)
+    wholesale_pages: list[str] = Field(default_factory=list)
+
+
+class FinalProductRow(Row):
+    """A knitwear product of a store on the final list (ADR 0010)."""
+
+    table: ClassVar[str] = "final_products"
+    run_id: str
+    domain: str
+    knit_kind: str  # garment | accessory
+    title: str
+    price_raw: str = ""
+    currency: str = ""
+    vendor: str = ""
+    product_type: str = ""
+    url: str = ""
+    evidence_url: str = ""
+    source: str
+    needs_review: bool = False
+
+
 TABLES: dict[str, type[Row]] = {
     model.table: model
     for model in (
@@ -159,6 +213,32 @@ TABLES: dict[str, type[Row]] = {
         LLMCallRow,
     )
 }
+
+
+class KnitProductRow(Row):
+    """A knitwear product of any store that was read, final list or not (ADR 0010)."""
+
+    table: ClassVar[str] = "knit_products"
+    run_id: str
+    domain: str
+    store_name: str = ""  # from the input row, when it had one
+    store_type: str = ""  # multi_brand | own_brand | unknown
+    on_final_list: bool = False  # the store is in `final_stores`
+    knit_kind: str  # garment | accessory
+    title: str
+    price_raw: str = ""
+    currency: str = ""
+    vendor: str = ""
+    product_type: str = ""
+    url: str = ""
+    evidence_url: str = ""
+    source: str
+    needs_review: bool = False
+
+
+# Derived at the end of a run from the tables above; never part of the raw export.
+FINAL_TABLES: dict[str, type[Row]] = {m.table: m for m in (FinalStoreRow, FinalProductRow)}
+KNIT_TABLES: dict[str, type[Row]] = {KnitProductRow.table: KnitProductRow}
 
 
 @dataclass(frozen=True)
