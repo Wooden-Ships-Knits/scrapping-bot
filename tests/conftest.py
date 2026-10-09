@@ -25,3 +25,24 @@ def _no_real_keys(monkeypatch):
 
     for variable in (*KEY_VARIABLES.values(), *SEARCH_KEY_VARIABLES.values()):
         monkeypatch.delenv(variable, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _no_project_env_file(monkeypatch, tmp_path):
+    """No test reads the developer's own `.env`: with the LLM on by default, a run
+    started by a test would otherwise call a real provider. Tests that need keys write
+    their own `.env` in a temporary folder."""
+    from pathlib import Path
+
+    from scrapebot import keys
+
+    project_env = Path(".env").resolve()
+    original = keys.load_keys
+
+    def load_keys(env_file=".env", given=None):
+        if Path(env_file).resolve() == project_env:
+            env_file = tmp_path / "no-project-keys.env"
+        return original(env_file, given)
+
+    for module in ("scrapebot.keys", "scrapebot.cli", "scrapebot.api.app"):
+        monkeypatch.setattr(f"{module}.load_keys", load_keys)

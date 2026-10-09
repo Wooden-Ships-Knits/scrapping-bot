@@ -10,7 +10,7 @@ from scrapebot import pipeline
 from scrapebot.config import RunConfig
 from scrapebot.inputs.readers import InputError
 from scrapebot.pipeline import execute, new_run_id, prepare, resume, run
-from scrapebot.tables import TABLES
+from scrapebot.tables import FINAL_TABLES, TABLES
 from tests.fakes import FakeFetcher
 
 SHOPIFY_HOME = (
@@ -65,7 +65,7 @@ def test_run_writes_tables_exports_summary_and_report(tmp_path):
 
     assert (result.links_in, result.processed, result.skipped) == (3, 1, 2)
     tables = result.root / "tables"
-    assert sorted(p.stem for p in tables.glob("*.jsonl")) == sorted(TABLES)
+    assert sorted(p.stem for p in tables.glob("*.jsonl")) == sorted([*TABLES, *FINAL_TABLES])
 
     inputs = read_jsonl(tables / "inputs.jsonl")
     assert [i["status"] for i in inputs] == ["processed", "no_website", "social_only"]

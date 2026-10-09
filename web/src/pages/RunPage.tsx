@@ -15,10 +15,23 @@ import { api, ApiError, type PreviewTable, type Rows, type Run } from "../api/cl
 import { useRun } from "../api/useRun";
 import { DataTable, type Renderers } from "../components/ui/DataTable";
 import { JsonView } from "../components/ui/JsonView";
-import { formatNumber, formatTime, runState, skipReason, storeStatus, tone, writerLabel } from "../labels";
+import {
+  formatNumber,
+  formatTime,
+  knitKind,
+  runState,
+  skipReason,
+  storeStatus,
+  storeType,
+  storeTypeSource,
+  tone,
+  writerLabel,
+} from "../labels";
 
 const LOOK_AT = ["no_products", "js_required", "blocked", "error"];
 const TABLES: { key: PreviewTable; label: string; count: (run: Run) => number }[] = [
+  { key: "final_stores", label: "Final: toko", count: (r) => r.final_stores },
+  { key: "final_products", label: "Final: produk rajut", count: (r) => r.final_products },
   { key: "stores", label: "Toko", count: (r) => r.stores_done },
   { key: "products", label: "Produk", count: (r) => r.products },
   { key: "contacts", label: "Kontak", count: (r) => r.contacts },
@@ -36,7 +49,16 @@ const badge = (code: string, label: string) => <span className={`badge badge-${t
 
 // How some columns read in the table view; the JSON view keeps the raw codes.
 const RENDERERS: Partial<Record<PreviewTable, Renderers>> = {
-  stores: { status: (v) => badge(String(v), storeStatus(String(v))) },
+  final_stores: {
+    store_type: (v) => badge(String(v), storeType(String(v))),
+    store_type_source: (v) => storeTypeSource(String(v)),
+  },
+  final_products: { knit_kind: (v) => knitKind(String(v)) },
+  stores: {
+    status: (v) => badge(String(v), storeStatus(String(v))),
+    store_type: (v) => storeType(String(v ?? "")),
+  },
+  products: { knit_kind: (v) => knitKind(String(v ?? "")) },
   inputs: {
     status: (v) => (v === "processed" ? badge("ok", "Diproses") : badge("neutral", skipReason(String(v)))),
   },
@@ -132,6 +154,11 @@ export function RunDetail({
 
       <dl className="stats">
         <Stat label="Toko" value={run.stores_done} sub={`dari ${formatNumber(run.stores_total)} target`} />
+        <Stat
+          label="Daftar final"
+          value={run.final_stores}
+          sub={`toko multi-brand, ${formatNumber(run.final_products)} produk rajut`}
+        />
         <Stat label="Produk" value={run.products} sub="ditemukan" />
         <Stat label="Kontak" value={run.contacts} sub={`dari ${formatNumber(run.pages)} halaman`} />
         <Stat label="Diblokir" value={count("blocked")} sub="toko menolak akses" alert={count("blocked") > 0} />
@@ -266,7 +293,7 @@ function Downloads({ run }: { run: Run }) {
 type View = "table" | "response" | "params";
 
 function ResultCard({ run }: { run: Run }) {
-  const [table, setTable] = useState<PreviewTable>("stores");
+  const [table, setTable] = useState<PreviewTable>("final_stores");
   const [view, setView] = useState<View>("table");
   const [offset, setOffset] = useState(0);
   const [rows, setRows] = useState<Rows | null>(null);

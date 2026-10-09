@@ -125,7 +125,11 @@ class Acquired(_Record):
     products: list[Product] = Field(default_factory=list)
     pages: list[Page] = Field(default_factory=list)
     contacts: list[Contact] = Field(default_factory=list)
-    store_type: str = ""  # own_brand | multi_brand | unknown, when the LLM judged it
+    # own_brand | multi_brand | unknown for a readable store (ADR 0010); "" otherwise
+    store_type: str = ""
+    store_type_source: str = ""  # vendors | llm: what decided `store_type`
+    brands: list[str] = Field(default_factory=list)  # outside brands, most products first
+    brand_count: int = 0  # distinct outside brands among the product vendors
     llm_calls: list[LLMCall] = Field(default_factory=list)
     llm_products_dropped: int = 0  # products the LLM named that failed the evidence rule
 

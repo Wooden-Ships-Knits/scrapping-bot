@@ -23,6 +23,8 @@ test("main scenario: paste, preview, scrape, check the data, download", async ({
   await expect(page.getByRole("region", { name: "Perlu dilihat" }).getByText("HTTP 403")).toBeVisible();
 
   const result = page.getByRole("region", { name: "Hasil" });
+  await expect(result.getByRole("tab", { name: /Final: toko/ })).toHaveAttribute("aria-selected", "true");
+  await result.getByRole("tab", { name: /^Toko/ }).click();
   await expect(result.getByRole("row", { name: /monkees\.com.*Ada produk/ })).toBeVisible();
   await expect(result.getByRole("row", { name: /boutique\.com.*Tanpa katalog/ })).toBeVisible();
 

@@ -44,7 +44,7 @@ from .discovery import (
 from .feeds import FEEDS, feeds_for
 
 if TYPE_CHECKING:
-    from ..llm.gateway import LLMExtractor
+    from ..llm.gateway import ProductReader
     from ..render import Renderer
 
 # A homepage with less visible text than this is a JavaScript shell: the content
@@ -65,7 +65,7 @@ def acquire(
     target: Target,
     fetcher: Fetcher,
     max_pages: int = MAX_PAGES,
-    llm: "LLMExtractor | None" = None,
+    llm: "ProductReader | None" = None,
     renderer: "Renderer | None" = None,
     render_pages: int = RENDER_MAX_PAGES,
 ) -> Acquired:
@@ -214,7 +214,7 @@ def _replace_page(got: Acquired, page: Page) -> None:
 LLM_PAGE_ORDER = ("collection", "product", "home", "other", "brands", "about")
 
 
-def _llm_stage(got: Acquired, llm: "LLMExtractor") -> None:
+def _llm_stage(got: Acquired, llm: "ProductReader") -> None:
     from ..llm.evidence import apply_evidence_rule
     from ..llm.gateway import MAX_PAGES as LLM_MAX_PAGES
 

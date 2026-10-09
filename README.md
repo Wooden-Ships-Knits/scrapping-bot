@@ -17,7 +17,11 @@ and a local web interface for all of it. Shopify stores
 are read exactly through their product feed; other sites through JSON-LD only, until
 M2 adds more ways to read them.
 
-**Still to come:** more ways to read non-Shopify sites, any LLM provider, region settings, Google Sheets and PostgreSQL output, and change detection.
+**Every run ends with a final list:** the multi-brand stores that sell knitwear and
+their knitwear products (`export/final/`, *Daftar final* in the web app;
+[ADR 0010](docs/decisions/0010-final-list-multi-brand-knitwear.md)).
+
+**Still to come:** region settings, Google Sheets and PostgreSQL output, and change detection.
 See the [PRD](docs/product/prd.md), the [architecture](docs/architecture/overview.md)
 and the [roadmap](docs/planning/roadmap.md). Everything below describes what runs today unless
 it says *planned*.
@@ -147,9 +151,15 @@ one that yields products:
    JavaScript-only pages (and a few listing pages) and captures the product JSON they
    load. Same `robots.txt` and delay as HTTP; a challenge page is recorded as
    `blocked`, never bypassed. `--no-render` turns it off.
-5. **LLM extraction** (*planned*). For a store still at zero products, any LLM
-   provider (Gemini, GPT, Claude, Ollama and others, through LiteLLM) reads the page
-   text against a fixed schema. These rows are flagged `needs_review`.
+5. **LLM extraction.** For a store still at zero products, an LLM (any provider
+   through LiteLLM; `openai/gpt-4o-mini` by default, US$1 per run) reads the page text
+   against a fixed schema. These rows are flagged `needs_review`. On by default; it
+   needs `OPENAI_API_KEY` in `.env`, and `--no-llm` turns it off. Without the key the
+   run goes on and the report says the LLM was not used.
+
+Then the **final list**: a store qualifies when it resells other brands (three or
+more outside brands among its product vendors, or the LLM's judgement when the
+vendors are unclear) and sells knitwear by a strict, title-based rule.
 
 Stage 4 is built only if a probe of the non-Shopify sites shows enough stores need
 it. No ScrapeGraph library or subscription is used — see
@@ -164,6 +174,7 @@ overwritten:
 |---|---|
 | `report.md` | Read this first. Reconciliation (links in = processed + skipped), status counts, coverage by source, and the stores that need a look |
 | `summary.csv` | One row per input link, original columns first: the qualification view (below) |
+| `export/final/` | **The final list**: `final_stores` (multi-brand stores that sell knitwear, with brands, knitwear counts and contacts) and `final_products` (their knitwear), in every format you chose |
 | `export/` | The seven tables in every format you chose |
 | `tables/` | The canonical copy of the seven tables (JSONL), from which every export is made |
 | `manifest.json` | Config, package versions, durations and counts, for reproducing the run |

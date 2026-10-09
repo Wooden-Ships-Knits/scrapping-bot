@@ -4,9 +4,11 @@ import { parseRoute } from "./router";
 import {
   blockMethod,
   blockState,
+  knitKind,
   skipReason,
   sourceLabel,
   storeStatus,
+  storeType,
   tone,
   trafficCityKind,
   trafficProblem,
@@ -25,6 +27,8 @@ describe("labels", () => {
     expect(trafficCityKind("data_center")).toBe("Kota data center");
     expect(trafficSource("social")).toBe("Media sosial");
     expect(trafficProblem("quota_low")).toContain("Kuota");
+    expect(storeType("multi_brand")).toBe("Multi-brand");
+    expect(knitKind("accessory")).toBe("Aksesori rajut");
   });
 
   it("gives every store status a tone", () => {

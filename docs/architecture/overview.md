@@ -1,6 +1,6 @@
 # Architecture
 
-**Updated:** 2026-10-08
+**Updated:** 2026-10-09
 **Requirements:** [PRD](../product/prd.md)
 **Decisions:** [0001](../decisions/0001-layered-acquisition-llm-last.md) ·
 [0002](../decisions/0002-camoufox-for-rendering-only.md) ·
@@ -9,13 +9,16 @@
 [0006](../decisions/0006-tidy-tables-multiformat-writers.md) ·
 [0007](../decisions/0007-typescript-web-ui-local-api.md) ·
 [0008](../decisions/0008-store-discovery-paid-search.md) ·
-[0009](../decisions/0009-own-store-traffic-from-shopify-analytics.md)
+[0009](../decisions/0009-own-store-traffic-from-shopify-analytics.md) ·
+[0010](../decisions/0010-final-list-multi-brand-knitwear.md)
 
 `scrapebot` finds knitwear stores through paid search APIs (`scrapebot discover`), or
 takes a bulk list of store links in any format, then collects raw data from each
 store (products, prices, vendors, wholesale pages, page text, contacts), and writes it
-to the formats the operator picks. The data feeds a later analysis: which stores are
-competitors and which are potential wholesale partners. The bot collects; people decide.
+to the formats the operator picks. Each run ends with a final list derived from that
+data: multi-brand stores that sell knitwear, with their knitwear (section 4.15). The
+raw data stays complete for the later analysis: which stores are competitors and which
+are potential wholesale partners.
 
 Each part below is marked:
 
@@ -287,7 +290,14 @@ browser is read in `extract/json_products.py` (section 4.7), including prices in
 minor units (`priceCents: 4600` is 46.00, `price_raw` keeps `4600`) and prices given
 per variant (the lowest wins).
 
-### 4.9 LLM extractor — Planned
+### 4.9 LLM extractor — Built (on by default)
+
+On by default with `openai/gpt-4o-mini` and a US$1 budget per run
+([ADR 0010](../decisions/0010-final-list-multi-brand-knitwear.md)); `--no-llm` turns
+it off. Without the provider's key the run goes on without it, logs a warning and
+says so in the report (`runs.llm_skipped`). It does two jobs: reads the products of a
+store no other stage could (below), and judges the store type of a knitwear store
+its vendors leave unclear (section 4.15).
 
 For a store that still has no products after every earlier stage
 ([ADR 0004](../decisions/0004-llm-gateway-litellm-instructor.md)):
@@ -352,7 +362,13 @@ Every writer has a round-trip contract test (`tests/contract/test_writers.py`). 
 failing writer is logged and reported; the other formats are still written.
 
 `products.is_knitwear` and `stores.knit_count` use the same knitwear rule as the
-summary (`extract/signals.py`): a flag beside the raw values, never a filter.
+summary (`extract/signals.py`): a broad flag beside the raw values, never a filter.
+`products.knit_kind` and `stores.knit_kind_count` are the strict rule the final list
+uses (section 4.15). `stores.store_type`, `store_type_source`, `brand_count` and
+`brands` say what kind of shop a store is.
+
+Two more tables, `final_stores` and `final_products`, are derived from these at the
+end of a run and written to `export/final/` (section 4.15).
 
 `summary.csv` keeps v1's one-row-per-link qualification view (knitwear share,
 contacts). It is derived while page HTML is in memory and will be replaced by
@@ -364,13 +380,15 @@ Compares a run with the previous run for the same domains: new products, removed
 products, price changes and status changes, written to the `changes` table and
 summarised in the run report.
 
-### 4.13 Run report and manifest — Built (LLM cost and changes planned)
+### 4.13 Run report and manifest — Built (changes planned)
 
 `report.md`: reconciliation line (links in = processed + skipped), skip reasons,
-store statuses, products by source, contacts by type, the `no_products`,
-`js_required`, blocked and `ssl_bypassed` lists, the stages this build cannot run,
-and the files written. `manifest.json`: config (never secrets), package versions,
-duration and row counts. **Planned:** LLM tokens and cost (M3), change summary (M5).
+store statuses, the final list (how many stores and knitwear products, why the others
+are not on it, and the knitwear stores whose type is unclear), products by source,
+contacts by type, the `no_products`, `js_required`, blocked and `ssl_bypassed` lists,
+LLM use (stores read, stores judged, tokens, cost, budget), the stages this build
+cannot run, and the files written. `manifest.json`: config (never secrets), package
+versions, duration and row counts. **Planned:** change summary (M5).
 
 ### 4.14 Traffic on our own store — Built (web app)
 
@@ -389,6 +407,29 @@ Not a pipeline stage: `traffic.py` reads our own store's Shopify Analytics
 
 It cannot see clients that never run JavaScript, such as scrapers reading
 `/products.json`; the page says so.
+
+### 4.15 Final list — Built
+
+`final.py` ([ADR 0010](../decisions/0010-final-list-multi-brand-knitwear.md)). A
+store is on the final list when it was read (`ok`), is `multi_brand`, and has at
+least one product whose `knit_kind` is set.
+
+- **Strict knitwear** (`extract/knitwear.py`): `garment` (sweaters, cardigans,
+  pullovers, knit jumpers, turtlenecks, ponchos, knit or cashmere/wool tops) or
+  `accessory` (beanies; scarves, hats, gloves and wraps that say knit or a knit
+  fibre), from the title and, when the title is only a name, the product type. Tags
+  and descriptions are not read: they took tees and trousers into the broad flag.
+- **Store type** (`extract/brands.py`, then `final.judge_store` while the store is
+  visited): three or more outside brands among the product vendors, none above 90%,
+  is `multi_brand`; the store's own name and placeholders do not count. Otherwise
+  `unknown`, and a knitwear store goes to the LLM (`llm/prompts/store_type_v1.md`:
+  about, brands and home pages, vendors, product names). Below 0.6 confidence it
+  stays `unknown`.
+- **Output**: at the end of the run `build_final` streams the tables once and writes
+  `final_stores` (brands, knitwear counts, emails, phones, Instagram, Facebook,
+  wholesale pages, the store name from the input) and `final_products` (knitwear
+  only) to `tables/`, then every chosen writer to `export/final/`. The web app opens a
+  run on these two tables and offers `Daftar final` as the first download.
 
 ## 5. Statuses
 

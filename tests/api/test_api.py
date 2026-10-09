@@ -336,7 +336,7 @@ def test_llm_run_through_the_interface_never_leaks_the_key(tmp_path, caplog):
     )
     assert (run["llm_model"], run["llm_stores"], run["products"]) == ("openai/gpt-4o-mini", 1, 1)
     assert run["llm_cost_usd"] > 0
-    assert "--llm openai/gpt-4o-mini" in run["cli"]
+    assert "--no-llm" not in run["cli"], "the default model is on and needs no flag"
 
     leaks = [
         p
@@ -437,3 +437,40 @@ def test_llm_check_explains_a_bad_key(tmp_path):
         "message": "API key ditolak penyedia. Periksa key dan penyedianya.",
     }
     assert bad_model.json()["ok"] is False
+
+
+def test_the_final_list_is_counted_previewed_and_downloadable(tmp_path):
+    """ADR 0010: multi-brand stores that sell knitwear, beside the raw tables."""
+    multi = json.dumps(
+        {
+            "products": [
+                {"title": t, "vendor": v, "handle": f"p{i}", "variants": [{"price": "99.00"}]}
+                for i, (t, v) in enumerate(
+                    [("Aran Cardigan", "Vince"), ("Dress", "Ulla Johnson"), ("Belt", "Frame")]
+                )
+            ]
+        }
+    )
+    responses = {
+        **RESPONSES,
+        "https://multi.com": (200, SHOPIFY_HOME),
+        "https://multi.com/products.json?limit=250&page=1": (200, multi),
+    }
+    base = RunConfig.model_validate(
+        {"output": {"runs_dir": tmp_path / "runs"}, "fetch": {"cache_dir": tmp_path / "cache"}}
+    )
+    settings = ApiSettings(base=base, uploads_dir=tmp_path / "uploads", poll_seconds=0.01)
+    with TestClient(create_app(settings, fetcher_factory=lambda: FakeFetcher(responses))) as c:
+        payload = {"source": {"text": LINKS + " https://multi.com"}, "writers": ["xlsx", "csv"]}
+        run = wait_until_finished(c, c.post("/api/runs", json=payload).json()["run_id"])
+        rows = c.get(f"/api/runs/{run['run_id']}/rows/final_products").json()
+        download = c.get(f"/api/runs/{run['run_id']}/download/final_xlsx")
+
+    assert (run["final_stores"], run["final_products"]) == (1, 1)
+    keys = {d["key"]: d["filename"] for d in run["downloads"]}
+    assert keys["final_xlsx"] == f"{run['run_id']}-final.xlsx"
+    assert "final_csv" in keys
+    assert [r["title"] for r in rows["rows"]] == ["Aran Cardigan"]
+    assert download.status_code == 200
+    sheets = load_workbook(io.BytesIO(download.content), read_only=True).sheetnames
+    assert sheets == ["final_stores", "final_products"]

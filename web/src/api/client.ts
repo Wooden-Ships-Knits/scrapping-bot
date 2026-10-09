@@ -20,7 +20,14 @@ export type DiscoverRequest = Schemas["DiscoverIn"];
 export type Detection = Schemas["DetectionOut"];
 export type Traffic = Schemas["TrafficSnapshot"];
 export type TrafficPeriod = Traffic["period"];
-export type PreviewTable = "stores" | "products" | "contacts" | "pages" | "inputs";
+export type PreviewTable =
+  | "final_stores"
+  | "final_products"
+  | "stores"
+  | "products"
+  | "contacts"
+  | "pages"
+  | "inputs";
 
 export const FINISHED: readonly RunState[] = ["done", "failed", "interrupted", "stopped"];
 

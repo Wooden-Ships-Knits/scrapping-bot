@@ -44,11 +44,19 @@ class RenderConfig(_Section):
     settle_seconds: float = Field(default=6, ge=0)  # waited for the page's own requests
 
 
-class LLMConfig(_Section):
-    """The LLM stage (PRD 7.4). Never holds keys: those come from the interface or .env."""
+DEFAULT_LLM_MODEL = "openai/gpt-4o-mini"
 
-    enabled: bool = False
-    model: str = ""  # provider/model, e.g. gemini/gemini-2.5-flash or ollama/qwen2.5:3b
+
+class LLMConfig(_Section):
+    """The LLM stage (PRD 7.4). Never holds keys: those come from the interface or .env.
+
+    On by default (ADR 0010): it reads stores no other stage could and judges the store
+    type the vendors leave unclear. gpt-4o-mini cost about US$0.001 a store on real
+    runs; without its key the run goes on without it and the report says so.
+    """
+
+    enabled: bool = True
+    model: str = DEFAULT_LLM_MODEL  # provider/model, e.g. gemini/gemini-2.5-flash
     fallbacks: list[str] = Field(default_factory=list)  # tried in order when `model` fails
     budget_usd: float = Field(default=1.0, ge=0)  # LLM calls stop once a run spends this
     api_base: str | None = None  # for a local or self-hosted server, e.g. Ollama

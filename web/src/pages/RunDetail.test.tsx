@@ -28,6 +28,8 @@ function run(overrides: Partial<Run> = {}): Run {
     products: 780,
     pages: 2,
     contacts: 8,
+    final_stores: 1,
+    final_products: 12,
     stores: [
       { domain: "monkees.com", url: "https://monkees.com", status: "ok", error: "", platform: "shopify", currency: "USD", source_used: "shopify_feed", product_count: 780, page_count: 1, contact_count: 8, ssl_bypassed: false },
       { domain: "blocked.com", url: "https://blocked.com", status: "blocked", error: "HTTP 403", platform: "", currency: "", source_used: "none", product_count: 0, page_count: 0, contact_count: 0, ssl_bypassed: false },
@@ -47,6 +49,8 @@ function run(overrides: Partial<Run> = {}): Run {
 }
 
 const ROWS = {
+  final_stores: { table: "final_stores", columns: ["run_id", "domain", "store_type", "knit_products"], total: 1, offset: 0, truncated_fields: false,
+    rows: [{ run_id: RUN_ID, domain: "monkees.com", store_type: "multi_brand", knit_products: 12 }] },
   stores: { table: "stores", columns: ["run_id", "domain", "status"], total: 2, offset: 0, truncated_fields: false,
     rows: [{ run_id: RUN_ID, domain: "monkees.com", status: "ok" }, { run_id: RUN_ID, domain: "blocked.com", status: "blocked" }] },
   products: { table: "products", columns: ["run_id", "domain", "title", "price"], total: 1, offset: 0, truncated_fields: false,
@@ -77,11 +81,20 @@ describe("RunDetail", () => {
     expect(within(screen.getByRole("region", { name: "Perlu dilihat" })).getByText("HTTP 403")).toBeInTheDocument();
   });
 
+  it("opens on the final list: multi-brand stores that sell knitwear", async () => {
+    render(<RunDetail run={run()} />);
+    expect(screen.getByText("toko multi-brand, 12 produk rajut")).toBeInTheDocument();
+    const result = screen.getByRole("region", { name: "Hasil" });
+    expect(within(result).getByRole("tab", { name: /Final: toko/ })).toHaveAttribute("aria-selected", "true");
+    expect(await within(result).findByText("Multi-brand")).toHaveClass("badge-good");
+  });
+
   it("previews the data: table with status badges, then the raw JSON", async () => {
     const user = userEvent.setup();
     render(<RunDetail run={run()} />);
     const result = screen.getByRole("region", { name: "Hasil" });
-    expect(await within(result).findByText("monkees.com")).toBeInTheDocument();
+    await user.click(within(result).getByRole("tab", { name: /^Toko/ }));
+    expect(await within(result).findByText("blocked.com")).toBeInTheDocument();
     expect(within(result).getByText("Diblokir")).toHaveClass("badge-bad");
     expect(within(result).queryByText("run_id")).not.toBeInTheDocument();
 
