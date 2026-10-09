@@ -165,6 +165,28 @@ Stage 4 is built only if a probe of the non-Shopify sites shows enough stores ne
 it. No ScrapeGraph library or subscription is used — see
 [docs/decisions/](docs/README.md).
 
+## Wholesale analysis
+
+```bash
+uv run scrapebot analyze data/runs/<run_id>          # writes data/runs/<run_id>/analysis/
+```
+
+Sorts every store of a finished run into **retail partner**, **B2B partner**, **competitor**,
+**existing customer**, **not a fit** or **not relevant**, with a 0–100 score for partners and
+the reason for every point. Put your own files in `data/inputs/` (gitignored: they hold
+customer data):
+
+| File | What | Used for |
+|---|---|---|
+| `stockists.json` or `.csv` | The store locator's list | Existing stockists, distance to the nearest one |
+| `accounts.csv` | A Salesforce account export, as it comes | Existing accounts, their rep and territory |
+| `brands.csv` | `brand,relation` with `peer` or `competitor` | Who carries brands like ours; competitors |
+| `price_points.csv` | `category,wholesale_usd,retail_usd` | Price fit |
+
+A missing file leaves its columns empty and the analysis README says so. Locations are
+geocoded once (OpenStreetMap, about a second each) and cached; `--no-geocode` skips them,
+`--territory-miles` sets the conflict radius (15).
+
 ## Output
 
 Each run gets its own folder, `data/runs/<run_id>/`, so earlier runs are never
@@ -175,6 +197,7 @@ overwritten:
 | `report.md` | Read this first. Reconciliation (links in = processed + skipped), status counts, coverage by source, and the stores that need a look |
 | `summary.csv` | One row per input link, original columns first: the qualification view (below) |
 | `export/final/` | **The final list**: `final_stores` (multi-brand stores that sell knitwear, with brands, knitwear counts and contacts) and `final_products` (their knitwear), in every format you chose |
+| `analysis/` | After `scrapebot analyze`: the **wholesale analysis** (see below) |
 | `export/knit/` | **Knitwear only**: every knitwear product of every store that was read, with the store's type and whether it made the final list |
 | `export/` | The seven tables in every format you chose |
 | `tables/` | The canonical copy of the seven tables (JSONL), from which every export is made |

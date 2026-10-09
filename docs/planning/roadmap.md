@@ -102,6 +102,17 @@ more stores without structured data.
 wants JavaScript-only stores read now rather than after the survey. ADR 0002 still
 holds: the browser renders, it does not get past challenges.
 
+## Wholesale analysis (started 2026-10-09)
+
+`scrapebot analyze <run>` ([ADR 0011](../decisions/0011-wholesale-analysis-stage.md)) turns a
+finished run and the operator's files into segments (retail partner, B2B partner,
+competitor, existing customer, not a fit) with a score and its reasons. On the 808-store run
+of 2026-10-09: 217 retail partners, 28 competitors, 8 existing customers found; 135 of 287
+readable stores located from their own pages; 73 of the located candidates have a stockist
+within 15 miles. Waiting on: the Salesforce account export, the peer and competitor brand
+list, Wooden Ships' price points, and B2B discovery queries (today's lists hold almost no
+hotel, resort, club or museum shops).
+
 ## Next phase (separate PRD)
 
 **Competitor or partner analysis.** It also decides how the customer list (accounts,

@@ -78,7 +78,7 @@ def _product(item: dict[str, Any], evidence_url: str, page_url: str) -> Product 
         money = min(priced, key=lambda m: m[0]) if priced else None
     if money is None:
         return None
-    price, price_raw, currency = money
+    price, price_raw, currency, minor_unit = money
     currency = currency or next(
         (currency_code(item[k]) for k in CURRENCY_KEYS if currency_code(item.get(k))), ""
     )
@@ -87,6 +87,7 @@ def _product(item: dict[str, Any], evidence_url: str, page_url: str) -> Product 
         title=title,
         price=price,
         price_raw=price_raw,
+        price_minor_unit=minor_unit,
         currency=currency,
         url=urljoin(page_url, link) if link else "",
         source="render_json",
@@ -96,15 +97,16 @@ def _product(item: dict[str, Any], evidence_url: str, page_url: str) -> Product 
     )
 
 
-def _money(obj: dict[str, Any]) -> tuple[float, str, str] | None:
-    """(price, price as written, currency) of an object, or None when it has no price."""
+def _money(obj: dict[str, Any]) -> tuple[float, str, str, int] | None:
+    """(price, price as written, currency, decimals implied in it) of an object, or None
+    when it has no price."""
     raw, currency = _price(next((obj[k] for k in PRICE_KEYS if k in obj), None), 0)
     price = parse_price(raw) if raw else None
     if price:
-        return price, raw, currency
+        return price, raw, currency, 0
     cents = next((obj[k] for k in CENTS_KEYS if isinstance(obj.get(k), int | float)), None)
     if cents and not isinstance(cents, bool) and cents > 0:
-        return cents / 100, as_text(cents), ""
+        return cents / 100, as_text(cents), "", 2
     return None
 
 

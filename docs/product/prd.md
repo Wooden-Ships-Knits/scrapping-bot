@@ -71,7 +71,7 @@ flowchart LR
 | Part | Status in this PRD |
 |---|---|
 | Store discovery, bulk input, acquisition, export, change detection | **In scope** |
-| Competitor or partner analysis | **Next phase**, with its own PRD. This PRD must provide its data ([section 8.3](#83-data-required-for-the-next-analysis)) |
+| Competitor or partner analysis | **Next phase**, with its own PRD. This PRD must provide its data ([section 8.3](#83-data-required-for-the-next-analysis)). A first version runs as `scrapebot analyze` ([ADR 0011](../decisions/0011-wholesale-analysis-stage.md)) |
 | Reachout (email, CRM) | **Later**, out of scope |
 
 ## 4. Users
@@ -319,7 +319,7 @@ All output formats are built from the same tables
 | `runs` | run | `run_id`, start and end time, configuration (without keys), version, total cost |
 | `inputs` | input row | `run_id`, `input_id`, original link, `domain`, status, input metadata |
 | `stores` | store per run | `run_id`, `domain`, status, platform, country, language, currency, `layers_tried`, `product_count`, `knit_count`, `knit_kind_count`, `store_type`, `store_type_source`, `brands`, `ssl_bypassed` |
-| `products` | product | `run_id`, `domain`, `title`, `price_raw`, `currency`, `vendor`, `product_type`, `tags`, `url`, `source`, `evidence_url`, `needs_review`, `confidence`, `is_knitwear`, `knit_kind`, `raw` (JSON) |
+| `products` | product | `run_id`, `domain`, `title`, `price_raw`, `price_minor_unit`, `currency`, `vendor`, `product_type`, `tags`, `url`, `source`, `evidence_url`, `needs_review`, `confidence`, `is_knitwear`, `knit_kind`, `raw` (JSON) |
 | `pages` | fetched page | `run_id`, `domain`, `url`, `page_kind`, `http_status`, `via`, `language`, `text` |
 | `contacts` | contact found | `run_id`, `domain`, `type`, `value`, `source_url` |
 | `changes` | change between runs | `run_id`, `domain`, `change_type`, `key`, old value, new value |

@@ -40,6 +40,10 @@ class Product(_Record):
     price: float | None = None  # read from the source, only to pick the cheapest variant
     # and to check LLM evidence; never exported (raw means raw: conversion is downstream)
     price_raw: str = ""  # the price exactly as the source gave it
+    # Decimals implied in price_raw when the source wrote minor units: 2 for "4800" meaning
+    # 48.00 (WooCommerce, priceCents). 0 when price_raw is written as shown. Not a conversion:
+    # it says how to read the raw value.
+    price_minor_unit: int = 0
     currency: str = ""  # ISO 4217 as declared by the source; "" when unknown
     vendor: str = ""
     product_type: str = ""
