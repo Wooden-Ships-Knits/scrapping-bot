@@ -444,6 +444,25 @@ least one product whose `knit_kind` is set.
   store that was read, with its store's type and `on_final_list`, to `export/knit/`
   (download *Produk rajut saja*).
 
+### 4.16 Wholesale analysis — Built (CLI)
+
+`scrapebot analyze <run>` (`analysis/`, [ADR 0011](../decisions/0011-wholesale-analysis-stage.md))
+reads a finished run's tables and the operator's files in `data/inputs/` (`stockists.json`,
+`accounts.csv` from Salesforce, `brands.csv`, `price_points.csv`) and writes
+`<run>/analysis/`: `stores`, `knit_products`, `competitors`, `brands` in every chosen
+format, and a README of the inputs used and missing. It never fetches a store.
+
+- `attributes.py`: per product, materials (largest stated share first), gender, knitwear
+  category, the price as a number (minor units read per `price_minor_unit`), sale, stock and
+  launch date from each source's `raw`.
+- `business.py`: business type from chains, marketplaces, the name and domain, and store
+  type; page phrases become `b2b_hints`.
+- `location.py`: the input row's address, else the store's own contact, about or home page;
+  postal codes geocoded once and cached; miles to the nearest stockist.
+- `inputs.py`: loose column matching, so a Salesforce export is used as it comes.
+- `build.py`: matching to customers (domain, phone, name), price fit, segment, score and
+  reasons.
+
 ## 5. Statuses
 
 | Status | Meaning | Status in code |

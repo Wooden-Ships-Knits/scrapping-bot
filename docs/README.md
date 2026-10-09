@@ -37,6 +37,7 @@ docs/
 | [0007](decisions/0007-typescript-web-ui-local-api.md) | TypeScript (React + Vite) web interface over a local FastAPI service | Accepted |
 | [0008](decisions/0008-store-discovery-paid-search.md) | Store discovery with paid search APIs before a run; knitwear flag, no product dropped | Accepted |
 | [0009](decisions/0009-own-store-traffic-from-shopify-analytics.md) | Live traffic on our own store from Shopify Analytics, cached to stay inside the ShopifyQL quota | Accepted |
+| [0011](decisions/0011-wholesale-analysis-stage.md) | Wholesale analysis as its own stage over a finished run: segments, scores with reasons, inputs from the operator | Accepted |
 | [0010](decisions/0010-final-list-multi-brand-knitwear.md) | Final list of multi-brand stores that sell knitwear, with strict knitwear; store type from vendors, then the LLM; LLM on by default | Accepted |
 
 ## Exports and archive

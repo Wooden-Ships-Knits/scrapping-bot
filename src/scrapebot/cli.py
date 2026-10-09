@@ -95,6 +95,34 @@ def _parser() -> argparse.ArgumentParser:
     res.add_argument("run", type=Path, help="the run folder, e.g. data/runs/<run_id>")
     res.add_argument("-v", "--verbose", action="store_true", help="debug logging")
 
+    an = sub.add_parser(
+        "analyze", help="wholesale analysis of a finished run: partners, competitors (ADR 0011)"
+    )
+    an.add_argument("run", type=Path, help="the run folder, e.g. data/runs/<run_id>")
+    an.add_argument(
+        "--inputs",
+        type=Path,
+        default=Path("data/inputs"),
+        help="folder with stockists.json, accounts.csv, brands.csv, price_points.csv",
+    )
+    an.add_argument("--stockists", type=Path, help="stockist list (.json or .csv)")
+    an.add_argument("--accounts", type=Path, help="Salesforce account export (.csv)")
+    an.add_argument("--brands", type=Path, help="brand,relation (peer | competitor)")
+    an.add_argument("--prices", type=Path, help="category,wholesale_usd,retail_usd")
+    an.add_argument(
+        "--territory-miles",
+        type=float,
+        default=15.0,
+        help="a stockist closer than this is a territory conflict (default 15)",
+    )
+    an.add_argument(
+        "--no-geocode",
+        action="store_true",
+        help="do not look up store locations (no distances to stockists)",
+    )
+    an.add_argument("-f", "--format", default="xlsx,csv", help="output formats (default xlsx,csv)")
+    an.add_argument("-v", "--verbose", action="store_true", help="debug logging")
+
     s = sub.add_parser("serve", help="start the local web interface")
     s.add_argument("-c", "--config", type=Path, help="YAML config for fetch and output defaults")
     s.add_argument("-p", "--port", type=int, default=8765, help="port on 127.0.0.1 (default 8765)")
@@ -246,6 +274,30 @@ def discover(args: argparse.Namespace) -> int:
     return 0
 
 
+def analyze(args: argparse.Namespace) -> int:
+    """The wholesale analysis of a finished run (ADR 0011)."""
+    from .analysis import inputs as analysis_inputs
+    from .analysis.build import Options
+    from .analysis.build import analyze as build_analysis
+    from .analysis.location import Geocoder
+    from .analysis.write import write
+
+    if not (args.run / "tables" / "stores.jsonl").exists():
+        print(f"scrapebot: {args.run} is not a run folder", file=sys.stderr)
+        return 2
+    inputs = analysis_inputs.load(
+        args.stockists, args.accounts, args.brands, args.prices, folder=args.inputs
+    )
+    geocoder = None if args.no_geocode else Geocoder(Path("data/.cache/geocode.json"))
+    result = build_analysis(args.run, inputs, Options(args.territory_miles, geocoder))
+    writers = [w.strip() for w in args.format.split(",") if w.strip()]
+    written = write(result, args.run, writers)
+    print((args.run / "analysis" / "README.md").read_text(encoding="utf-8"))
+    for name, paths in written.items():
+        print(f"{name}: {', '.join(str(p) for p in paths) or 'FAILED, see the log'}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     logging.basicConfig(
@@ -260,6 +312,8 @@ def main(argv: list[str] | None = None) -> int:
         return survey(args)
     if args.command == "discover":
         return discover(args)
+    if args.command == "analyze":
+        return analyze(args)
     try:
         keys = load_keys()
         if args.command == "resume":

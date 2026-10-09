@@ -87,6 +87,7 @@ class ProductRow(Row):
     domain: str
     title: str
     price_raw: str = ""  # as the source wrote it; never read into a number here
+    price_minor_unit: int = 0  # 2: price_raw "4800" means 48.00 (WooCommerce, priceCents)
     currency: str = ""
     vendor: str = ""
     product_type: str = ""

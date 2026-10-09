@@ -164,6 +164,7 @@ def woocommerce_products(data: Any, evidence_url: str = "") -> list[Product]:
                 title=html_lib.unescape(as_text(raw.get("name"))),
                 price=price or None,
                 price_raw=as_text(minor),
+                price_minor_unit=int(prices.get("currency_minor_unit") or 0),
                 currency=currency_code(prices.get("currency_code")),
                 vendor=", ".join(
                     as_text(b.get("name")) for b in raw.get("brands") or [] if isinstance(b, dict)
