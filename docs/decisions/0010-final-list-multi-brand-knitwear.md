@@ -50,6 +50,9 @@ stores across the historical runs never had the LLM tried.
   confidence leaves the store `unknown`, and the report lists it for a person to
   check. The rule alone never says `own_brand`. `stores.store_type_source` records
   `vendors` or `llm`.
+- **A knitwear-only download** (`knit_products`, `export/knit/`): every knitwear product
+  of every store that was read, with the store's type and whether it made the final list,
+  for when own-label and unclear stores matter too.
 - **The LLM is on by default**, with `openai/gpt-4o-mini` and a US$1 budget per run
   (about US$0.001 a store on real runs). It reads stores no other stage could (PRD
   LM-06) and judges store types. Without the provider's key the run goes on without

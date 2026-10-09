@@ -32,6 +32,7 @@ const LOOK_AT = ["no_products", "js_required", "blocked", "error"];
 const TABLES: { key: PreviewTable; label: string; count: (run: Run) => number }[] = [
   { key: "final_stores", label: "Final: toko", count: (r) => r.final_stores },
   { key: "final_products", label: "Final: produk rajut", count: (r) => r.final_products },
+  { key: "knit_products", label: "Rajutan (semua toko)", count: (r) => r.knit_products },
   { key: "stores", label: "Toko", count: (r) => r.stores_done },
   { key: "products", label: "Produk", count: (r) => r.products },
   { key: "contacts", label: "Kontak", count: (r) => r.contacts },
@@ -54,6 +55,10 @@ const RENDERERS: Partial<Record<PreviewTable, Renderers>> = {
     store_type_source: (v) => storeTypeSource(String(v)),
   },
   final_products: { knit_kind: (v) => knitKind(String(v)) },
+  knit_products: {
+    knit_kind: (v) => knitKind(String(v)),
+    store_type: (v) => storeType(String(v ?? "")),
+  },
   stores: {
     status: (v) => badge(String(v), storeStatus(String(v))),
     store_type: (v) => storeType(String(v ?? "")),

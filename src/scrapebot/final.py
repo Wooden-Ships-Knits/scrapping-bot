@@ -22,7 +22,15 @@ from .extract.brands import brand_mix
 from .extract.knitwear import knit_kind
 from .models import Acquired, Page
 from .outputs import Table
-from .tables import FINAL_TABLES, FinalProductRow, FinalStoreRow, columns
+from .tables import (
+    FINAL_TABLES,
+    KNIT_TABLES,
+    FinalProductRow,
+    FinalStoreRow,
+    KnitProductRow,
+    Row,
+    columns,
+)
 
 if TYPE_CHECKING:
     from .llm.gateway import StoreTypeJudge
@@ -152,6 +160,44 @@ def build_final(store: "RunStore") -> list[Table]:
     ]
 
 
+def build_knit(store: "RunStore") -> list[Table]:
+    """Write `knit_products`: every knitwear product of every store that was read, with its
+    store's type, for a download of knitwear only. Streams `products` once."""
+    stores = {s["domain"]: s for s in store.rows("stores") if s["status"] == "ok"}
+    names = _input_names(store.rows("inputs"))
+    for name in KNIT_TABLES:
+        store.path(name).write_text("", encoding="utf-8")
+    rows = (
+        KnitProductRow(
+            run_id=p["run_id"],
+            domain=p["domain"],
+            store_name=next(
+                (names[i] for i in stores[p["domain"]].get("input_ids", []) if names.get(i)), ""
+            ),
+            store_type=stores[p["domain"]].get("store_type", ""),
+            on_final_list=qualifies(stores[p["domain"]]),
+            knit_kind=p["knit_kind"],
+            title=p["title"],
+            price_raw=p.get("price_raw", ""),
+            currency=p.get("currency", ""),
+            vendor=p.get("vendor", ""),
+            product_type=p.get("product_type", ""),
+            url=p.get("url", ""),
+            evidence_url=p.get("evidence_url", ""),
+            source=p["source"],
+            needs_review=p.get("needs_review", False),
+        )
+        for p in store.rows("products")
+        if p.get("knit_kind") and p["domain"] in stores
+    )
+    for batch in _batches(rows):
+        store.append(batch)
+    return [
+        Table(name=name, columns=columns(model), rows=store.rows(name))
+        for name, model in KNIT_TABLES.items()
+    ]
+
+
 def _final_products(
     products: Iterable[dict[str, Any]],
     stores: Mapping[str, Any],
@@ -216,7 +262,7 @@ def _wholesale_pages(
     return found
 
 
-def _batches(rows: Iterable[FinalProductRow]) -> Iterator[list[FinalProductRow]]:
+def _batches(rows: Iterable[Row]) -> Iterator[list[Row]]:
     it = iter(rows)
     while batch := list(islice(it, BATCH_ROWS)):
         yield batch

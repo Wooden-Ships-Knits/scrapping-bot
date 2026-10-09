@@ -305,6 +305,7 @@ not one label like Nike or a designer's own shop, and sell knitwear.
 | FL-05 | `final_stores` carries the brands, knitwear counts, emails, phones, Instagram, Facebook, wholesale pages and the input's store name; `final_products` carries only knitwear | Must | Columns exist in every format |
 | FL-06 | The final list is exported in every chosen format under `export/final/`, offered first in the interface, and the interface opens a run on it | Must | A download button "Daftar final" |
 | FL-07 | The report gives the final list's size, why the other stores are not on it, and the knitwear stores whose type is unclear | Must | The `Final list` section is in every report |
+| FL-08 | A knitwear-only download: every knitwear product (FL-02) of every store that was read, final list or not, with the store's name, type and whether it is on the final list | Must | `knit_products` in `export/knit/`; a "Produk rajut saja" download |
 
 ## 8. Data model
 
@@ -324,6 +325,7 @@ All output formats are built from the same tables
 | `changes` | change between runs | `run_id`, `domain`, `change_type`, `key`, old value, new value |
 | `final_stores` | store on the final list | `run_id`, `domain`, `store_type`, `brands`, `knit_products`, contacts, `wholesale_pages` (derived, section 7.10) |
 | `final_products` | knitwear product of a final store | `run_id`, `domain`, `knit_kind`, `title`, `price_raw`, `vendor`, `url` (derived, section 7.10) |
+| `knit_products` | knitwear product of any store that was read | `run_id`, `domain`, `store_name`, `store_type`, `on_final_list`, `knit_kind`, `title`, `price_raw`, `vendor`, `url` (derived, FL-08) |
 
 In flat formats (CSV, TSV, Excel), nested columns such as `raw` and `tags` are stored
 as JSON text. In JSON and JSONL, the structure stays intact.

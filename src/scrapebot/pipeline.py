@@ -27,7 +27,7 @@ from .extract.focus import matched_items
 from .extract.knitwear import knit_kind
 from .extract.signals import is_knit
 from .fetch import Fetcher, HttpFetcher
-from .final import build_final, judge_store
+from .final import build_final, build_knit, judge_store
 from .inputs.readers import InputError, InputRecord, read_file, read_text
 from .inputs.resolve import Resolution, ResolvedInput, resolve
 from .models import Acquired, Target
@@ -485,6 +485,8 @@ def _visit_and_write(
     exports = export(store.load_tables(), config.output.writers, store.root / "export")
     final = export(build_final(store), config.output.writers, store.root / "export" / "final")
     exports |= {f"final_{name}": paths for name, paths in final.items()}
+    knit = export(build_knit(store), config.output.writers, store.root / "export" / "knit")
+    exports |= {f"knit_{name}": paths for name, paths in knit.items()}
     summary_path = write_summary_csv(
         resolution.inputs, list(JsonlRows(summary_file)), store.root / "summary.csv"
     )

@@ -131,6 +131,7 @@ class RunOut(BaseModel):
     contacts: int
     final_stores: int  # multi-brand stores selling knitwear so far (ADR 0010)
     final_products: int  # their knitwear products
+    knit_products: int  # knitwear products of every store read, final list or not
     stores: list[StoreOut]
     downloads: list[DownloadOut]
     error: str

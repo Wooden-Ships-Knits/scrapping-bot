@@ -25,6 +25,8 @@ DOWNLOADS: dict[str, tuple[str, str]] = {
         "export/final/tables.xlsx",
     ),
     "final_csv": ("Daftar final (CSV .zip)", "export/final/csv"),
+    "knit_xlsx": ("Produk rajut saja, semua toko (.xlsx)", "export/knit/tables.xlsx"),
+    "knit_csv": ("Produk rajut saja, semua toko (CSV .zip)", "export/knit/csv"),
     "report": ("Laporan run (.md)", REPORT_FILE),
     "summary": ("Ringkasan per tautan (.csv)", "summary.csv"),
     "xlsx": ("Excel (.xlsx)", "export/tables.xlsx"),
@@ -101,8 +103,8 @@ def downloads(root: Path) -> list[DownloadOut]:
         if path.is_file() or (path.is_dir() and any(path.iterdir())):
             if path.is_dir():
                 filename = f"{root.name}-{key}.zip"
-            elif key.startswith("final_"):  # not a second "tables.xlsx" in Downloads
-                filename = f"{root.name}-final{path.suffix}"
+            elif key.startswith(("final_", "knit_")):  # not another "tables.xlsx"
+                filename = f"{root.name}-{key.split('_')[0]}{path.suffix}"
             else:
                 filename = path.name
             out.append(DownloadOut(key=key, label=label, filename=filename))
@@ -130,7 +132,8 @@ def download_path(root: Path, key: str) -> Path | None:
 
 PREVIEW_MAX_CHARS = 600
 PREVIEW_TABLES = (
-    "final_stores", "final_products", "stores", "products", "contacts", "pages", "inputs",
+    "final_stores", "final_products", "knit_products",
+    "stores", "products", "contacts", "pages", "inputs",
 )  # fmt: skip
 
 
@@ -148,9 +151,9 @@ def read_rows(
     Long text is shortened and the bulky `raw` source object is left out unless asked
     for: the preview is for looking, the downloads hold everything.
     """
-    from ..tables import FINAL_TABLES, TABLES
+    from ..tables import FINAL_TABLES, KNIT_TABLES, TABLES
 
-    model = {**TABLES, **FINAL_TABLES}[table]
+    model = {**TABLES, **FINAL_TABLES, **KNIT_TABLES}[table]
     columns = [c for c in model.model_fields if include_raw or c != "raw"]
     rows: list[dict[str, Any]] = []
     total, truncated = 0, False
@@ -235,6 +238,7 @@ def load_run(
         contacts=sum(s["contact_count"] for s in stores),
         final_stores=sum(1 for s in stores if qualifies(s)),
         final_products=sum(s.get("knit_kind_count", 0) for s in stores if qualifies(s)),
+        knit_products=sum(s.get("knit_kind_count", 0) for s in stores),
         stores=[StoreOut.model_validate(s, from_attributes=False) for s in _store_fields(stores)]
         if with_stores
         else [],

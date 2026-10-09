@@ -685,6 +685,8 @@ export interface components {
             final_stores: number;
             /** Finished At */
             finished_at: string;
+            /** Knit Products */
+            knit_products: number;
             /** Limit */
             limit: number | null;
             /** Links In */

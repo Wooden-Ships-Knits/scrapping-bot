@@ -23,6 +23,7 @@ export type TrafficPeriod = Traffic["period"];
 export type PreviewTable =
   | "final_stores"
   | "final_products"
+  | "knit_products"
   | "stores"
   | "products"
   | "contacts"

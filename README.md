@@ -175,6 +175,7 @@ overwritten:
 | `report.md` | Read this first. Reconciliation (links in = processed + skipped), status counts, coverage by source, and the stores that need a look |
 | `summary.csv` | One row per input link, original columns first: the qualification view (below) |
 | `export/final/` | **The final list**: `final_stores` (multi-brand stores that sell knitwear, with brands, knitwear counts and contacts) and `final_products` (their knitwear), in every format you chose |
+| `export/knit/` | **Knitwear only**: every knitwear product of every store that was read, with the store's type and whether it made the final list |
 | `export/` | The seven tables in every format you chose |
 | `tables/` | The canonical copy of the seven tables (JSONL), from which every export is made |
 | `manifest.json` | Config, package versions, durations and counts, for reproducing the run |

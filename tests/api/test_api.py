@@ -466,10 +466,11 @@ def test_the_final_list_is_counted_previewed_and_downloadable(tmp_path):
         rows = c.get(f"/api/runs/{run['run_id']}/rows/final_products").json()
         download = c.get(f"/api/runs/{run['run_id']}/download/final_xlsx")
 
-    assert (run["final_stores"], run["final_products"]) == (1, 1)
+    assert (run["final_stores"], run["final_products"], run["knit_products"]) == (1, 1, 2)
     keys = {d["key"]: d["filename"] for d in run["downloads"]}
     assert keys["final_xlsx"] == f"{run['run_id']}-final.xlsx"
     assert "final_csv" in keys
+    assert keys["knit_xlsx"] == f"{run['run_id']}-knit.xlsx", "monkees.com's sweater counts too"
     assert [r["title"] for r in rows["rows"]] == ["Aran Cardigan"]
     assert download.status_code == 200
     sheets = load_workbook(io.BytesIO(download.content), read_only=True).sheetnames

@@ -430,6 +430,9 @@ least one product whose `knit_kind` is set.
   wholesale pages, the store name from the input) and `final_products` (knitwear
   only) to `tables/`, then every chosen writer to `export/final/`. The web app opens a
   run on these two tables and offers `Daftar final` as the first download.
+- **Knitwear only**: `build_knit` writes `knit_products`, every knitwear product of every
+  store that was read, with its store's type and `on_final_list`, to `export/knit/`
+  (download *Produk rajut saja*).
 
 ## 5. Statuses
 

@@ -1,6 +1,7 @@
 """The tidy tables every run produces (ADR 0006, PRD section 8): the seven of the PRD
-plus `llm_calls`, which records every model call (PRD LM-11), and the two tables of the
-final list (`FINAL_TABLES`, ADR 0010), derived from the others at the end of a run.
+plus `llm_calls`, which records every model call (PRD LM-11), and three derived at the end
+of a run (ADR 0010): the two tables of the final list (`FINAL_TABLES`) and every knitwear
+product of every store that was read (`KNIT_TABLES`).
 
 Each table is a Pydantic model whose fields are its columns, in order. Writers
 derive column types from the annotations, so a new column is added here and
@@ -214,8 +215,30 @@ TABLES: dict[str, type[Row]] = {
 }
 
 
+class KnitProductRow(Row):
+    """A knitwear product of any store that was read, final list or not (ADR 0010)."""
+
+    table: ClassVar[str] = "knit_products"
+    run_id: str
+    domain: str
+    store_name: str = ""  # from the input row, when it had one
+    store_type: str = ""  # multi_brand | own_brand | unknown
+    on_final_list: bool = False  # the store is in `final_stores`
+    knit_kind: str  # garment | accessory
+    title: str
+    price_raw: str = ""
+    currency: str = ""
+    vendor: str = ""
+    product_type: str = ""
+    url: str = ""
+    evidence_url: str = ""
+    source: str
+    needs_review: bool = False
+
+
 # Derived at the end of a run from the tables above; never part of the raw export.
 FINAL_TABLES: dict[str, type[Row]] = {m.table: m for m in (FinalStoreRow, FinalProductRow)}
+KNIT_TABLES: dict[str, type[Row]] = {KnitProductRow.table: KnitProductRow}
 
 
 @dataclass(frozen=True)

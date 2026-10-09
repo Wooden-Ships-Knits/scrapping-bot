@@ -30,6 +30,7 @@ function run(overrides: Partial<Run> = {}): Run {
     contacts: 8,
     final_stores: 1,
     final_products: 12,
+    knit_products: 20,
     stores: [
       { domain: "monkees.com", url: "https://monkees.com", status: "ok", error: "", platform: "shopify", currency: "USD", source_used: "shopify_feed", product_count: 780, page_count: 1, contact_count: 8, ssl_bypassed: false },
       { domain: "blocked.com", url: "https://blocked.com", status: "blocked", error: "HTTP 403", platform: "", currency: "", source_used: "none", product_count: 0, page_count: 0, contact_count: 0, ssl_bypassed: false },

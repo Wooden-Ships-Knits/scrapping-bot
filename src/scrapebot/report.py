@@ -105,6 +105,9 @@ def _final_section(stats: RunStats) -> list[str]:
         f"**{len(final)} stores, {sum(s.get('knit_kind_count', 0) for s in final)} "
         "knitwear products**.",
         "",
+        "Every knitwear product of every store that was read, on the list or not "
+        f"(`export/knit/`): {sum(s.get('knit_kind_count', 0) for s in stats.stores)}.",
+        "",
     ]
     if reasons:
         lines += [

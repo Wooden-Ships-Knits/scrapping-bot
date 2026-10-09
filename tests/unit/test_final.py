@@ -180,10 +180,23 @@ def test_a_run_writes_the_final_list_beside_the_raw_tables(tmp_path):
     ]
     assert len(read_jsonl(tables / "products.jsonl")) == 9, "raw tables keep every product"
 
+    knit = {p["title"]: p for p in read_jsonl(tables / "knit_products.jsonl")}
+    assert set(knit) == {"Aran Cardigan", "Knit Beanie", "Label Sweater"}, "every store's knitwear"
+    assert (knit["Label Sweater"]["store_type"], knit["Label Sweater"]["on_final_list"]) == (
+        "unknown",
+        False,
+    )
+    assert (knit["Aran Cardigan"]["store_name"], knit["Aran Cardigan"]["on_final_list"]) == (
+        "Rose Boutique",
+        True,
+    )
+    assert (result.root / "export" / "knit" / "tables.xlsx").exists()
+
     assert (result.root / "export" / "final" / "tables.xlsx").exists()
     assert (result.root / "export" / "final" / "csv" / "final_products.csv").exists()
     report = result.report_path.read_text()
     assert "**1 stores, 2 knitwear products**" in report
+    assert "on the list or not (`export/knit/`): 3." in report
     assert "| read, but no knitted garment or accessory | 1 |" in report
     assert "- label.com" in report, "a knitwear store whose type is unclear is listed"
     assert "Not used: no API key for openai" in report
