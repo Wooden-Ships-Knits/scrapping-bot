@@ -250,6 +250,11 @@ def build_report(
             ]
         ),
         "",
+        "Still rate-limited after the retry (`rate_limited`): our requests were limited by the "
+        "server network, not refused by the store; run them again later:",
+        "",
+        *_bullets(domains("rate_limited")),
+        "",
         "Read with TLS verification off (`ssl_bypassed`):",
         "",
         *_bullets([s["domain"] for s in stores if s["ssl_bypassed"]]),

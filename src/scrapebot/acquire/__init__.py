@@ -28,7 +28,7 @@ from ..extract.json_products import captured_products
 from ..extract.profile import detect_currency, detect_platform
 from ..extract.structured import page_products
 from ..fetch import Fetcher
-from ..models import Acquired, Page, Product, Target
+from ..models import Acquired, FetchResult, Page, Product, Target
 from .discovery import (
     MAX_PAGES,
     PRIORITY_CAP,
@@ -61,6 +61,25 @@ RENDER_PROBE_PAGES = 3
 __all__ = ["MAX_PAGES", "acquire"]
 
 
+RATE_LIMITED_ERROR = "our requests to this server network were limited; retried after a pause"
+
+
+class _Watched:
+    """Passes requests through and remembers whether any of them was rate-limited."""
+
+    def __init__(self, inner: Fetcher):
+        self.inner = inner
+        self.rate_limited = False
+
+    def get(self, url: str) -> FetchResult:
+        res = self.inner.get(url)
+        self.rate_limited |= res.rate_limited
+        return res
+
+    def sitemaps(self, origin: str) -> list[str]:
+        return self.inner.sitemaps(origin)
+
+
 def acquire(
     target: Target,
     fetcher: Fetcher,
@@ -69,7 +88,26 @@ def acquire(
     renderer: "Renderer | None" = None,
     render_pages: int = RENDER_MAX_PAGES,
 ) -> Acquired:
-    """Gather everything available for one store. Never raises for network conditions."""
+    """Gather everything available for one store. Never raises for network conditions.
+
+    When any request was rate-limited (roadmap issue 16) the store is `rate_limited`:
+    what was read is incomplete, and the pipeline visits the store again after a pause.
+    """
+    watched = _Watched(fetcher)
+    got = _acquire(target, watched, max_pages, llm, renderer, render_pages)
+    if watched.rate_limited:
+        got.status, got.error = "rate_limited", RATE_LIMITED_ERROR
+    return got
+
+
+def _acquire(
+    target: Target,
+    fetcher: Fetcher,
+    max_pages: int,
+    llm: "ProductReader | None",
+    renderer: "Renderer | None",
+    render_pages: int,
+) -> Acquired:
     got = Acquired(domain=target.domain, url=target.url, layers_tried=["homepage"])
 
     home = fetcher.get(target.url)

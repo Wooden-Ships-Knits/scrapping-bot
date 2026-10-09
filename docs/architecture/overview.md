@@ -212,7 +212,17 @@ currency. When the browser is used, its locale and timezone follow the chosen re
 `Fetcher` is the only code that touches the network: `robots.txt` per URL, 1.5 s delay
 per domain, cache, retries with backoff, broken TLS retried once without verification
 and flagged `ssl_bypassed`. Only successful responses are cached, so a re-run retries
-every failure. `Fetcher` is a Protocol; `HttpFetcher` is the HTTP implementation.
+every failure, and cached pages expire after `fetch.cache_max_age_hours` (default 168), so
+a monthly run reads fresh pages; expired pages are deleted at the start of a run, never the
+paid discovery answers in `data/.cache/discover`. A challenge page is matched on the
+challenge itself: Cloudflare's bot script also sits on ordinary pages.
+
+Rate limits are told apart from blocks. A 429, or two different sites on one server network
+refusing us within 10 minutes, means the network (Shopify's shared edge, for one) is limiting
+our address: that network is paused for 5 minutes (doubling to at most 30), its delay is
+doubled, and the stores are `rate_limited`. The pipeline holds refused stores back during
+the run and visits the rate-limited ones once more after the pause; that answer is final.
+`Fetcher` is a Protocol; `HttpFetcher` is the HTTP implementation.
 **Planned:** move to `httpx` with `hishel`, `tenacity`, `aiolimiter` and `protego` so several domains run in
 parallel while each keeps its own delay.
 

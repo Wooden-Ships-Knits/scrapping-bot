@@ -5,6 +5,7 @@ const STORE_STATUS: Record<string, string> = {
   no_products: "Tanpa katalog",
   js_required: "Perlu browser",
   blocked: "Diblokir",
+  rate_limited: "Dibatasi sementara",
   error: "Gagal",
 };
 
@@ -193,7 +194,7 @@ export const knitKind = pick(KNIT_KIND);
 /** Tone for a status badge: good, warn, bad or neutral. */
 export function tone(code: string): "good" | "warn" | "bad" | "neutral" {
   if (code === "ok" || code === "done" || code === "multi_brand") return "good";
-  if (["no_products", "js_required", "interrupted", "stopped"].includes(code)) return "warn";
+  if (["no_products", "js_required", "rate_limited", "interrupted", "stopped"].includes(code)) return "warn";
   if (code === "blocked" || code === "error" || code === "failed") return "bad";
   return "neutral";
 }

@@ -155,6 +155,7 @@ def run_survey(
         delay=config.fetch.delay_seconds,
         timeout=config.fetch.timeout_seconds,
         retries=config.fetch.retries,
+        max_age_seconds=config.fetch.cache_max_age_hours * 3600,
     )
     targets = resolution.targets
     rows: list[SurveyRow] = []

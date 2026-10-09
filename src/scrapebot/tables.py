@@ -55,7 +55,7 @@ class StoreRow(Row):
     run_id: str
     domain: str
     url: str
-    status: str  # ok | no_products | js_required | blocked | error
+    status: str  # ok | no_products | js_required | blocked | rate_limited | error
     error: str = ""
     platform: str = ""
     currency: str = ""
