@@ -28,7 +28,7 @@ import {
   writerLabel,
 } from "../labels";
 
-const LOOK_AT = ["no_products", "js_required", "blocked", "error"];
+const LOOK_AT = ["no_products", "js_required", "blocked", "rate_limited", "error"];
 const TABLES: { key: PreviewTable; label: string; count: (run: Run) => number }[] = [
   { key: "final_stores", label: "Final: toko", count: (r) => r.final_stores },
   { key: "final_products", label: "Final: produk rajut", count: (r) => r.final_products },

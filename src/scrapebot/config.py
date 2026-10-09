@@ -27,11 +27,17 @@ class InputConfig(_Section):
 
 class FetchConfig(_Section):
     cache_dir: Path = Path("data/.cache")
+    # Cached pages older than this are fetched again, and deleted at the start of a run, so
+    # a monthly run sees this month's prices (roadmap issue 17). 0 keeps them forever.
+    cache_max_age_hours: float = Field(default=168, ge=0)
     delay_seconds: float = Field(default=1.5, ge=0)  # per domain
     timeout_seconds: float = Field(default=20, gt=0)
     retries: int = Field(default=2, ge=0)
     # Stores visited at once. Each host still gets one request at a time, `delay_seconds` apart.
     concurrency: int = Field(default=6, ge=1, le=32)
+    # Rate-limited stores are visited again at the end of the run, once the network's
+    # pause is over, waiting at most this long (roadmap issue 16). 0 never waits.
+    rate_limit_wait_seconds: float = Field(default=1800, ge=0)
 
 
 class RenderConfig(_Section):

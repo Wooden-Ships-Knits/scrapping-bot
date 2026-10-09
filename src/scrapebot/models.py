@@ -24,6 +24,9 @@ class FetchResult(_Record):
     ssl_bypassed: bool = False
     from_cache: bool = False
     challenge: str = ""  # the anti-bot vendor whose challenge page came back, if any
+    # Our requests to this server network are being limited (roadmap issue 16): the answer
+    # says nothing about the store itself. Retried after a pause, never cached.
+    rate_limited: bool = False
 
     @property
     def ok(self) -> bool:
@@ -114,7 +117,7 @@ class Acquired(_Record):
 
     domain: str
     url: str = ""
-    status: str = "ok"  # ok | no_products | js_required | blocked | error
+    status: str = "ok"  # ok | no_products | js_required | blocked | rate_limited | error
     error: str = ""
     ssl_bypassed: bool = False  # TLS verification was disabled to read the site
     platform: str = ""

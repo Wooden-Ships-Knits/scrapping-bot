@@ -337,7 +337,8 @@ as JSON text. In JSON and JSONL, the structure stays intact.
 | `ok` | At least one product found |
 | `no_products` | The site was read, but no layer found a catalogue |
 | `js_required` | Needs a browser that is not installed or not built yet |
-| `blocked` | 401, 403, 429 or a challenge page. Not bypassed |
+| `blocked` | 401, 403, 429 or a challenge page from the store itself. Not bypassed |
+| `rate_limited` | Our requests were limited by the server network (a 429, or two sites on one network refusing us within 10 minutes). The network is paused and the store retried once at the end of the run; a second refusal is `blocked`. Not bypassed: slowing down is the polite answer |
 | `error` | Network error, other HTTP error, or disallowed by `robots.txt` |
 | `social_only`, `marketplace`, `invalid_url`, `duplicate` | Skipped at input, with the reason recorded |
 

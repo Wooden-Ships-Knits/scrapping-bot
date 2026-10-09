@@ -26,7 +26,7 @@ from .config import FocusConfig, InputConfig, RunConfig
 from .extract.focus import matched_items
 from .extract.knitwear import knit_kind
 from .extract.signals import is_knit
-from .fetch import Fetcher, HttpFetcher
+from .fetch import Fetcher, HttpFetcher, prune_cache
 from .final import build_final, build_knit, judge_store
 from .inputs.readers import InputError, InputRecord, read_file, read_text
 from .inputs.resolve import Resolution, ResolvedInput, resolve
@@ -295,6 +295,20 @@ def _visit(
     return got
 
 
+def _rate_limited(got: Acquired, fetcher: Fetcher) -> bool:
+    """Whether a refused store should be visited again (roadmap issue 16): our requests were
+    limited, or it was refused by a network that turned out to be limiting us."""
+    if got.status == "rate_limited":
+        return True
+    was_limited = getattr(fetcher, "was_rate_limited", None)
+    return got.status == "blocked" and was_limited is not None and was_limited(got.url)
+
+
+def _cooldown_left(fetcher: Fetcher, targets: list[Target]) -> float:
+    remaining = getattr(fetcher, "cooldown_remaining", None)
+    return float(remaining([t.url for t in targets])) if remaining is not None else 0.0
+
+
 def llm_missing_key(config: RunConfig, keys: Mapping[str, SecretStr]) -> str:
     """Why the LLM stage cannot run for lack of a key, or "" when it can."""
     from .llm.gateway import is_local, key_for, provider_of
@@ -362,7 +376,11 @@ def execute(
         delay=config.fetch.delay_seconds,
         timeout=config.fetch.timeout_seconds,
         retries=config.fetch.retries,
+        max_age_seconds=config.fetch.cache_max_age_hours * 3600,
     )
+    max_age = config.fetch.cache_max_age_hours * 3600
+    if (pruned := prune_cache(config.fetch.cache_dir, max_age)) > 0:
+        log.info("Deleted %d cached pages older than %.0f hours", pruned, max_age / 3600)
     llm_skipped = ""
     if llm is None and config.llm.enabled:
         llm_skipped = llm_missing_key(config, keys or {})
@@ -404,42 +422,66 @@ def _visit_and_write(
     total, finished = len(resolution.targets), len(prepared.done)
 
     def record(target: Target, got: Acquired) -> None:
+        nonlocal finished
         store.append(store_rows(run_id, target, got, _iso(_now()), config.focus))
         _append_json_lines(summary_file, [summary_row(by_id[i], got) for i in target.input_ids])
+        finished += 1
+        log.info(
+            "[%d/%d] %s: %s, %d products via %s",
+            finished,
+            total,
+            got.domain,
+            got.status,
+            len(got.products),
+            got.source_used,
+        )
+        if progress:
+            progress(finished, total, got)
 
-    with ThreadPoolExecutor(max_workers=config.fetch.concurrency) as pool:
-        queue = iter(todo)
-        running: dict[Future[Acquired], Target] = {}
+    def visit_all(targets: list[Target], final: bool) -> list[tuple[Target, Acquired]]:
+        """Visit the stores, several at once. On the first pass, stores that were refused
+        are held back: whether they were rate-limited is only known once the pass is over."""
+        held: list[tuple[Target, Acquired]] = []
+        with ThreadPoolExecutor(max_workers=config.fetch.concurrency) as pool:
+            queue = iter(targets)
+            running: dict[Future[Acquired], Target] = {}
 
-        def fill() -> None:
-            while len(running) < config.fetch.concurrency and not (stop and stop.is_set()):
-                target = next(queue, None)
-                if target is None:
-                    return
-                running[
-                    pool.submit(_visit, target, fetcher, llm, renderer, config.render.max_pages)
-                ] = target
+            def fill() -> None:
+                while len(running) < config.fetch.concurrency and not (stop and stop.is_set()):
+                    target = next(queue, None)
+                    if target is None:
+                        return
+                    running[
+                        pool.submit(_visit, target, fetcher, llm, renderer, config.render.max_pages)
+                    ] = target
 
-        fill()
-        while running:
-            completed, _ = wait(running, return_when=FIRST_COMPLETED)
-            for future in completed:
-                target = running.pop(future)
-                got = future.result()
-                record(target, got)
-                finished += 1
-                log.info(
-                    "[%d/%d] %s: %s, %d products via %s",
-                    finished,
-                    total,
-                    got.domain,
-                    got.status,
-                    len(got.products),
-                    got.source_used,
-                )
-                if progress:
-                    progress(finished, total, got)
             fill()
+            while running:
+                completed, _ = wait(running, return_when=FIRST_COMPLETED)
+                for future in completed:
+                    target = running.pop(future)
+                    got = future.result()
+                    if not final and got.status in ("rate_limited", "blocked"):
+                        held.append((target, got))
+                    else:
+                        record(target, got)
+                fill()
+        return held
+
+    held = visit_all(todo, final=False)
+    retry = [t for t, got in held if _rate_limited(got, fetcher)]
+    for target, got in held:
+        if target not in retry:
+            record(target, got)  # refused by the store itself: blocked stands
+    if retry and not (stop and stop.is_set()):
+        pause = min(_cooldown_left(fetcher, retry), config.fetch.rate_limit_wait_seconds)
+        log.info("%d stores were rate-limited; retrying them in %.0f s", len(retry), pause)
+        if stop is not None:
+            stop.wait(pause)
+        else:
+            time.sleep(pause)
+        if not (stop and stop.is_set()):
+            visit_all(retry, final=True)  # this answer is final: still refused is blocked
 
     remaining = total - finished
     if remaining:

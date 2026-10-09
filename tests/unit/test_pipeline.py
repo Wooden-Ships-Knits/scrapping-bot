@@ -9,6 +9,7 @@ import pytest
 from scrapebot import pipeline
 from scrapebot.config import RunConfig
 from scrapebot.inputs.readers import InputError
+from scrapebot.models import FetchResult
 from scrapebot.pipeline import execute, new_run_id, prepare, resume, run
 from scrapebot.tables import FINAL_TABLES, KNIT_TABLES, TABLES
 from tests.fakes import FakeFetcher
@@ -285,3 +286,72 @@ def test_products_are_flagged_knitwear_and_none_are_dropped(tmp_path):
     assert products["Leather Bag"]["is_knitwear"] is False, "kept, only flagged"
     [store] = read_jsonl(tables / "stores.jsonl")
     assert (store["product_count"], store["knit_count"]) == (2, 1)
+
+
+# --- rate-limited stores are visited again (roadmap issue 16) ------------------------
+
+
+class EdgeFetcher(FakeFetcher):
+    """Shopify's edge limits us on the first visit to each store in `limited`; stores in
+    `refusing` block us themselves, every time."""
+
+    def __init__(self, responses, limited, refusing=(), edge=()):
+        super().__init__(responses)
+        self.limited, self.refusing, self.edge = set(limited), set(refusing), set(edge)
+        self.waits: list[list[str]] = []
+
+    def get(self, url):
+        host = url.split("/")[2]
+        if host in self.limited:
+            self.limited.discard(host)
+            self.calls.append(url)
+            return FetchResult(url=url, status_code=429, body="", final_url=url, rate_limited=True)
+        if host in self.refusing:
+            self.calls.append(url)
+            return FetchResult(url=url, status_code=403, body="", final_url=url)
+        return super().get(url)
+
+    def was_rate_limited(self, url):
+        return url.split("/")[2] in self.edge
+
+    def cooldown_remaining(self, urls):
+        self.waits.append(urls)
+        return 0.0
+
+
+def shop(domain):
+    return {
+        f"https://{domain}": (200, SHOPIFY_HOME),
+        f"https://{domain}/products.json?limit=250&page=1": (200, FEED_PAGE_1),
+    }
+
+
+def test_a_rate_limited_store_is_visited_again_after_the_pause(tmp_path):
+    cfg = config_for(tmp_path, "website\nhttps://monkees.com\nhttps://lily.com\n")
+    fetcher = EdgeFetcher({**shop("monkees.com"), **shop("lily.com")}, limited={"monkees.com"})
+    result = run(cfg, fetcher=fetcher)
+    stores = {s["domain"]: s for s in read_jsonl(result.root / "tables" / "stores.jsonl")}
+    assert (stores["monkees.com"]["status"], stores["monkees.com"]["product_count"]) == ("ok", 2)
+    assert len(stores) == 2, "recorded once, after the retry"
+    assert fetcher.waits == [["https://monkees.com"]]
+
+
+def test_a_store_that_blocks_us_itself_is_not_retried(tmp_path):
+    cfg = config_for(tmp_path, "website\nhttps://fort.com\n")
+    fetcher = EdgeFetcher({}, limited=(), refusing={"fort.com"})
+    result = run(cfg, fetcher=fetcher)
+    [store] = read_jsonl(result.root / "tables" / "stores.jsonl")
+    assert (store["status"], store["error"]) == ("blocked", "HTTP 403")
+    assert fetcher.calls.count("https://fort.com") == 1
+    assert fetcher.waits == []
+
+
+def test_a_block_on_a_network_that_limited_us_is_retried_and_then_final(tmp_path):
+    """The first store refused in a wave looked like a block until a second one was refused
+    on the same edge; it is retried, and a second refusal is final."""
+    cfg = config_for(tmp_path, "website\nhttps://fort.com\n")
+    fetcher = EdgeFetcher({}, limited=(), refusing={"fort.com"}, edge={"fort.com"})
+    result = run(cfg, fetcher=fetcher)
+    [store] = read_jsonl(result.root / "tables" / "stores.jsonl")
+    assert store["status"] == "blocked"
+    assert fetcher.calls.count("https://fort.com") == 2
