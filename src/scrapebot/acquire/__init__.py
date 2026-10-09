@@ -24,6 +24,7 @@ from collections import Counter
 from typing import TYPE_CHECKING
 
 from ..extract.contacts import find_contacts
+from ..extract.identity import store_identity
 from ..extract.json_products import captured_products
 from ..extract.profile import detect_currency, detect_platform
 from ..extract.structured import page_products
@@ -95,6 +96,7 @@ def acquire(
     """
     watched = _Watched(fetcher)
     got = _acquire(target, watched, max_pages, llm, renderer, render_pages)
+    got.identity = store_identity(got.read_pages)  # while the pages' HTML is still in memory
     if watched.rate_limited:
         got.status, got.error = "rate_limited", RATE_LIMITED_ERROR
     return got

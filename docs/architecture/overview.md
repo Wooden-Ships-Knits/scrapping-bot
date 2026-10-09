@@ -340,6 +340,14 @@ For a store that still has no products after every earlier stage
 
 ### 4.10 Raw records — Built
 
+`stores.identity` keeps what a store's home, contact and about pages declare about the
+store, read while their HTML is in memory (`extract/identity.py`): schema.org Organization,
+LocalBusiness and store types (name, telephone, email, address, geo, sameAs), plus
+`og:site_name`, the title and the meta description, as written. HTML is never stored, so
+this is the only record of it; the wholesale analysis takes store names and locations
+from it (with coordinates, no geocoding is needed).
+
+
 Acquisition stores values as found. No price conversion, no currency normalisation,
 no deduplication across sources. HTML is never stored; page text is. Prices are
 exported only as `price_raw`, exactly as the source wrote it; reading them into

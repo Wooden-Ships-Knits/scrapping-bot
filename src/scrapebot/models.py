@@ -138,6 +138,8 @@ class Acquired(_Record):
     brands: list[str] = Field(default_factory=list)  # outside brands, most products first
     brand_count: int = 0  # distinct outside brands among the product vendors
     llm_calls: list[LLMCall] = Field(default_factory=list)
+    # What the store's own markup says it is: name, phone, address, position (extract.identity)
+    identity: dict[str, Any] = Field(default_factory=dict)
     llm_products_dropped: int = 0  # products the LLM named that failed the evidence rule
 
     @property

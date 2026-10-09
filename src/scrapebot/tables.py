@@ -77,6 +77,10 @@ class StoreRow(Row):
     brand_count: int = 0  # distinct outside brands among the product vendors
     brands: list[str] = Field(default_factory=list)  # the first ten, most products first
     knit_kind_count: int = 0  # products that are knitted garments or accessories (`knit_kind`)
+    # The store's own markup, as found: title, site_name, description, and the schema.org
+    # Organization or store objects (name, telephone, email, address, geo). HTML is never
+    # kept, so this is the only record of it (extract.identity).
+    identity: dict[str, Any] = Field(default_factory=dict)
     input_ids: list[int] = Field(default_factory=list)
     fetched_at: str
 

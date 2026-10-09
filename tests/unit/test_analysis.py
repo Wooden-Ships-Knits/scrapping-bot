@@ -268,6 +268,8 @@ def write_run(tmp_path):
         "inputs": [{"run_id": RUN, "input_id": i, "meta": {}} for i in range(6)],
     }
     tables["inputs"][0]["meta"] = {"name": "Rose Boutique"}
+    # near.com's name comes from its own markup, as the site wrote it
+    tables["stores"][1]["identity"] = {"site_name": "Hill&#39;s Dry Goods"}
     for name, rows in tables.items():
         (root / "tables" / f"{name}.jsonl").write_text(
             "".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8"
@@ -314,6 +316,7 @@ def test_segments_scores_and_reasons(tmp_path):
     assert "+10 carries peer brands: Kinross" in boutique.reasons
     assert boutique.score == 25 * 2 // 50 + 10 + 20 - 20 + 5 + 5  # knit, peers, price, territory...
 
+    assert rows["near.com"].store_name == "Hill's Dry Goods"
     [competitor] = result.competitors
     assert (competitor.domain, competitor.label, competitor.knit_products) == (
         "label.com",
