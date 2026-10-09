@@ -187,6 +187,22 @@ A missing file leaves its columns empty and the analysis README says so. Locatio
 geocoded once (OpenStreetMap, about a second each) and cached; `--no-geocode` skips them,
 `--territory-miles` sets the conflict radius (15).
 
+Start the inputs from templates with `uv run scrapebot init-inputs`: it writes
+`*.example.csv` files and a README to `data/inputs/` (copy one to its real name, then
+replace the example row).
+
+## Backups
+
+`data/` is never in git, so this machine holds the only copy of every run.
+
+```bash
+uv run scrapebot backup --to "~/Library/CloudStorage/GoogleDrive-<account>/My Drive/scrapebot-backups"
+```
+
+Zips the runs, the analysis inputs and the discovery results (not the caches) into a dated
+file and keeps the newest five (`--keep`). A Google Drive for desktop folder makes it an
+off-site copy.
+
 ## Output
 
 Each run gets its own folder, `data/runs/<run_id>/`, so earlier runs are never

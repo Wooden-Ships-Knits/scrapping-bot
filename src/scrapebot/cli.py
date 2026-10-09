@@ -123,6 +123,16 @@ def _parser() -> argparse.ArgumentParser:
     an.add_argument("-f", "--format", default="xlsx,csv", help="output formats (default xlsx,csv)")
     an.add_argument("-v", "--verbose", action="store_true", help="debug logging")
 
+    sub.add_parser("init-inputs", help="write templates for the analysis inputs in data/inputs")
+    bk = sub.add_parser("backup", help="zip runs, inputs and discovery results to a folder")
+    bk.add_argument(
+        "--to",
+        type=Path,
+        required=True,
+        help="where the backup goes, e.g. a Google Drive for desktop folder",
+    )
+    bk.add_argument("--keep", type=int, default=5, help="backups kept there (default 5)")
+
     s = sub.add_parser("serve", help="start the local web interface")
     s.add_argument("-c", "--config", type=Path, help="YAML config for fetch and output defaults")
     s.add_argument("-p", "--port", type=int, default=8765, help="port on 127.0.0.1 (default 8765)")
@@ -301,7 +311,7 @@ def analyze(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.INFO,
+        level=logging.DEBUG if getattr(args, "verbose", False) else logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
         datefmt="%H:%M:%S",
     )
@@ -314,6 +324,18 @@ def main(argv: list[str] | None = None) -> int:
         return discover(args)
     if args.command == "analyze":
         return analyze(args)
+    if args.command == "init-inputs":
+        from .housekeeping import init_inputs
+
+        written = init_inputs()
+        print("\n".join(f"wrote {p}" for p in written) or "data/inputs already has the templates")
+        return 0
+    if args.command == "backup":
+        from .housekeeping import backup
+
+        target = backup(args.to.expanduser(), keep=args.keep)
+        print(f"Backup: {target} ({target.stat().st_size / 1e6:.0f} MB)")
+        return 0
     try:
         keys = load_keys()
         if args.command == "resume":

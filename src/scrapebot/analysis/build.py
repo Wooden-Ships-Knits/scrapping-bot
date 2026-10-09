@@ -16,6 +16,7 @@ Retail and B2B partners get a score from 0 to 100, with every point explained in
 brands, a way to reach them, a wholesale page, recent new products.
 """
 
+import html
 import statistics
 from collections import Counter, defaultdict
 from collections.abc import Iterable
@@ -28,7 +29,7 @@ from ..store import JsonlRows
 from .attributes import attributes
 from .business import B2B_TYPES, business_type
 from .inputs import Customer, Inputs, compact, core_name, digits, domain_core
-from .location import Geocoder, Location, from_meta, from_pages, miles
+from .location import Geocoder, Location, from_identity, from_meta, from_pages, miles
 from .tables import BrandRow, CompetitorRow, KnitAnalysisRow, StoreAnalysisRow
 
 WOODEN_SHIPS = "woodenships"
@@ -178,9 +179,14 @@ def _store_row(
     options: Options,
 ) -> StoreAnalysisRow:
     ids = s.get("input_ids", [])
+    identity = s.get("identity") or {}  # runs before 2026-10-10 have none
+    orgs = identity.get("organizations") or []
     name = next((names[i] for i in ids if names.get(i)), "")
+    name = name or next((o["name"] for o in orgs if o.get("name")), "")
+    name = html.unescape(name or identity.get("site_name", ""))  # "Hill&#39;s" in markup
     location = next((loc for i in ids if (loc := from_meta(metas.get(i, {})))), None)
-    location = location or from_pages(a.pages) or Location()
+    location = location or from_identity(identity) or from_pages(a.pages) or Location()
+    phones = [*a.contacts.get("phone", []), *(o["telephone"] for o in orgs if o.get("telephone"))]
     if options.geocoder and location.known and location.lat is None:
         point = options.geocoder.point(location)
         if point:
@@ -189,7 +195,7 @@ def _store_row(
     text = " ".join(t for k, t in a.pages if k in ("home", "about"))
     kind = business_type(domain, name, text, s.get("store_type", ""), s["status"],
                          s.get("product_count", 0))  # fmt: skip
-    customer, method = _match(domain, name, location, a.contacts.get("phone", []), inputs)
+    customer, method = _match(domain, name, location, phones, inputs)
     carries_ws = WOODEN_SHIPS in a.vendors
     nearest, nearest_mi, nearby = _territory(location, stockists, customer, options)
     low, mid, high = _quartiles(a.knit_prices)

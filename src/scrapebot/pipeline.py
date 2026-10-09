@@ -145,6 +145,7 @@ def store_rows(
         brand_count=got.brand_count,
         brands=got.brands,
         knit_kind_count=sum(bool(k) for k in kinds),
+        identity=got.identity,
         input_ids=target.input_ids,
         fetched_at=fetched_at,
     )

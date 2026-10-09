@@ -240,6 +240,7 @@ Priorities:
 | DT-03 | Contacts as found: email, phone, Instagram, Facebook, TikTok, LinkedIn, with the URL of the page they came from | Must | Every contact has a `source_url` |
 | DT-04 | Wholesale, stockist and "about us" pages are tagged with their kind | Must | The `page_kind` column is filled |
 | DT-05 | Every record carries `run_id`, fetch time and its source stage | Must | All tables can be joined per run |
+| DT-06 | What a store declares about itself in its own markup (schema.org Organization or store: name, phone, email, address, position; `og:site_name`, title, description) is kept as found, since HTML is not stored | Must | `stores.identity` is filled for a store whose home page declares it |
 
 ### 7.6 Output
 
@@ -318,7 +319,7 @@ All output formats are built from the same tables
 |---|---|---|
 | `runs` | run | `run_id`, start and end time, configuration (without keys), version, total cost |
 | `inputs` | input row | `run_id`, `input_id`, original link, `domain`, status, input metadata |
-| `stores` | store per run | `run_id`, `domain`, status, platform, country, language, currency, `layers_tried`, `product_count`, `knit_count`, `knit_kind_count`, `store_type`, `store_type_source`, `brands`, `ssl_bypassed` |
+| `stores` | store per run | `run_id`, `domain`, status, platform, country, language, currency, `layers_tried`, `product_count`, `knit_count`, `knit_kind_count`, `store_type`, `store_type_source`, `brands`, `ssl_bypassed`, `identity` |
 | `products` | product | `run_id`, `domain`, `title`, `price_raw`, `price_minor_unit`, `currency`, `vendor`, `product_type`, `tags`, `url`, `source`, `evidence_url`, `needs_review`, `confidence`, `is_knitwear`, `knit_kind`, `raw` (JSON) |
 | `pages` | fetched page | `run_id`, `domain`, `url`, `page_kind`, `http_status`, `via`, `language`, `text` |
 | `contacts` | contact found | `run_id`, `domain`, `type`, `value`, `source_url` |

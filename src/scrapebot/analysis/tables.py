@@ -40,7 +40,7 @@ class StoreAnalysisRow(Row):
     state: str = ""
     postal: str = ""
     country: str = ""
-    location_source: str = ""  # input | site
+    location_source: str = ""  # input | site_data (its markup) | site (its page text)
     lat: float | None = None
     lng: float | None = None
     nearest_stockist: str = ""

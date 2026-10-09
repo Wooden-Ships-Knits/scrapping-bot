@@ -6,6 +6,7 @@ Canadian stores write "City, ST 12345". A point comes from geocoding the postal 
 city), cached on disk, so a rerun costs nothing. Territory conflicts are then distances.
 """
 
+import contextlib
 import json
 import math
 import re
@@ -54,7 +55,7 @@ class Location:
     country: str = ""
     lat: float | None = None
     lng: float | None = None
-    source: str = ""  # input | site | ""
+    source: str = ""  # input | site_data (its markup) | site (its page text) | ""
 
     @property
     def known(self) -> bool:
@@ -74,6 +75,27 @@ def from_meta(meta: dict[str, Any]) -> Location | None:
         source="input",
     )
     return found if found.known else None
+
+
+def from_identity(identity: dict[str, Any]) -> Location | None:
+    """The address and position a store declares in its own markup (`stores.identity`),
+    the first organisation that has one."""
+    for org in identity.get("organizations") or []:
+        address = org.get("address") or {}
+        geo = org.get("geo") or {}
+        found = Location(
+            address=address.get("streetAddress", ""),
+            city=address.get("addressLocality", ""),
+            state=state_code(address.get("addressRegion", "")) or address.get("addressRegion", ""),
+            postal=normalize_postal(address.get("postalCode", "")),
+            country=address.get("addressCountry", ""),
+            source="site_data",
+        )
+        with contextlib.suppress(KeyError, TypeError, ValueError):
+            found.lat, found.lng = float(geo["latitude"]), float(geo["longitude"])
+        if found.known or found.lat is not None:
+            return found
+    return None
 
 
 def from_pages(pages: Iterable[tuple[str, str]]) -> Location | None:
