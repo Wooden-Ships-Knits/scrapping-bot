@@ -2,6 +2,7 @@ import gzip
 import threading
 import time
 from itertools import pairwise
+from pathlib import Path
 
 import pytest
 
@@ -185,7 +186,7 @@ def test_failed_fetch_is_not_cached_so_a_rerun_retries(tmp_path):
     assert res.body == "back"
 
 
-@pytest.mark.parametrize("status", [404, 429, 500, 503])
+@pytest.mark.parametrize("status", [404, 500, 503])
 def test_unsuccessful_status_is_not_cached(tmp_path, status):
     calls = []
     f = Fetcher(
@@ -393,3 +394,147 @@ def test_akamai_behavioural_challenge_is_a_challenge():
         Path(__file__).parents[1] / "fixtures/http/next.co.uk-2026-10-07-akamai-challenge.html"
     ).read_text()
     assert detect_challenge(200, body) == "akamai"
+
+
+FIXTURES = Path(__file__).parents[1] / "fixtures/http"
+
+
+def test_cloudflare_bot_script_on_an_ordinary_page_is_not_a_challenge():
+    """Roadmap issue 15: dearprudence.com answers 200 with its whole home page and
+    Cloudflare's bot-detection script, and was read as blocked."""
+    body = (FIXTURES / "dearprudence.com-2026-10-09-home-cloudflare-jsd.html").read_text()
+    assert "challenge-platform/scripts/jsd" in body
+    assert detect_challenge(200, body) == ""
+
+
+def test_cloudflare_challenge_page_is_still_a_challenge():
+    body = (FIXTURES / "maptons.com-2026-10-09-cloudflare-challenge.html").read_text()
+    assert detect_challenge(403, body) == "cloudflare"
+
+
+# --- rate limits on a shared server network (roadmap issue 16) ---------------------
+
+SHOPIFY_EDGE = {"a-shop.com": "23.227.38.65", "b-shop.com": "23.227.38.74", "c.com": "198.51.100.7"}
+CHALLENGE = "<html><head><title>Just a moment...</title></head><body>_cf_chl_opt</body></html>"
+
+
+class Clock:
+    def __init__(self):
+        self.now = 1000.0
+
+    def __call__(self):
+        return self.now
+
+
+def edge_fetcher(tmp_path, responses, calls, clock, delay=0.0):
+    return Fetcher(
+        cache_dir=tmp_path,
+        delay=delay,
+        retries=0,
+        transport=make_transport(responses, calls),
+        resolver=lambda host: SHOPIFY_EDGE.get(host),
+        clock=clock,
+    )
+
+
+def test_a_429_pauses_the_whole_network_then_lets_it_try_again(tmp_path):
+    calls, clock = [], Clock()
+    f = edge_fetcher(
+        tmp_path,
+        {"https://a-shop.com/": (429, ""), "https://b-shop.com/": (200, "<p>ok</p>")},
+        calls,
+        clock,
+        delay=0.01,
+    )
+    assert f.get("https://a-shop.com/").rate_limited
+    paused = f.get("https://b-shop.com/")  # another store on the same edge
+    assert (paused.rate_limited, paused.error) == (
+        True,
+        "rate_limited: the server network is cooling down",
+    )
+    assert all(url != "https://b-shop.com/" for url, _ in calls), "nothing sent while cooling"
+    other = f.get("https://c.com/")  # another network: not paused (a plain 404 here)
+    assert (other.status_code, other.rate_limited) == (404, False)
+    assert f.cooldown_remaining(["https://b-shop.com/"]) == pytest.approx(300)
+    clock.now += 301
+    assert f.get("https://b-shop.com/").ok, "after the pause the store is read"
+    assert f.was_rate_limited("https://b-shop.com/")
+    assert f._delays["23.227.38.0/24"] == 0.02, "the network is asked more slowly from now on"
+
+
+def test_two_sites_refusing_on_one_network_is_a_rate_limit_one_is_not(tmp_path):
+    calls, clock = [], Clock()
+    f = edge_fetcher(
+        tmp_path,
+        {"https://a-shop.com/": (403, CHALLENGE), "https://b-shop.com/": (403, CHALLENGE)},
+        calls,
+        clock,
+    )
+    first = f.get("https://a-shop.com/")
+    assert (first.challenge, first.rate_limited) == ("cloudflare", False), "one store may block us"
+    second = f.get("https://b-shop.com/")
+    assert second.rate_limited, "two stores on one edge within 10 minutes: it is us"
+    assert f.was_rate_limited("https://a-shop.com/"), "the first one is retried too"
+
+
+def test_refusals_far_apart_are_not_a_rate_limit(tmp_path):
+    calls, clock = [], Clock()
+    f = edge_fetcher(
+        tmp_path,
+        {"https://a-shop.com/": (403, CHALLENGE), "https://b-shop.com/": (403, CHALLENGE)},
+        calls,
+        clock,
+    )
+    f.get("https://a-shop.com/")
+    clock.now += 601
+    assert not f.get("https://b-shop.com/").rate_limited
+
+
+def test_cooldowns_double_up_to_a_ceiling(tmp_path):
+    calls, clock = [], Clock()
+    f = edge_fetcher(tmp_path, {"https://a-shop.com/": (429, "")}, calls, clock)
+    lengths = []
+    for _ in range(5):
+        f.get("https://a-shop.com/")
+        lengths.append(round(f.cooldown_remaining(["https://a-shop.com/"])))
+        clock.now += lengths[-1] + 1
+    assert lengths == [300, 600, 1200, 1800, 1800]
+
+
+# --- cache expiry (roadmap issue 17) --------------------------------------------------
+
+
+def test_an_old_cached_page_is_fetched_again(tmp_path):
+    import os
+
+    calls = []
+    f = Fetcher(
+        cache_dir=tmp_path,
+        delay=0,
+        max_age_seconds=3600,
+        transport=make_transport({"https://x.com/": (200, "<p>v1</p>")}, calls),
+    )
+    f.get("https://x.com/")
+    assert f.get("https://x.com/").from_cache, "fresh: read from the cache"
+    [page] = list((tmp_path / "x.com").glob("*.json"))
+    old = page.stat().st_mtime - 7200
+    os.utime(page, (old, old))
+    again = f.get("https://x.com/")
+    assert (again.from_cache, again.body) == (False, "<p>v1</p>"), "two hours old: fetched again"
+
+
+def test_prune_deletes_old_pages_and_never_the_discovery_cache(tmp_path):
+    import os
+
+    from scrapebot.fetch import prune_cache
+
+    for folder, name in (("old.com", "a.json"), ("new.com", "b.json"), ("discover", "c.json")):
+        (tmp_path / folder).mkdir()
+        (tmp_path / folder / name).write_text("{}")
+    for path in (tmp_path / "old.com" / "a.json", tmp_path / "discover" / "c.json"):
+        os.utime(path, (0, 0))
+    assert prune_cache(tmp_path, max_age_seconds=3600) == 1
+    assert not (tmp_path / "old.com").exists()
+    assert (tmp_path / "new.com" / "b.json").exists()
+    assert (tmp_path / "discover" / "c.json").exists(), "paid answers are never pruned"
+    assert prune_cache(tmp_path, max_age_seconds=0) == 0, "0 keeps everything"

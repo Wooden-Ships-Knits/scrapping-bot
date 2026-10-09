@@ -493,3 +493,27 @@ def test_exact_repeats_of_a_product_are_dropped_but_sources_are_not_merged():
     a = Product(title="Crew", price_raw="98", url="https://x.com/p/crew", source="jsonld")
     b = Product(title="Crew", price_raw="98", url="https://x.com/p/crew", source="microdata")
     assert dedupe_products([a, a.model_copy(), b]) == [a, b]
+
+
+def test_a_rate_limited_feed_page_makes_the_store_rate_limited():
+    """Roadmap issue 16: what was read is incomplete, so the store is visited again."""
+    from scrapebot.models import FetchResult
+
+    class Limited(FakeFetcher):
+        def get(self, url):
+            if "products.json" in url:
+                return FetchResult(
+                    url=url,
+                    status_code=None,
+                    body="",
+                    final_url=url,
+                    error="rate_limited: cooling down",
+                    rate_limited=True,
+                )
+            return super().get(url)
+
+    shopify_home = '<script>Shopify.currency = {"active":"USD"};</script>cdn.shopify.com'
+    got = acquire(
+        Target(domain="x.com", url="https://x.com"), Limited({"https://x.com": (200, shopify_home)})
+    )
+    assert got.status == "rate_limited"

@@ -50,11 +50,18 @@ REQUEST_HEADERS = {"User-Agent": USER_AGENT}
 
 # Markers of anti-bot challenge pages, by vendor. Such a page is recorded as
 # `blocked` and never worked around (ADR 0002).
+#
+# Cloudflare is matched on its challenge page only: the title, the challenge options and the
+# challenge script under /h/. Its bot-detection script (/cdn-cgi/challenge-platform/scripts/
+# jsd/main.js) also sits on ordinary pages, and matching it read normal stores as blocked
+# (dearprudence.com, outgoing.world, foundationcenter.org: status 200, whole page; checked
+# 2026-10-09). Roadmap issue 15.
 CHALLENGE_MARKERS = {
     "cloudflare": (
-        "cf-chl",
-        "challenge-platform",
         "<title>just a moment",
+        "_cf_chl_opt",
+        "cf-chl-",
+        "/cdn-cgi/challenge-platform/h/",
         "attention required! | cloudflare",
     ),
     "datadome": ("captcha-delivery.com", "datadome"),
@@ -66,6 +73,20 @@ CHALLENGE_MARKERS = {
 # A real page can mention these words; a challenge page is short and little else.
 CHALLENGE_MAX_CHARS = 60_000
 CHALLENGE_STATUSES = frozenset({200, 301, 302, 303, 307, 308, 403, 429, 503})
+
+# Roadmap issue 16. Hosted platforms put thousands of stores behind one network, and that
+# network limits a client across all of them: on 2026-10-08, 306 of 376 "blocked" stores
+# were Shopify stores behind 23.227.38.x, refused in waves, and all opened normally the
+# next day. So when two different sites on one network refuse us within RATE_LIMIT_WINDOW,
+# or one answers 429, it is our address being limited, not the stores blocking us: the
+# network is left alone for a cooldown (doubled each time), its delay is doubled, and the
+# stores are retried after the pause. Slowing down is the polite answer (ADR 0002).
+RATE_LIMIT_WINDOW = 600.0
+RATE_LIMIT_SITES = 2
+COOLDOWN_SECONDS = 300.0
+MAX_COOLDOWN_SECONDS = 1800.0
+MAX_DELAY_SECONDS = 10.0
+REFUSAL_STATUSES = frozenset({401, 403})
 
 # (url, headers, verify_tls, timeout) -> (status_code, body, final_url). Raises on
 # network failure. Swapped for a fake in tests.
@@ -114,6 +135,34 @@ def detect_challenge(status: int | None, body: str) -> str:
     return ""
 
 
+# Folders inside the cache that are not pages and must never be pruned: the paid
+# discovery answers (ADR 0008) live in data/.cache/discover.
+CACHE_KEEP = frozenset({"discover"})
+
+
+def prune_cache(cache_dir: Path, max_age_seconds: float, now: float | None = None) -> int:
+    """Delete cached pages older than `max_age_seconds`; returns how many. Pages only:
+    folders in CACHE_KEEP are left alone. 0 deletes nothing."""
+    if not max_age_seconds or not cache_dir.is_dir():
+        return 0
+    cutoff = (now if now is not None else time.time()) - max_age_seconds
+    removed = 0
+    for host in cache_dir.iterdir():
+        if not host.is_dir() or host.name in CACHE_KEEP:
+            continue
+        for page in host.iterdir():
+            if page.suffix in (".json", ".part") and page.stat().st_mtime < cutoff:
+                page.unlink(missing_ok=True)
+                removed += 1
+        if not any(host.iterdir()):
+            host.rmdir()
+    return removed
+
+
+def _host(url: str) -> str:
+    return (urlparse(url).hostname or "").lower()
+
+
 def _decode(content: bytes, encoding: str | None) -> str:
     if content[:2] == b"\x1f\x8b":  # a gzipped file such as sitemap.xml.gz
         content = gzip.decompress(content)
@@ -142,6 +191,8 @@ class HttpFetcher:
         respect_robots: bool = True,
         backoff_seconds: float = 2.0,
         resolver: Resolver | None = None,
+        clock: Callable[[], float] = time.monotonic,
+        max_age_seconds: float = 0,
     ):
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -157,6 +208,13 @@ class HttpFetcher:
         self._lock = threading.Lock()
         self._locks: dict[str, threading.Lock] = {}
         self._keys: dict[str, str] = {}
+        self._clock = clock
+        self.max_age_seconds = max_age_seconds  # 0: cached pages never expire
+        self._refusals: dict[str, list[tuple[float, str]]] = {}  # network -> (when, host)
+        self._cool_until: dict[str, float] = {}
+        self._cool_length: dict[str, float] = {}
+        self._delays: dict[str, float] = {}  # a network's own delay once it limited us
+        self._limited: set[str] = set()  # networks that limited us during this run
 
     # -- cache -------------------------------------------------------------
     def _cache_path(self, url: str) -> Path:
@@ -169,6 +227,9 @@ class HttpFetcher:
     def _read_cache(self, url: str) -> FetchResult | None:
         path = self._cache_path(url)
         if not path.exists():
+            return None
+        if self.max_age_seconds and time.time() - path.stat().st_mtime > self.max_age_seconds:
+            path.unlink(missing_ok=True)  # too old: this run reads the page again
             return None
         try:
             res = FetchResult(**json.loads(path.read_text()), from_cache=True)
@@ -221,7 +282,7 @@ class HttpFetcher:
         key = self.throttle_key(url)
         last = self._last_request.get(key)
         if last is not None:
-            wait = self.delay - (time.monotonic() - last)
+            wait = self._delays.get(key, self.delay) - (time.monotonic() - last)
             if wait > 0:
                 time.sleep(wait)
         self._last_request[key] = time.monotonic()
@@ -262,18 +323,64 @@ class HttpFetcher:
         """Sitemaps the site declares in robots.txt."""
         return list(self._robots_for(origin + "/").site_maps() or [])
 
+    # -- rate limits (roadmap issue 16) -------------------------------------
+    def cooldown_remaining(self, urls: list[str]) -> float:
+        """Seconds until every network these URLs live on may be asked again."""
+        now = self._clock()
+        with self._lock:
+            ends = [self._cool_until.get(self._keys.get(_host(u), ""), 0.0) for u in urls]
+        return max([0.0, *(end - now for end in ends)])
+
+    def was_rate_limited(self, url: str) -> bool:
+        """Whether the network a URL lives on limited us during this run."""
+        return self.throttle_key(url) in self._limited
+
+    def _cooling(self, key: str) -> bool:
+        with self._lock:
+            return self._cool_until.get(key, 0.0) > self._clock()
+
+    def _note_refusal(self, url: str, res: FetchResult) -> bool:
+        """Record a refusal; True when it shows the network is limiting us."""
+        if res.status_code != 429 and not (res.challenge or res.status_code in REFUSAL_STATUSES):
+            return False
+        key, host, now = self.throttle_key(url), _host(url), self._clock()
+        with self._lock:
+            recent = [r for r in self._refusals.get(key, []) if now - r[0] <= RATE_LIMIT_WINDOW]
+            recent.append((now, host))
+            self._refusals[key] = recent
+            limited = res.status_code == 429 or len({h for _, h in recent}) >= RATE_LIMIT_SITES
+            if limited:
+                length = min(self._cool_length.get(key, COOLDOWN_SECONDS / 2) * 2,
+                             MAX_COOLDOWN_SECONDS)  # fmt: skip
+                self._cool_length[key] = length
+                self._cool_until[key] = now + length
+                self._delays[key] = min(self._delays.get(key, self.delay) * 2, MAX_DELAY_SECONDS)
+                self._limited.add(key)
+        return limited
+
     # -- public ------------------------------------------------------------
     def get(self, url: str) -> FetchResult:
         cached = self._read_cache(url)
         if cached is not None:
             return cached
 
+        if self._cooling(self.throttle_key(url)):
+            return FetchResult(
+                url=url,
+                status_code=None,
+                body="",
+                final_url=url,
+                error="rate_limited: the server network is cooling down",
+                rate_limited=True,
+            )
         if not self.allowed(url):
             return FetchResult(
                 url=url, status_code=None, body="", final_url=url, error="robots_disallowed"
             )
         with self._server_lock(url):
             res = self._fetch(url)
+        if self._note_refusal(url, res):
+            res = res.model_copy(update={"rate_limited": True})
         self._write_cache(res)
         return res
 

@@ -29,6 +29,8 @@ describe("labels", () => {
     expect(trafficProblem("quota_low")).toContain("Kuota");
     expect(storeType("multi_brand")).toBe("Multi-brand");
     expect(knitKind("accessory")).toBe("Aksesori rajut");
+    expect(storeStatus("rate_limited")).toBe("Dibatasi sementara");
+    expect(tone("rate_limited")).toBe("warn");
   });
 
   it("gives every store status a tone", () => {

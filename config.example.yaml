@@ -11,6 +11,8 @@ fetch:
   delay_seconds: 1.5           # per domain
   timeout_seconds: 20
   retries: 2
+  cache_max_age_hours: 168     # cached pages older than this are fetched again; 0 = never
+  rate_limit_wait_seconds: 1800  # longest pause before rate-limited stores are retried
 
 render:                        # the browser, for stores HTTP cannot read (ADR 0002)
   enabled: true                # needs Camoufox: make install. --no-render turns it off
