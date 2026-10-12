@@ -17,19 +17,19 @@ import {
 
 describe("labels", () => {
   it("translates known codes and passes unknown ones through", () => {
-    expect(storeStatus("no_products")).toBe("Tanpa katalog");
-    expect(skipReason("over_limit")).toBe("Di luar batas jumlah toko");
+    expect(storeStatus("no_products")).toBe("No catalogue");
+    expect(skipReason("over_limit")).toBe("Over the store limit");
     expect(storeStatus("something_new")).toBe("something_new");
-    expect(sourceLabel("bigcartel_feed")).toBe("Feed Big Cartel");
+    expect(sourceLabel("bigcartel_feed")).toBe("Big Cartel feed");
     expect(sourceLabel("render")).toBe("Browser (Camoufox)");
-    expect(blockMethod("http_403")).toBe("HTTP 403 (ditolak)");
-    expect(blockState("recovered")).toBe("Pulih");
-    expect(trafficCityKind("data_center")).toBe("Kota data center");
-    expect(trafficSource("social")).toBe("Media sosial");
-    expect(trafficProblem("quota_low")).toContain("Kuota");
+    expect(blockMethod("http_403")).toBe("HTTP 403 (refused)");
+    expect(blockState("recovered")).toBe("Recovered");
+    expect(trafficCityKind("data_center")).toBe("Data center city");
+    expect(trafficSource("social")).toBe("Social media");
+    expect(trafficProblem("quota_low")).toContain("quota");
     expect(storeType("multi_brand")).toBe("Multi-brand");
-    expect(knitKind("accessory")).toBe("Aksesori rajut");
-    expect(storeStatus("rate_limited")).toBe("Dibatasi sementara");
+    expect(knitKind("accessory")).toBe("Knitted accessory");
+    expect(storeStatus("rate_limited")).toBe("Rate limited");
     expect(tone("rate_limited")).toBe("warn");
   });
 
@@ -47,6 +47,7 @@ describe("parseRoute", () => {
     expect(parseRoute("#/runs")).toEqual({ page: "history" });
     expect(parseRoute("#/detection")).toEqual({ page: "detection" });
     expect(parseRoute("#/traffic")).toEqual({ page: "traffic" });
+    expect(parseRoute("#/retailer-map")).toEqual({ page: "retailer" });
     expect(parseRoute("#/runs/20261005T085253123Z-56162b")).toEqual({
       page: "run",
       runId: "20261005T085253123Z-56162b",

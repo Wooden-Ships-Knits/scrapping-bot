@@ -5,6 +5,7 @@ import { Topbar, type Crumb } from "./components/shell/Topbar";
 import { Detection } from "./pages/Detection";
 import { History } from "./pages/History";
 import { Overview } from "./pages/Overview";
+import { RetailerMap } from "./pages/RetailerMap";
 import { RunPage } from "./pages/RunPage";
 import { Scrape } from "./pages/Scrape";
 import { Traffic } from "./pages/Traffic";
@@ -12,12 +13,13 @@ import { useRoute, type Route } from "./router";
 import { useTheme } from "./theme";
 
 const CRUMBS: Record<Route["page"], Crumb[]> = {
-  new: [{ label: "Scrape" }, { label: "Mulai run baru" }],
+  new: [{ label: "Scrape" }, { label: "Start a new run" }],
   overview: [{ label: "Overview" }],
-  detection: [{ label: "Deteksi" }],
-  traffic: [{ label: "Traffic toko" }],
-  history: [{ label: "Riwayat run" }],
-  run: [{ label: "Riwayat run", href: "#/runs" }, { label: "Detail run" }],
+  detection: [{ label: "Detection" }],
+  traffic: [{ label: "Store traffic" }],
+  retailer: [{ label: "Process" }, { label: "Retailer map" }],
+  history: [{ label: "Run history" }],
+  run: [{ label: "Run history", href: "#/runs" }, { label: "Run detail" }],
 };
 
 export function App() {
@@ -43,6 +45,7 @@ export function App() {
           {route.page === "overview" && <Overview />}
           {route.page === "detection" && <Detection />}
           {route.page === "traffic" && <Traffic />}
+          {route.page === "retailer" && <RetailerMap />}
           {route.page === "history" && <History />}
           {route.page === "run" && <RunPage key={route.runId} runId={route.runId} />}
         </main>

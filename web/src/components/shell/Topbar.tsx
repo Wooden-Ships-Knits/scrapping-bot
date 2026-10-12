@@ -18,10 +18,10 @@ export function Topbar({
 }) {
   return (
     <header className="topbar">
-      <button type="button" className="icon-button" aria-label="Tampilkan atau sembunyikan menu" onClick={onToggleSidebar}>
+      <button type="button" className="icon-button" aria-label="Show or hide the menu" onClick={onToggleSidebar}>
         <PanelLeft size={18} />
       </button>
-      <nav className="crumbs" aria-label="Lokasi">
+      <nav className="crumbs" aria-label="Location">
         <a href="#/">Scrapebot</a>
         {crumbs.map((c, i) => (
           <Fragment key={c.label}>
@@ -39,21 +39,21 @@ export function Topbar({
         ))}
       </nav>
       <span className="spacer" />
-      <span className="host-pill" title="Server tempat antarmuka ini berjalan">
-        Lokal · {window.location.host || "127.0.0.1"}
+      <span className="host-pill" title="The server this interface runs on">
+        Local · {window.location.host || "127.0.0.1"}
       </span>
       <button
         type="button"
         className="theme-switch"
         role="switch"
         aria-checked={theme === "dark"}
-        aria-label="Tema gelap"
+        aria-label="Dark theme"
         onClick={onToggleTheme}
       >
         <span className="switch-track" aria-hidden="true">
           <span className="switch-thumb" />
         </span>
-        {theme === "dark" ? "GELAP" : "TERANG"}
+        {theme === "dark" ? "DARK" : "LIGHT"}
       </button>
     </header>
   );

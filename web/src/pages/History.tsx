@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { api, type RunListItem } from "../api/client";
-import { formatNumber, formatTime, runState, tone } from "../labels";
+import { formatNumber, formatTime, plural, runState, tone } from "../labels";
 
 /** The short, readable end of a run id ("20261005T085253123Z-56162b" → "56162b"). */
 export const shortId = (runId: string) => runId.split("-").pop() ?? runId;
@@ -12,13 +12,13 @@ export function RunsTable({ runs }: { runs: RunListItem[] }) {
       <table className="data-table">
         <thead>
           <tr>
-            <th>ID run</th>
-            <th>Masukan</th>
-            <th>Dimulai</th>
-            <th className="num">Toko</th>
-            <th className="num">Produk</th>
+            <th>Run ID</th>
+            <th>Input</th>
+            <th>Started</th>
+            <th className="num">Stores</th>
+            <th className="num">Products</th>
             <th>Status</th>
-            <th className="end">Aksi</th>
+            <th className="end">Action</th>
           </tr>
         </thead>
         <tbody>
@@ -30,7 +30,7 @@ export function RunsTable({ runs }: { runs: RunListItem[] }) {
               <td>
                 {r.source_name}
                 <span className="sub">
-                  {r.mode === "test" ? "Terbatas" : "Penuh"} · {formatNumber(r.links_in)} tautan
+                  {r.mode === "test" ? "Limited" : "Full"} · {plural(r.links_in, "link")}
                 </span>
               </td>
               <td className="mono small">{formatTime(r.started_at)}</td>
@@ -45,7 +45,7 @@ export function RunsTable({ runs }: { runs: RunListItem[] }) {
               </td>
               <td className="end">
                 <a className="button ghost small-button" href={`#/runs/${r.run_id}`}>
-                  Detail
+                  Details
                 </a>
               </td>
             </tr>
@@ -64,23 +64,23 @@ export function History() {
     api
       .runs()
       .then(setRuns)
-      .catch(() => setError("Server tidak bisa dihubungi."));
+      .catch(() => setError("The server cannot be reached."));
   }, []);
 
   return (
     <div className="page">
       <header className="page-head">
         <div>
-          <h1>Riwayat run</h1>
-          <p>Setiap run punya foldernya sendiri; tidak ada yang ditimpa.</p>
+          <h1>Run history</h1>
+          <p>Every run has its own folder; nothing is overwritten.</p>
         </div>
       </header>
       {error && <div className="notice bad">{error}</div>}
-      {!runs && !error && <p className="muted">Memuat riwayat…</p>}
+      {!runs && !error && <p className="muted">Loading the history…</p>}
       {runs && runs.length === 0 && (
         <section className="card empty-card">
           <p className="muted">
-            Belum ada run. <a href="#/">Mulai run baru</a>.
+            No runs yet. <a href="#/">Start a new run</a>.
           </p>
         </section>
       )}

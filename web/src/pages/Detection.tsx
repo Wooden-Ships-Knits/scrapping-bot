@@ -2,7 +2,7 @@ import { Check, Copy, RefreshCw, ShieldAlert, ShieldCheck, Store } from "lucide-
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import { api, type Detection as DetectionData } from "../api/client";
-import { blockMethod, blockState, formatNumber, formatTime } from "../labels";
+import { blockMethod, blockState, formatNumber, formatTime, plural } from "../labels";
 import { shortId } from "./History";
 
 const RECENT_RUNS = 10;
@@ -22,7 +22,7 @@ export function Detection() {
         setData(d);
         setError("");
       })
-      .catch(() => setError("Server tidak bisa dihubungi."));
+      .catch(() => setError("The server cannot be reached."));
   }, []);
   useEffect(load, [load]);
 
@@ -32,57 +32,57 @@ export function Detection() {
     <div className="page">
       <header className="page-head">
         <div>
-          <h1>Deteksi</h1>
-          <p>Seberapa sering toko mengenali bot ini dan memblokirnya, dari semua run di komputer ini.</p>
+          <h1>Detection</h1>
+          <p>How often stores recognise this bot and block it, across every run on this computer.</p>
         </div>
         <div className="page-actions">
-          <button type="button" className="icon-button bordered" aria-label="Muat ulang" onClick={load}>
+          <button type="button" className="icon-button bordered" aria-label="Reload" onClick={load}>
             <RefreshCw size={16} />
           </button>
         </div>
       </header>
       {error && <div className="notice bad">{error}</div>}
-      {!data && !error && <p className="muted">Memuat…</p>}
+      {!data && !error && <p className="muted">Loading…</p>}
       {data && data.visits === 0 && (
         <section className="card empty-card">
           <p className="muted">
-            Belum ada toko yang dikunjungi. <a href="#/">Mulai scrape</a>.
+            No stores visited yet. <a href="#/">Start scraping</a>.
           </p>
         </section>
       )}
       {data && data.visits > 0 && (
         <>
           <dl className="stats">
-            <Tile label="Kunjungan toko" icon={<Store size={15} />} value={formatNumber(data.visits)} sub={`${formatNumber(data.stores)} toko unik`} />
+            <Tile label="Store visits" icon={<Store size={15} />} value={formatNumber(data.visits)} sub={`${formatNumber(data.stores)} unique stores`} />
             <Tile
-              label="Diblokir"
+              label="Blocked"
               icon={<ShieldAlert size={15} />}
               value={`${percent(data.blocked, data.visits)}%`}
-              sub={`${formatNumber(data.blocked)} dari ${formatNumber(data.visits)} kunjungan`}
+              sub={`${formatNumber(data.blocked)} of ${formatNumber(data.visits)} visits`}
               alert={data.blocked > 0}
             />
             <Tile
-              label="Toko pernah memblokir"
+              label="Stores that blocked"
               icon={<ShieldAlert size={15} />}
               value={formatNumber(data.stores_blocked)}
-              sub={`dari ${formatNumber(data.stores)} toko`}
+              sub={`of ${formatNumber(data.stores)} stores`}
             />
             <Tile
-              label="Selalu memblokir"
+              label="Always block"
               icon={<ShieldCheck size={15} />}
               value={formatNumber(always.length)}
-              sub="sebaiknya dilewati"
+              sub="better skipped"
             />
           </dl>
 
           {Object.keys(data.by_method).length > 0 && (
             <section className="card">
               <div className="card-head">
-                <h2>Cara toko memblokir</h2>
-                <p>Halaman tantangan dari layanan anti-bot, atau penolakan HTTP. Bot tidak pernah mencoba menembusnya.</p>
+                <h2>How stores block</h2>
+                <p>A challenge page from an anti-bot service, or an HTTP refusal. The bot never tries to get past it.</p>
               </div>
               <div className="card-body">
-                <ul className="chips" aria-label="Cara memblokir">
+                <ul className="chips" aria-label="Block methods">
                   {Object.entries(data.by_method).map(([method, n]) => (
                     <li key={method} className="tag">
                       {blockMethod(method)}: <strong>{formatNumber(n)}</strong>
@@ -93,15 +93,15 @@ export function Detection() {
             </section>
           )}
 
-          <section className="card" aria-label="Toko yang memblokir">
+          <section className="card" aria-label="Stores that block">
             <div className="card-head">
-              <h2>Toko yang memblokir</h2>
-              <span className="tag solid">{formatNumber(data.blocked_stores.length)} toko</span>
+              <h2>Stores that block</h2>
+              <span className="tag solid">{plural(data.blocked_stores.length, "store")}</span>
               <span className="spacer" />
               {always.length > 0 && <CopyList domains={always.map((s) => s.domain)} />}
               <p>
-                <strong>Selalu</strong>: diblokir di setiap kunjungan. <strong>Kadang</strong>: diblokir kunjungan
-                terakhir, pernah lolos. <strong>Pulih</strong>: dulu diblokir, kunjungan terakhir lolos.
+                <strong>Always</strong>: blocked on every visit. <strong>Sometimes</strong>: blocked on the last visit, got
+                through before. <strong>Recovered</strong>: blocked before, got through on the last visit.
               </p>
             </div>
             {data.blocked_stores.length ? (
@@ -109,11 +109,11 @@ export function Detection() {
                 <table className="data-table">
                   <thead>
                     <tr>
-                      <th>Toko</th>
+                      <th>Store</th>
                       <th>Status</th>
-                      <th className="num">Diblokir</th>
-                      <th>Cara terakhir</th>
-                      <th>Terakhir dikunjungi</th>
+                      <th className="num">Blocked</th>
+                      <th>Last method</th>
+                      <th>Last visited</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -139,25 +139,25 @@ export function Detection() {
                 </table>
               </div>
             ) : (
-              <p className="empty">Belum ada toko yang memblokir bot ini.</p>
+              <p className="empty">No store has blocked this bot yet.</p>
             )}
           </section>
 
-          <section className="card" aria-label="Diblokir per run">
+          <section className="card" aria-label="Blocked per run">
             <div className="card-head">
-              <h2>Diblokir per run</h2>
-              <span className="muted small">{Math.min(RECENT_RUNS, data.runs.length)} run terakhir</span>
-              <p>Bila persentasenya naik, toko makin sering mengenali bot ini.</p>
+              <h2>Blocked per run</h2>
+              <span className="muted small">last {Math.min(RECENT_RUNS, data.runs.length)} runs</span>
+              <p>When the percentage rises, stores recognise this bot more often.</p>
             </div>
             <div className="table-wrap">
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>ID run</th>
-                    <th>Dimulai</th>
-                    <th className="num">Toko</th>
-                    <th className="num">Diblokir</th>
-                    <th>Persentase</th>
+                    <th>Run ID</th>
+                    <th>Started</th>
+                    <th className="num">Stores</th>
+                    <th className="num">Blocked</th>
+                    <th>Share</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -205,7 +205,7 @@ function CopyList({ domains }: { domains: string[] }) {
   return (
     <button type="button" className="button ghost small-button" onClick={copy}>
       {copied ? <Check size={14} /> : <Copy size={14} />}
-      {copied ? "Tersalin" : `Salin ${formatNumber(domains.length)} toko yang selalu memblokir`}
+      {copied ? "Copied" : `Copy ${plural(domains.length, "store")} that always ${domains.length === 1 ? "blocks" : "block"}`}
     </button>
   );
 }

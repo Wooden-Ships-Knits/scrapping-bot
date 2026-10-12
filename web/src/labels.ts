@@ -1,41 +1,41 @@
-// Every code the API returns, in the operator's language. Unknown codes fall back to the code.
+// Every code the API returns, in English. Unknown codes fall back to the code.
 
 const STORE_STATUS: Record<string, string> = {
-  ok: "Ada produk",
-  no_products: "Tanpa katalog",
-  js_required: "Perlu browser",
-  blocked: "Diblokir",
-  rate_limited: "Dibatasi sementara",
-  error: "Gagal",
+  ok: "Has products",
+  no_products: "No catalogue",
+  js_required: "Needs a browser",
+  blocked: "Blocked",
+  rate_limited: "Rate limited",
+  error: "Error",
 };
 
 const SKIP_REASON: Record<string, string> = {
-  duplicate: "Duplikat domain",
-  over_limit: "Di luar batas jumlah toko",
-  no_website: "Tanpa situs",
-  invalid_url: "URL tidak valid",
-  social_only: "Media sosial",
+  duplicate: "Duplicate domain",
+  over_limit: "Over the store limit",
+  no_website: "No website",
+  invalid_url: "Invalid URL",
+  social_only: "Social media",
   marketplace: "Marketplace",
 };
 
 const RUN_STATE: Record<string, string> = {
-  queued: "Menunggu",
-  running: "Berjalan",
-  stopped: "Dihentikan",
-  done: "Selesai",
-  failed: "Gagal",
-  interrupted: "Terhenti",
+  queued: "Queued",
+  running: "Running",
+  stopped: "Stopped",
+  done: "Finished",
+  failed: "Failed",
+  interrupted: "Interrupted",
 };
 
 const SOURCE: Record<string, string> = {
-  shopify_feed: "Feed Shopify",
-  bigcartel_feed: "Feed Big Cartel",
-  woocommerce_feed: "Feed WooCommerce",
-  squarespace_feed: "Feed Squarespace",
-  lightspeed_feed: "Feed Lightspeed",
-  magento_feed: "API Magento",
+  shopify_feed: "Shopify feed",
+  bigcartel_feed: "Big Cartel feed",
+  woocommerce_feed: "WooCommerce feed",
+  squarespace_feed: "Squarespace feed",
+  lightspeed_feed: "Lightspeed feed",
+  magento_feed: "Magento API",
   sitemap: "Sitemap",
-  crawl: "Crawl tautan",
+  crawl: "Link crawl",
   render: "Browser (Camoufox)",
   llm: "LLM",
   none: "—",
@@ -53,43 +53,43 @@ const WRITER: Record<string, string> = {
 };
 
 const REGION: Record<string, string> = {
-  north_america: "Amerika Utara (AS & Kanada)",
-  united_states: "Amerika Serikat",
-  canada: "Kanada",
-  europe: "Eropa",
-  united_kingdom: "Inggris & Irlandia",
-  oceania: "Australia & Selandia Baru",
-  asia: "Asia Timur & Tenggara",
+  north_america: "North America (US & Canada)",
+  united_states: "United States",
+  canada: "Canada",
+  europe: "Europe",
+  united_kingdom: "UK & Ireland",
+  oceania: "Australia & New Zealand",
+  asia: "East & Southeast Asia",
 };
 
 const ITEM: Record<string, string> = {
   knitwear: "Knitwear",
-  cashmere_wool: "Cashmere / wol",
-  fall_winter: "Musim Fall/Winter",
-  spring_summer: "Musim Spring/Summer",
-  other: "Lainnya",
+  cashmere_wool: "Cashmere / wool",
+  fall_winter: "Fall/Winter season",
+  spring_summer: "Spring/Summer season",
+  other: "Other",
 };
 
 const DISCOVERY_SOURCE: Record<string, string> = {
   google_places: "Google Maps",
-  web_search: "Pencarian web",
+  web_search: "Web search",
   social_search: "Instagram/Facebook",
-  ai_agent: "Agen AI",
+  ai_agent: "AI agent",
 };
 
 const DISCOVERY_STATE: Record<string, string> = {
-  searching: "Mencari toko",
-  starting_run: "Memulai run",
-  done: "Selesai",
-  failed: "Gagal",
+  searching: "Finding stores",
+  starting_run: "Starting the run",
+  done: "Finished",
+  failed: "Failed",
 };
 
 const SOURCE_STATUS: Record<string, string> = {
-  ok: "Berhasil",
-  disabled: "Tidak dipakai",
-  no_api_key: "Tanpa API key",
-  budget_reached: "Batas tercapai",
-  error: "Gagal",
+  ok: "Succeeded",
+  disabled: "Not used",
+  no_api_key: "No API key",
+  budget_reached: "Limit reached",
+  error: "Failed",
 };
 
 const BLOCK_METHOD: Record<string, string> = {
@@ -99,73 +99,100 @@ const BLOCK_METHOD: Record<string, string> = {
   perimeterx: "PerimeterX",
   incapsula: "Imperva (Incapsula)",
   sucuri: "Sucuri",
-  http_401: "HTTP 401 (perlu login)",
-  http_403: "HTTP 403 (ditolak)",
-  http_429: "HTTP 429 (terlalu sering)",
-  other: "Lainnya",
+  http_401: "HTTP 401 (login required)",
+  http_403: "HTTP 403 (refused)",
+  http_429: "HTTP 429 (too many requests)",
+  other: "Other",
 };
 
 const BLOCK_STATE: Record<string, string> = {
-  always: "Selalu",
-  sometimes: "Kadang",
-  recovered: "Pulih",
+  always: "Always",
+  sometimes: "Sometimes",
+  recovered: "Recovered",
 };
 
 const TRAFFIC_CITY_KIND: Record<string, string> = {
-  data_center: "Kota data center",
-  own_team: "Tim sendiri?",
+  data_center: "Data center city",
+  own_team: "Own team?",
   other: "",
 };
 
 const TRAFFIC_SOURCE: Record<string, string> = {
-  direct: "Langsung",
-  social: "Media sosial",
-  search: "Pencarian",
+  direct: "Direct",
+  social: "Social media",
+  search: "Search",
   email: "Email",
-  unknown: "Tidak diketahui",
-  "": "Tanpa data",
+  unknown: "Unknown",
+  "": "No data",
 };
 
 const TRAFFIC_DEVICE: Record<string, string> = {
-  mobile: "HP",
+  mobile: "Mobile",
   desktop: "Desktop",
   tablet: "Tablet",
-  other: "Lainnya",
-  "": "Tanpa data",
+  other: "Other",
+  "": "No data",
 };
 
 const TRAFFIC_PERIOD: Record<string, string> = {
-  "1h": "1 jam",
-  "24h": "24 jam",
-  "7d": "7 hari",
+  "1h": "1 hour",
+  "24h": "24 hours",
+  "7d": "7 days",
 };
 
 const TRAFFIC_PROBLEM: Record<string, string> = {
-  quota_low: "Kuota Analytics Shopify hampir habis; tabel memakai data terakhir sampai kuota pulih.",
-  unreachable: "Shopify sedang tidak bisa dihubungi; yang tampil adalah data terakhir.",
-  auth_failed: "Shopify menolak akses; periksa kredensial Shopify di .env.",
-  query_failed: "Shopify menolak salah satu query; yang tampil adalah data terakhir.",
-  not_configured: "Kredensial Shopify belum diisi di .env.",
+  quota_low: "The Shopify Analytics quota is almost used up; the tables show the last data until it recovers.",
+  unreachable: "Shopify cannot be reached right now; this is the last data received.",
+  auth_failed: "Shopify refused access; check the Shopify credentials in .env.",
+  query_failed: "Shopify rejected one of the queries; this is the last data received.",
+  not_configured: "The Shopify credentials are not set in .env yet.",
 };
 
 // What kind of shop a store is (ADR 0010); the final list keeps multi-brand stores.
 const STORE_TYPE: Record<string, string> = {
   multi_brand: "Multi-brand",
-  own_brand: "Merek sendiri",
-  unknown: "Belum jelas",
+  own_brand: "Own label",
+  unknown: "Unclear",
   "": "—",
 };
 
 const STORE_TYPE_SOURCE: Record<string, string> = {
-  vendors: "Dari vendor produk",
-  llm: "Dinilai LLM",
+  vendors: "From product vendors",
+  llm: "Judged by the LLM",
   "": "—",
 };
 
 const KNIT_KIND: Record<string, string> = {
-  garment: "Pakaian rajut",
-  accessory: "Aksesori rajut",
-  "": "Bukan rajutan",
+  garment: "Knitted garment",
+  accessory: "Knitted accessory",
+  "": "Not knitwear",
+};
+
+// Retailer map: codes written by the process (process/build_dashboard.py).
+const TERRITORY: Record<string, string> = {
+  open: "Open territory",
+  near: "Stockist nearby",
+  unknown: "Location unknown",
+};
+
+const BRAND_KIND: Record<string, string> = {
+  rival: "Knitwear rival",
+  marker: "Marker brand",
+};
+
+const LOCATOR_STATUS: Record<string, string> = {
+  full: "Full list",
+  area: "Area search only",
+  robots: "robots.txt disallows",
+  own: "Own shops only",
+  none: "No list",
+};
+
+const MATCH_GROUP: Record<string, string> = {
+  same: "Same store as a stockist",
+  check: "Same name, to check by hand",
+  near: "Not ours, stockist nearby",
+  open: "Not ours, open territory",
 };
 
 const pick = (table: Record<string, string>) => (code: string) => table[code] ?? code;
@@ -190,6 +217,10 @@ export const trafficProblem = pick(TRAFFIC_PROBLEM);
 export const storeType = pick(STORE_TYPE);
 export const storeTypeSource = pick(STORE_TYPE_SOURCE);
 export const knitKind = pick(KNIT_KIND);
+export const territoryLabel = pick(TERRITORY);
+export const brandKind = pick(BRAND_KIND);
+export const locatorStatus = pick(LOCATOR_STATUS);
+export const matchGroup = pick(MATCH_GROUP);
 
 /** Tone for a status badge: good, warn, bad or neutral. */
 export function tone(code: string): "good" | "warn" | "bad" | "neutral" {
@@ -199,12 +230,17 @@ export function tone(code: string): "good" | "warn" | "bad" | "neutral" {
   return "neutral";
 }
 
-const numberFormat = new Intl.NumberFormat("id-ID");
+export const LOCALE = "en-US";
+
+const numberFormat = new Intl.NumberFormat(LOCALE);
 export const formatNumber = (n: number) => numberFormat.format(n);
+
+/** A count with its noun: "1 store", "2 stores". */
+export const plural = (n: number, one: string, many = `${one}s`) => `${formatNumber(n)} ${n === 1 ? one : many}`;
 
 export function formatTime(iso: string): string {
   if (!iso) return "—";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" });
+  return date.toLocaleString(LOCALE, { dateStyle: "medium", timeStyle: "short" });
 }

@@ -1767,3 +1767,148 @@ input:not([type]) {
     grid-template-columns: 5.5rem minmax(0, 1fr) auto;
   }
 }
+
+/* Retailer map */
+
+.sidebar nav .nav-title:not(:first-child) {
+  margin-top: 0.9rem;
+}
+
+a.chip {
+  text-decoration: none;
+}
+
+.rm-tabs .tabs-row {
+  border-bottom: 0;
+}
+
+.rm-panel {
+  display: grid;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.rm-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  padding: 0.4rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.rm-filters .segmented {
+  flex-wrap: wrap;
+}
+
+.rm-filters .search {
+  flex: 1 1 200px;
+  max-width: 280px;
+  margin-left: auto;
+}
+
+.rm-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.data-table th button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.data-table th button:hover,
+.data-table th[aria-sort] button {
+  color: var(--text);
+}
+
+.data-table td.rm-wrap {
+  white-space: normal;
+}
+
+.data-table td.rm-wrap:has(.rm-tags) {
+  min-width: 190px;
+}
+
+.data-table .badge + .sub {
+  margin-top: 0.2rem;
+}
+
+.rm-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.rm-brand {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  font-weight: 600;
+}
+
+.rm-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 150px;
+}
+
+.rm-bar .share-track {
+  flex: 1;
+}
+
+.rm-bar .num {
+  flex: 0 0 2.2rem;
+}
+
+.share-fill.rm-quiet {
+  background: var(--faint);
+}
+
+.rm-share li {
+  grid-template-columns: 15rem minmax(0, 1fr) auto;
+}
+
+.rm-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+@media (max-width: 980px) {
+  .rm-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .rm-share li {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .rm-share .share-track {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .rm-filters .search {
+    max-width: none;
+    margin-left: 0;
+  }
+  .page-actions {
+    flex-wrap: wrap;
+  }
+}

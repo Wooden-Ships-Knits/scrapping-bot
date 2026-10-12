@@ -174,6 +174,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/retailer-map": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Retailer Map View
+         * @description Where brands like ours are sold, for the newest processed run.
+         */
+        get: operations["retailer_map_view_api_retailer_map_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs": {
         parameters: {
             query?: never;
@@ -372,6 +392,36 @@ export interface components {
             /** File */
             file: string;
         };
+        /** BrandRowOut */
+        BrandRowOut: {
+            /** Brand */
+            brand: string;
+            /** Full */
+            full: boolean;
+            /** Key */
+            key: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "rival" | "marker";
+            /** Knit Share */
+            knit_share: number | null;
+            /** Not Ours */
+            not_ours: number;
+            /** Open */
+            open: number;
+            /** Price */
+            price: number | null;
+            /** Rank */
+            rank: number | null;
+            /** Shared */
+            shared: number;
+            /** Stores */
+            stores: number;
+            /** Watched */
+            watched: boolean;
+        };
         /**
          * DetectionOut
          * @description How often stores detect and block the bot, across every run on disk.
@@ -534,6 +584,66 @@ export interface components {
              */
             model: string;
         };
+        /** LocatorStateOut */
+        LocatorStateOut: {
+            /** Brand Retailers */
+            brand_retailers: number;
+            /** Gap */
+            gap: number;
+            /** State */
+            state: string;
+            /** Stockists */
+            stockists: number;
+        };
+        /** LocatorSurveyOut */
+        LocatorSurveyOut: {
+            /** Brand */
+            brand: string;
+            /** Locations */
+            locations: number | null;
+            /** Locator */
+            locator: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "full" | "area" | "robots" | "own" | "none";
+        };
+        /**
+         * OpportunityOut
+         * @description A store that is not ours and sells brands like ours.
+         */
+        OpportunityOut: {
+            /** City */
+            city: string | null;
+            /** Currency */
+            currency: string | null;
+            /** Domain */
+            domain: string;
+            /** Email */
+            email: boolean;
+            /** Knit */
+            knit: number;
+            /** Miles */
+            miles: number | null;
+            /** Name */
+            name: string | null;
+            /** Price */
+            price: number | null;
+            /** Relevant */
+            relevant: string[];
+            /** Score */
+            score: number | null;
+            /** State */
+            state: string | null;
+            /**
+             * Territory
+             * @enum {string}
+             */
+            territory: "open" | "near" | "unknown";
+            /** Watched */
+            watched: string[];
+        };
         /** OptionsOut */
         OptionsOut: {
             /** Default Writers */
@@ -603,6 +713,73 @@ export interface components {
             needs_key: boolean;
             /** Provider */
             provider: string;
+        };
+        /**
+         * PublishedListOut
+         * @description One brand's full published retailer list, matched to our stockists.
+         */
+        PublishedListOut: {
+            /** Brand */
+            brand: string;
+            /** Groups */
+            groups: {
+                [key: string]: number;
+            };
+            /** States */
+            states: components["schemas"]["LocatorStateOut"][];
+            /** Total */
+            total: number;
+        };
+        /** RegionOut */
+        RegionOut: {
+            /** Open Territory */
+            open_territory: number;
+            /** Opportunities */
+            opportunities: number;
+            /** State */
+            state: string;
+            /** Stockists */
+            stockists: number;
+        };
+        /**
+         * RetailerMapOut
+         * @description Where brands like ours are sold, for one run. Written by `process/` (exploratory):
+         *     the API serves the file as it is and computes nothing.
+         */
+        RetailerMapOut: {
+            /** Brands */
+            brands: components["schemas"]["BrandRowOut"][];
+            /** Located */
+            located: number;
+            locator: components["schemas"]["PublishedListOut"] | null;
+            /** Opportunities */
+            opportunities: components["schemas"]["OpportunityOut"][];
+            /** Radius Miles */
+            radius_miles: number;
+            /** Readable */
+            readable: number;
+            /** Regions */
+            regions: components["schemas"]["RegionOut"][];
+            /** Run Id */
+            run_id: string;
+            /** Stores */
+            stores: number;
+            /** Survey */
+            survey: components["schemas"]["LocatorSurveyOut"][];
+            /** Watched */
+            watched: components["schemas"]["WatchedBrandOut"][];
+            /** Watched Customers */
+            watched_customers: number;
+            /** Watched Email */
+            watched_email: number;
+            /** Watched Not Ours */
+            watched_not_ours: number;
+            /** Watched Stores */
+            watched_stores: number;
+            /** Watched Territory */
+            watched_territory: {
+                [key: string]: number;
+            };
         };
         /**
          * RowsOut
@@ -911,6 +1088,15 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /** WatchedBrandOut */
+        WatchedBrandOut: {
+            /** Brand */
+            brand: string;
+            /** Key */
+            key: string;
+            /** Stores */
+            stores: number;
+        };
     };
     responses: never;
     parameters: never;
@@ -1146,6 +1332,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retailer_map_view_api_retailer_map_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetailerMapOut"];
                 };
             };
         };

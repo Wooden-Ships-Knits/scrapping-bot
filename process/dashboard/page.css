@@ -1,0 +1,19 @@
+/* Only what the one-file copy needs. The page's own styles are in web/src/styles.css. */
+
+[data-icon] {
+  display: inline-flex;
+}
+
+.rm-static {
+  cursor: default;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+}
+
+.rm-static:hover {
+  border-color: var(--border-strong);
+}
+
+.scrim[hidden] {
+  display: none;
+}

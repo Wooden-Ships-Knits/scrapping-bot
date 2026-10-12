@@ -21,7 +21,8 @@ cart additions.
 
 ## Decision
 
-- **A *Traffic toko* page in the web app** shows our store's sessions live: per
+- **A *Store traffic* page in the web app** (named *Traffic toko* until the interface
+  turned English on 2026-10-12) shows our store's sessions live: per
   minute for the last hour, totals, cities, landing pages, referrers and devices, for
   1 hour, 24 hours or 7 days. Sessions from known data-centre towns are marked as
   likely bots; that list is a guess and is labelled as one.

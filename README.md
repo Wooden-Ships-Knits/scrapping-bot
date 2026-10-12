@@ -42,19 +42,19 @@ make serve          # builds the web app, starts it on http://127.0.0.1:8765 and
 ```
 
 Paste links or upload a file, check the preview, pick the output formats, and press
-**Mulai scrape**: every store in the list is visited. Watch the run page as it fills
-(the reconciliation must say *seimbang*, the stores you know have a catalogue must
-show *Ada produk*); **Hentikan** stops it if something looks wrong, and **Lanjutkan**
+**Start scraping**: every store in the list is visited. Watch the run page as it fills
+(the reconciliation must say *balanced*, the stores you know have a catalogue must
+show *Has products*); **Stop** stops it if something looks wrong, and **Resume**
 picks it up later without revisiting finished stores. Progress updates live;
-closing the browser does not stop a run, and **Riwayat** lists every run with its
-downloads. **Deteksi** shows how often stores detect and block the bot, across every
+closing the browser does not stop a run, and **Run history** lists every run with its
+downloads. **Detection** shows how often stores detect and block the bot, across every
 run: the share of visits blocked, how (Cloudflare, Akamai, HTTP 403…), and which stores
 always block, so they can be left out of the next list. The interface is local only
-(127.0.0.1) and in Indonesian.
+(127.0.0.1) and in English.
 
 ## Finding stores
 
-**In the interface**, the *Cari toko otomatis* tab of the Scrape page does it in one
+**In the interface**, the *Find stores automatically* tab of the Scrape page does it in one
 click: type how many stores, pick a region or continent, tick the items (knitwear,
 cashmere/wool, fall/winter, spring/summer, or *Lainnya* with your own words) and press
 **Cari toko & mulai scrape**. It finds the stores, then scrapes all of them and opens

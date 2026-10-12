@@ -58,15 +58,15 @@ describe("Scrape", () => {
     const user = userEvent.setup();
     render(<Scrape />);
 
-    const run = await screen.findByRole("button", { name: "Mulai scrape" });
+    const run = await screen.findByRole("button", { name: "Start scraping" });
     expect(run).toBeDisabled();
 
-    await user.type(screen.getByRole("textbox", { name: "Tautan toko" }), "a.com b.com");
+    await user.type(screen.getByRole("textbox", { name: "Store links" }), "a.com b.com");
     const card = await screen.findByTestId("preview");
-    expect(card).toHaveTextContent("3 tautan");
+    expect(card).toHaveTextContent("3 links");
     expect(card).toHaveTextContent("https://a.com");
-    expect(card).toHaveTextContent("Dilewati: Media sosial");
-    expect(screen.getByTestId("link-count")).toHaveTextContent("3 tautan · 2 toko");
+    expect(card).toHaveTextContent("Skipped: Social media");
+    expect(screen.getByTestId("link-count")).toHaveTextContent("3 links · 2 stores");
 
     await waitFor(() => expect(run).toBeEnabled());
     await user.click(run);
@@ -83,22 +83,22 @@ describe("Scrape", () => {
     mockApi(preview({ too_many: true, links: 1500 }));
     const user = userEvent.setup();
     render(<Scrape />);
-    await user.type(await screen.findByRole("textbox", { name: "Tautan toko" }), "a.com");
-    expect(await screen.findByText(/Terlalu banyak/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Mulai scrape" })).toBeDisabled();
+    await user.type(await screen.findByRole("textbox", { name: "Store links" }), "a.com");
+    expect(await screen.findByText(/Too many/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Start scraping" })).toBeDisabled();
 
-    await user.click(screen.getByRole("button", { name: "Format keluaran" }));
+    await user.click(screen.getByRole("button", { name: "Output formats" }));
     await user.click(screen.getByRole("checkbox", { name: "Excel" }));
     await user.click(screen.getByRole("checkbox", { name: "CSV" }));
-    expect(screen.getByText("Pilih minimal satu format keluaran.")).toBeInTheDocument();
+    expect(screen.getByText("Choose at least one output format.")).toBeInTheDocument();
   });
 
   it("shows the equivalent command line", async () => {
     mockApi();
     const user = userEvent.setup();
     render(<Scrape />);
-    await screen.findByRole("button", { name: "Mulai scrape" });
-    await user.click(screen.getByText("Perintah yang setara (CLI)"));
+    await screen.findByRole("button", { name: "Start scraping" });
+    await user.click(screen.getByText("Equivalent command (CLI)"));
     expect(screen.getByText("uv run scrapebot run links.txt -f xlsx,csv")).toBeInTheDocument();
   });
 
@@ -106,8 +106,8 @@ describe("Scrape", () => {
     mockApi(preview(), () => reply({ detail: { code: "bad_input", message: "The input holds no links" } }, 422));
     const user = userEvent.setup();
     render(<Scrape />);
-    await user.type(await screen.findByRole("textbox", { name: "Tautan toko" }), "a.com");
-    const run = screen.getByRole("button", { name: "Mulai scrape" });
+    await user.type(await screen.findByRole("textbox", { name: "Store links" }), "a.com");
+    const run = screen.getByRole("button", { name: "Start scraping" });
     await waitFor(() => expect(run).toBeEnabled());
     await user.click(run);
     expect(await screen.findByRole("alert")).toHaveTextContent("The input holds no links");
@@ -165,22 +165,22 @@ describe("Scrape: find stores", () => {
     const user = userEvent.setup();
     render(<Scrape />);
 
-    const find = await screen.findByRole("button", { name: "Cari toko & mulai scrape" });
-    expect(screen.getByRole("tab", { name: "Cari toko otomatis" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByTestId("find-sources")).toHaveTextContent("Agen AI (openai/gpt-5-search-api)");
+    const find = await screen.findByRole("button", { name: "Find stores & start scraping" });
+    expect(screen.getByRole("tab", { name: "Find stores automatically" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByTestId("find-sources")).toHaveTextContent("AI agent (openai/gpt-5-search-api)");
 
-    const count = screen.getByRole("spinbutton", { name: /Jumlah toko/ });
+    const count = screen.getByRole("spinbutton", { name: /Number of stores/ });
     await user.clear(count);
     await user.type(count, "30");
     await user.selectOptions(screen.getByRole("combobox", { name: "Region" }), "europe");
-    await user.click(screen.getByRole("checkbox", { name: "Musim Fall/Winter" }));
-    await user.click(screen.getByRole("checkbox", { name: "Lainnya" }));
+    await user.click(screen.getByRole("checkbox", { name: "Fall/Winter season" }));
+    await user.click(screen.getByRole("checkbox", { name: "Other" }));
     expect(find).toBeDisabled();
-    await user.type(screen.getByRole("textbox", { name: "Kata kunci item lainnya" }), "poncho, cape");
+    await user.type(screen.getByRole("textbox", { name: "Keywords for other items" }), "poncho, cape");
     await waitFor(() => expect(find).toBeEnabled());
     await user.click(find);
 
-    expect(await screen.findByTestId("discovery")).toHaveTextContent("12 toko ditemukan");
+    expect(await screen.findByTestId("discovery")).toHaveTextContent("12 stores found");
     expect(calls.find((c) => c.url === "/api/discover")?.body).toEqual({
       count: 30,
       region: "europe",
@@ -195,8 +195,8 @@ describe("Scrape: find stores", () => {
     mockFind();
     const user = userEvent.setup();
     render(<Scrape />);
-    const find = await screen.findByRole("button", { name: "Cari toko & mulai scrape" });
-    const count = screen.getByRole("spinbutton", { name: /Jumlah toko/ });
+    const find = await screen.findByRole("button", { name: "Find stores & start scraping" });
+    const count = screen.getByRole("spinbutton", { name: /Number of stores/ });
     await user.clear(count);
     await user.type(count, "0");
     expect(find).toBeDisabled();
@@ -209,9 +209,9 @@ describe("Scrape: find stores", () => {
     mockFind({ ...FIND_OPTIONS, agent_model: "", sources: { ...FIND_OPTIONS.sources, ai_agent: false } });
     const user = userEvent.setup();
     render(<Scrape />);
-    expect(await screen.findByRole("textbox", { name: "Tautan toko" })).toBeInTheDocument();
-    await user.click(screen.getByRole("tab", { name: "Cari toko otomatis" }));
-    expect(screen.getByTestId("find-sources")).toHaveTextContent("Sumber aktif: tidak ada");
-    expect(screen.getByRole("button", { name: "Cari toko & mulai scrape" })).toBeDisabled();
+    expect(await screen.findByRole("textbox", { name: "Store links" })).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "Find stores automatically" }));
+    expect(screen.getByTestId("find-sources")).toHaveTextContent("Active sources: none");
+    expect(screen.getByRole("button", { name: "Find stores & start scraping" })).toBeDisabled();
   });
 });

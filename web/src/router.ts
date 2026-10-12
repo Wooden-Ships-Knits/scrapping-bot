@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 //   #/overview    overview
 //   #/detection   stores that block the bot
 //   #/traffic     traffic on our own store
+//   #/retailer-map  where brands like ours are sold (process output)
 //   #/runs        history
 //   #/runs/<id>   one run
 
@@ -13,6 +14,7 @@ export type Route =
   | { page: "overview" }
   | { page: "detection" }
   | { page: "traffic" }
+  | { page: "retailer" }
   | { page: "history" }
   | { page: "run"; runId: string };
 
@@ -24,6 +26,7 @@ export function parseRoute(hash: string): Route {
   if (path === "/overview") return { page: "overview" };
   if (path === "/detection") return { page: "detection" };
   if (path === "/traffic") return { page: "traffic" };
+  if (path === "/retailer-map") return { page: "retailer" };
   return { page: "new" };
 }
 

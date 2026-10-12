@@ -45,6 +45,13 @@ dev = [
     "respx>=0.22",
     "ruff>=0.12",
 ]
+process = [
+    "ipykernel>=6.29",
+    "matplotlib>=3.9",
+    "nbclient>=0.10",
+    "pandas>=2.2",
+    "scikit-learn>=1.5",
+]
 
 [build-system]
 requires = ["hatchling>=1.25"]
@@ -79,6 +86,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["E501"]  # fixture HTML and long assertion messages
+"process/**" = ["E501"]  # exploratory: long print and chart lines
 
 [tool.pyright]
 include = ["src", "tests"]

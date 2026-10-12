@@ -140,30 +140,30 @@ as the CLI's; the interface only reads and writes configuration.
 
 ```
 ┌───────────────────────┬────────────────────────────────────────────────────┐
-│ PENGATURAN            │  Tautan toko                                       │
+│ SETTINGS              │  Store links                                       │
 │                       │  ┌──────────────────────────────────────────────┐  │
-│ Wilayah   [AS     ▾]  │  │ tempel tautan atau teks apa pun di sini...   │  │
-│ Bahasa    [Inggris▾]  │  └──────────────────────────────────────────────┘  │
-│ Mata uang [otomatis]  │  atau unggah berkas: .txt .csv .tsv .xlsx .json    │
-│                       │                      .jsonl .parquet               │
+│ Region    [US     ▾]  │  │ paste links or any text here...              │  │
+│ Language  [English▾]  │  └──────────────────────────────────────────────┘  │
+│ Currency  [auto    ]  │  or upload a file: .txt .csv .tsv .xlsx .json      │
+│                       │                    .jsonl .parquet                 │
 │ LLM                   │                                                    │
-│ Penyedia  [Gemini ▾]  │  Terdeteksi: 300 tautan · 287 domain unik ·        │
-│ Model     [.......]   │              13 duplikat                           │
+│ Provider  [Gemini ▾]  │  Detected: 300 links · 287 unique domains ·        │
+│ Model     [.......]   │            13 duplicates                           │
 │ API key   [••••••]    │                                                    │
-│ [Tes koneksi]         │                                  [ Mulai scrape ]  │
-│ Batas biaya [$5   ]   │                                                    │
-│                       │  Progres ─────────────────────────────  112 / 287  │
-│ Keluaran              │  domain              status   sumber      produk   │
-│ [x] Excel  [x] Parquet│  butik-a.com         ok       shopify_feed   214   │
-│ [ ] CSV    [ ] JSONL  │  butik-b.com         ok       llm             18 ⚑ │
-│ [ ] SQLite [ ] DuckDB │  butik-c.com         blocked  —                0   │
+│ [Test connection]     │                               [ Start scraping ]   │
+│ Cost limit  [$5   ]   │                                                    │
+│                       │  Progress ────────────────────────────  112 / 287  │
+│ Output                │  domain              status   source     products  │
+│ [x] Excel  [x] Parquet│  boutique-a.com      ok       shopify_feed   214   │
+│ [ ] CSV    [ ] JSONL  │  boutique-b.com      ok       llm             18 ⚑ │
+│ [ ] SQLite [ ] DuckDB │  boutique-c.com      blocked  —                0   │
 │ [ ] Sheets [ ] Postgres│                                                   │
-│                       │  [Unduh Excel] [Unduh Parquet] [Laporan run]       │
+│                       │  [Download Excel] [Download Parquet] [Run report]  │
 └───────────────────────┴────────────────────────────────────────────────────┘
 ⚑ = needs_review
 ```
 
-The interface itself is in Indonesian, so the mockup keeps its real labels.
+The interface is in English (Indonesian until 12 October 2026).
 
 ## 7. Functional requirements
 

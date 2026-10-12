@@ -19,6 +19,7 @@ make fmt       # format + safe lint fixes
 make serve     # web interface on http://127.0.0.1:8765
 uv run scrapebot discover -c discover.example.yaml   # find stores (paid APIs; ADR 0008)
 uv run scrapebot run <input> --limit 2   # the bot from the command line
+uv run --group process python process/run_all.py   # one analysed run -> tables, charts, Retailer map
 ```
 
 ## Rules that are easy to break
@@ -34,6 +35,7 @@ uv run scrapebot run <input> --limit 2   # the bot from the command line
 - The pipeline never imports the API or UI.
 - After changing a model in `api/schemas.py`, run `make api-types` and commit
   `web/src/api/schema.d.ts`; CI fails on drift.
-- UI text is Indonesian; every API code gets a label in `web/src/labels.ts`.
+- UI text is English, including messages the API returns; every API code gets a label in
+  `web/src/labels.ts`.
 - Never commit anything in `data/` or `.env`.
 - One branch per change, conventional commits, docs updated in the same change.

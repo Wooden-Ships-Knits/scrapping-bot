@@ -31,7 +31,7 @@ export function useRun(runId: string, nonce = 0): { run: Run | null; error: stri
         accept(await api.run(runId));
       } catch (e) {
         if (stopped) return;
-        setError(e instanceof ApiError ? e.message : "Server tidak bisa dihubungi.");
+        setError(e instanceof ApiError ? e.message : "The server cannot be reached.");
         if (e instanceof ApiError && e.status === 404) return stop();
       }
       if (!stopped) timer = setTimeout(poll, POLL_MS);

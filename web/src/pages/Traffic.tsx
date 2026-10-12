@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState, type KeyboardEvent, type ReactNode } 
 
 import { ApiError, api, type Traffic as TrafficData, type TrafficPeriod } from "../api/client";
 import {
+  LOCALE,
   formatNumber,
   trafficCityKind,
   trafficDevice,
@@ -30,10 +31,10 @@ function savedPeriod(): TrafficPeriod {
 }
 
 const clock = (iso: string) =>
-  new Date(iso).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-const hm = (iso: string) => new Date(iso).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+  new Date(iso).toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+const hm = (iso: string) => new Date(iso).toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" });
 const pct = (part: number, whole: number) =>
-  whole ? `${(Math.round((1000 * part) / whole) / 10).toLocaleString("id-ID")}%` : "–";
+  whole ? `${(Math.round((1000 * part) / whole) / 10).toLocaleString(LOCALE)}%` : "–";
 
 /** Sessions on our own Shopify store, refreshed every 30 seconds while the page is open. */
 export function Traffic() {
@@ -50,7 +51,7 @@ export function Traffic() {
         setError(null);
       })
       .catch((e: unknown) =>
-        setError(e instanceof ApiError ? e : new ApiError(0, "unreachable", "Server tidak bisa dihubungi.")),
+        setError(e instanceof ApiError ? e : new ApiError(0, "unreachable", "The server cannot be reached.")),
       );
   }, [period]);
 
@@ -84,17 +85,17 @@ export function Traffic() {
     <div className="page">
       <header className="page-head">
         <div>
-          <h1>Traffic toko</h1>
+          <h1>Store traffic</h1>
           <p>
-            Pengunjung {data ? <span className="mono">{data.shop}</span> : "toko kita"} dari Shopify Analytics. Diperbarui
-            otomatis setiap 30 detik.
+            Visitors of {data ? <span className="mono">{data.shop}</span> : "our store"} from Shopify Analytics. Refreshed
+            automatically every 30 seconds.
           </p>
         </div>
         <div className="page-actions">
           <span className={`live-pill ${live ? "on" : ""}`} role="status" aria-live="polite">
-            {data ? `${live ? "Live" : "Tertunda"} · ${clock(data.minutes_at)}` : "Menyambungkan…"}
+            {data ? `${live ? "Live" : "Delayed"} · ${clock(data.minutes_at)}` : "Connecting…"}
           </span>
-          <button type="button" className="icon-button bordered" aria-label="Muat ulang" onClick={load}>
+          <button type="button" className="icon-button bordered" aria-label="Reload" onClick={load}>
             <RefreshCw size={16} />
           </button>
         </div>
@@ -105,7 +106,7 @@ export function Traffic() {
 
       {data && (
         <div className="traffic-bar">
-          <div className="segmented" role="tablist" aria-label="Rentang waktu">
+          <div className="segmented" role="tablist" aria-label="Time range">
             {PERIODS.map((p) => (
               <button key={p} type="button" role="tab" aria-selected={period === p} onClick={() => choose(p)}>
                 {trafficPeriod(p)}
@@ -113,7 +114,7 @@ export function Traffic() {
             ))}
           </div>
           <span className="muted small">
-            Grafik dan tabel untuk {trafficPeriod(period)} terakhir · diperbarui setiap 5 menit · terakhir{" "}
+            Chart and tables for the last {trafficPeriod(period)} · refreshed every 5 minutes · last at{" "}
             {clock(data.breakdown_at)}
           </span>
         </div>
@@ -124,28 +125,28 @@ export function Traffic() {
       {data && (
         <dl className="stats">
           <Tile
-            label="Sesi 60 menit"
+            label="Sessions, 60 minutes"
             icon={<Activity size={15} />}
             value={formatNumber(data.minutes.reduce((sum, m) => sum + m.sessions, 0))}
-            sub={`Puncak ${formatNumber(Math.max(0, ...data.minutes.map((m) => m.sessions)))} sesi per menit`}
+            sub={`Peak ${formatNumber(Math.max(0, ...data.minutes.map((m) => m.sessions)))} sessions per minute`}
           />
           <Tile
-            label={`Sesi ${trafficPeriod(period)}`}
+            label={`Sessions, ${trafficPeriod(period)}`}
             icon={<Monitor size={15} />}
             value={shown ? formatNumber(shown.totals.sessions) : "…"}
-            sub={shown ? `${formatNumber(shown.totals.checkout_sessions)} sampai checkout` : "Memuat…"}
+            sub={shown ? `${formatNumber(shown.totals.checkout_sessions)} reached checkout` : "Loading…"}
           />
           <Tile
-            label="Tambah ke keranjang"
+            label="Added to cart"
             icon={<ShoppingCart size={15} />}
             value={shown ? formatNumber(shown.totals.cart_sessions) : "…"}
-            sub={shown ? `${pct(shown.totals.cart_sessions, shown.totals.sessions)} dari sesi` : "Memuat…"}
+            sub={shown ? `${pct(shown.totals.cart_sessions, shown.totals.sessions)} of sessions` : "Loading…"}
           />
           <Tile
-            label="Dari kota data center"
+            label="From data center cities"
             icon={<Server size={15} />}
             value={shown ? formatNumber(shown.data_center_sessions) : "…"}
-            sub={shown ? `Dugaan bot · ${pct(shown.data_center_sessions, shown.totals.sessions)} dari sesi` : "Memuat…"}
+            sub={shown ? `Suspected bots · ${pct(shown.data_center_sessions, shown.totals.sessions)} of sessions` : "Loading…"}
             alert
           />
         </dl>
@@ -155,8 +156,8 @@ export function Traffic() {
         <div className="traffic-grid">
           <CityTable data={shown} />
           <div className="traffic-stack">
-            <ShareCard title="Sumber kunjungan" items={shown.sources} label={trafficSource} />
-            <ShareCard title="Perangkat" items={shown.devices} label={trafficDevice} />
+            <ShareCard title="Traffic sources" items={shown.sources} label={trafficSource} />
+            <ShareCard title="Devices" items={shown.devices} label={trafficDevice} />
           </div>
         </div>
       )}
@@ -164,11 +165,11 @@ export function Traffic() {
 
       <section className="card">
         <div className="card-head">
-          <h2>Yang tidak terlihat di sini</h2>
+          <h2>What is not visible here</h2>
           <p>
-            Shopify hanya mencatat pengunjung yang membuka halaman di browser. Bot yang mengambil{" "}
-            <span className="mono">/products.json</span> langsung tidak pernah tercatat sebagai sesi. Label "kota data
-            center" adalah tebakan: kota-kota itu lokasi server Google, AWS, Microsoft atau Meta.
+            Shopify records only visitors who open a page in a browser. A bot that fetches{" "}
+            <span className="mono">/products.json</span> directly is never recorded as a session. The "data center
+            city" label is a guess: those cities hold servers of Google, AWS, Microsoft or Meta.
           </p>
         </div>
       </section>
@@ -228,8 +229,8 @@ function useWidth<T extends HTMLElement>(): [(el: T | null) => void, number] {
 }
 
 const dayHour = (iso: string) =>
-  new Date(iso).toLocaleString("id-ID", { weekday: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-const day = (iso: string) => new Date(iso).toLocaleDateString("id-ID", { weekday: "short", day: "numeric" });
+  new Date(iso).toLocaleString(LOCALE, { weekday: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+const day = (iso: string) => new Date(iso).toLocaleDateString(LOCALE, { weekday: "short", day: "numeric" });
 
 /** Sessions over the chosen period, as a line; the last point is still running (dashed). */
 function SessionChart({ data }: { data: TrafficData }) {
@@ -238,7 +239,7 @@ function SessionChart({ data }: { data: TrafficData }) {
   const week = data.period === "7d";
   const tickLabel = week ? day : hm;
   const tipLabel = week ? dayHour : hm;
-  const unit = perMinute ? "menit" : "jam";
+  const unit = perMinute ? "minute" : "hour";
   const [ref, width] = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
   const peak = Math.max(0, ...minutes.map((m) => m.sessions));
@@ -253,7 +254,7 @@ function SessionChart({ data }: { data: TrafficData }) {
   const line = settled.map(([px, py], i) => `${i ? "L" : "M"}${px.toFixed(1)},${py.toFixed(1)}`).join("");
   const area = settled.length ? `${line}L${x(settled.length - 1).toFixed(1)},${y(0)}L${x(0).toFixed(1)},${y(0)}Z` : "";
   const running = last > 0 ? pts.slice(last - 1) : [];
-  // Evenly spaced time labels; fewer on narrow screens so they never touch "sekarang".
+  // Evenly spaced time labels; fewer on narrow screens so they never touch "now".
   const count = plotW < 420 ? 2 : 4;
   const ticks = Array.from({ length: count }, (_, k) => Math.round((k * last) / count)).filter(
     (i, k, all) => i < last * 0.85 && all.indexOf(i) === k,
@@ -273,13 +274,13 @@ function SessionChart({ data }: { data: TrafficData }) {
   const total = minutes.reduce((sum, m) => sum + m.sessions, 0);
 
   return (
-    <section className="card" aria-label="Grafik sesi">
+    <section className="card" aria-label="Sessions chart">
       <div className="card-head">
-        <h2>Sesi per {unit}</h2>
-        <span className="muted small">{trafficPeriod(data.period)} terakhir</span>
+        <h2>Sessions per {unit}</h2>
+        <span className="muted small">last {trafficPeriod(data.period)}</span>
         <p>
-          Garis putus-putus di ujung kanan adalah {unit} yang sedang berjalan. Arahkan kursor atau pakai tombol panah
-          untuk detail.
+          The dashed line at the right end is the {unit} still running. Hover or use the arrow keys for
+          details.
         </p>
       </div>
       {minutes.length ? (
@@ -288,7 +289,7 @@ function SessionChart({ data }: { data: TrafficData }) {
           ref={ref}
           tabIndex={0}
           role="img"
-          aria-label={`Sesi per ${unit} selama ${trafficPeriod(data.period)} terakhir: total ${formatNumber(total)}, puncak ${formatNumber(peak)} per ${unit}.`}
+          aria-label={`Sessions per ${unit} over the last ${trafficPeriod(data.period)}: ${formatNumber(total)} in total, peak ${formatNumber(peak)} per ${unit}.`}
           onKeyDown={onKey}
           onBlur={() => setHover(null)}
         >
@@ -315,7 +316,7 @@ function SessionChart({ data }: { data: TrafficData }) {
                 </text>
               ))}
               <text className="lc-axis" x={x(last)} y={CHART_H - 6} textAnchor="end">
-                sekarang
+                now
               </text>
               <path className="lc-area" d={area} />
               <path className="lc-line" d={line} />
@@ -342,14 +343,14 @@ function SessionChart({ data }: { data: TrafficData }) {
               role="status"
               style={{ left: Math.min(Math.max(pts[hover][0], 80), width - 80), top: Math.max(pts[hover][1] - 12, 0) }}
             >
-              <strong>{formatNumber(shown.sessions)} sesi</strong>
+              <strong>{formatNumber(shown.sessions)} sessions</strong>
               {tipLabel(shown.at)}
-              {hover === last ? " · masih berjalan" : ""}
+              {hover === last ? " · still running" : ""}
             </div>
           )}
         </div>
       ) : (
-        <p className="empty">Belum ada sesi dalam 60 menit terakhir.</p>
+        <p className="empty">No sessions in the last 60 minutes.</p>
       )}
     </section>
   );
@@ -357,19 +358,19 @@ function SessionChart({ data }: { data: TrafficData }) {
 
 function CityTable({ data }: { data: TrafficData }) {
   return (
-    <section className="card" aria-label="Asal kota">
+    <section className="card" aria-label="Cities">
       <div className="card-head">
-        <h2>Asal kota</h2>
-        <span className="muted small">25 kota teratas</span>
+        <h2>Cities</h2>
+        <span className="muted small">top 25 cities</span>
       </div>
       {data.cities.length ? (
         <div className="table-wrap">
           <table className="data-table">
             <thead>
               <tr>
-                <th>Kota</th>
-                <th className="num">Sesi</th>
-                <th className="num">Keranjang</th>
+                <th>City</th>
+                <th className="num">Sessions</th>
+                <th className="num">Cart</th>
               </tr>
             </thead>
             <tbody>
@@ -379,11 +380,11 @@ function CityTable({ data }: { data: TrafficData }) {
                   <tr key={`${c.city}|${c.country}`}>
                     <td>
                       <span className="traffic-place">
-                        {c.city || <span className="muted">(kota tidak diketahui)</span>}
+                        {c.city || <span className="muted">(city unknown)</span>}
                         <span className="muted small">{c.country}</span>
                         {c.kind === "data_center" && <span className="badge badge-warn">{trafficCityKind(c.kind)}</span>}
                         {c.kind === "own_team" && <span className="badge badge-neutral">{trafficCityKind(c.kind)}</span>}
-                        {cold && <span className="badge badge-bad">Banyak sesi, 0 keranjang</span>}
+                        {cold && <span className="badge badge-bad">Many sessions, 0 carts</span>}
                       </span>
                     </td>
                     <td className="num">{formatNumber(c.sessions)}</td>
@@ -395,7 +396,7 @@ function CityTable({ data }: { data: TrafficData }) {
           </table>
         </div>
       ) : (
-        <p className="empty">Belum ada sesi di rentang ini.</p>
+        <p className="empty">No sessions in this range.</p>
       )}
     </section>
   );
@@ -432,7 +433,7 @@ function ShareCard({
           ))}
         </ul>
       ) : (
-        <p className="empty">Belum ada sesi di rentang ini.</p>
+        <p className="empty">No sessions in this range.</p>
       )}
     </section>
   );
@@ -440,26 +441,26 @@ function ShareCard({
 
 function PageTable({ data }: { data: TrafficData }) {
   return (
-    <section className="card" aria-label="Halaman pertama yang dibuka">
+    <section className="card" aria-label="Landing pages">
       <div className="card-head">
-        <h2>Halaman pertama yang dibuka</h2>
-        <span className="muted small">12 halaman teratas</span>
+        <h2>Landing pages</h2>
+        <span className="muted small">top 12 pages</span>
       </div>
       {data.pages.length ? (
         <div className="table-wrap">
           <table className="data-table">
             <thead>
               <tr>
-                <th>Halaman</th>
-                <th className="num">Sesi</th>
-                <th className="num">Keranjang</th>
+                <th>Page</th>
+                <th className="num">Sessions</th>
+                <th className="num">Cart</th>
               </tr>
             </thead>
             <tbody>
               {data.pages.map((p) => (
                 <tr key={p.path}>
                   <td className="mono traffic-path" title={p.path}>
-                    {p.path || "(tidak diketahui)"}
+                    {p.path || "(unknown)"}
                   </td>
                   <td className="num">{formatNumber(p.sessions)}</td>
                   <td className="num">{formatNumber(p.cart_sessions)}</td>
@@ -469,7 +470,7 @@ function PageTable({ data }: { data: TrafficData }) {
           </table>
         </div>
       ) : (
-        <p className="empty">Belum ada sesi di rentang ini.</p>
+        <p className="empty">No sessions in this range.</p>
       )}
     </section>
   );

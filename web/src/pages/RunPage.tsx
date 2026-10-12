@@ -19,6 +19,7 @@ import {
   formatNumber,
   formatTime,
   knitKind,
+  plural,
   runState,
   skipReason,
   storeStatus,
@@ -30,19 +31,19 @@ import {
 
 const LOOK_AT = ["no_products", "js_required", "blocked", "rate_limited", "error"];
 const TABLES: { key: PreviewTable; label: string; count: (run: Run) => number }[] = [
-  { key: "final_stores", label: "Final: toko", count: (r) => r.final_stores },
-  { key: "final_products", label: "Final: produk rajut", count: (r) => r.final_products },
-  { key: "knit_products", label: "Rajutan (semua toko)", count: (r) => r.knit_products },
-  { key: "stores", label: "Toko", count: (r) => r.stores_done },
-  { key: "products", label: "Produk", count: (r) => r.products },
-  { key: "contacts", label: "Kontak", count: (r) => r.contacts },
-  { key: "pages", label: "Halaman", count: (r) => r.pages },
-  { key: "inputs", label: "Masukan", count: (r) => r.links_in },
+  { key: "final_stores", label: "Final: stores", count: (r) => r.final_stores },
+  { key: "final_products", label: "Final: knitwear products", count: (r) => r.final_products },
+  { key: "knit_products", label: "Knitwear (all stores)", count: (r) => r.knit_products },
+  { key: "stores", label: "Stores", count: (r) => r.stores_done },
+  { key: "products", label: "Products", count: (r) => r.products },
+  { key: "contacts", label: "Contacts", count: (r) => r.contacts },
+  { key: "pages", label: "Pages", count: (r) => r.pages },
+  { key: "inputs", label: "Inputs", count: (r) => r.links_in },
 ];
 const VIEWS: { key: View; label: string }[] = [
-  { key: "table", label: "TABEL" },
+  { key: "table", label: "TABLE" },
   { key: "response", label: "JSON" },
-  { key: "params", label: "PARAMETER" },
+  { key: "params", label: "PARAMETERS" },
 ];
 const PAGE_SIZE = 50;
 
@@ -65,7 +66,7 @@ const RENDERERS: Partial<Record<PreviewTable, Renderers>> = {
   },
   products: { knit_kind: (v) => knitKind(String(v ?? "")) },
   inputs: {
-    status: (v) => (v === "processed" ? badge("ok", "Diproses") : badge("neutral", skipReason(String(v)))),
+    status: (v) => (v === "processed" ? badge("ok", "Processed") : badge("neutral", skipReason(String(v)))),
   },
 };
 
@@ -75,7 +76,7 @@ export function RunPage({ runId }: { runId: string }) {
   if (!run) {
     return (
       <div className="page">
-        <p className={error ? "notice bad" : "mono muted"}>{error || "Memuat run…"}</p>
+        <p className={error ? "notice bad" : "mono muted"}>{error || "Loading the run…"}</p>
       </div>
     );
   }
@@ -104,12 +105,12 @@ export function RunDetail({
         <div className="card-body">
           <div className="run-head">
             <div>
-              <h1>{run.mode === "test" ? `Run terbatas: ${run.limit} toko pertama` : "Run penuh"}</h1>
+              <h1>{run.mode === "test" ? `Limited run: first ${run.limit} stores` : "Full run"}</h1>
               <p className="run-meta">
                 <span className={`badge badge-${tone(run.state)}`}>{runState(run.state)}</span>
                 <span>
-                  {run.source_name} · dimulai {formatTime(run.started_at)}
-                  {run.finished_at && <> · selesai {formatTime(run.finished_at)}</>}
+                  {run.source_name} · started {formatTime(run.started_at)}
+                  {run.finished_at && <> · finished {formatTime(run.finished_at)}</>}
                 </span>
               </p>
               <p className="run-id">{run.run_id}</p>
@@ -119,7 +120,7 @@ export function RunDetail({
 
           <div className="progress-head">
             <span>
-              Toko dikunjungi: <strong>{formatNumber(run.stores_done)}</strong> dari {formatNumber(run.stores_total)}
+              Stores visited: <strong>{formatNumber(run.stores_done)}</strong> of {formatNumber(run.stores_total)}
             </span>
             <span className="mono">{percent}%</span>
           </div>
@@ -129,16 +130,16 @@ export function RunDetail({
             aria-valuemin={0}
             aria-valuemax={run.stores_total}
             aria-valuenow={run.stores_done}
-            aria-label="Progres run"
+            aria-label="Run progress"
           >
             <div className={`progress-bar ${live ? "live" : ""}`} style={{ width: `${percent}%` }} />
           </div>
           <p className={`reconcile mono ${balanced ? "good" : "bad"}`} data-testid="reconciliation">
-            Tautan masuk <strong>{formatNumber(run.links_in)}</strong> = diproses <strong>{formatNumber(run.processed)}</strong> +
-            dilewati <strong>{formatNumber(run.skipped)}</strong> {balanced ? "✓ seimbang" : "✗ tidak seimbang"}
+            Links in <strong>{formatNumber(run.links_in)}</strong> = processed <strong>{formatNumber(run.processed)}</strong> +
+            skipped <strong>{formatNumber(run.skipped)}</strong> {balanced ? "✓ balanced" : "✗ not balanced"}
           </p>
           {Object.keys(run.skipped_by_reason).length > 0 && (
-            <ul className="chips" aria-label="Tautan yang dilewati">
+            <ul className="chips" aria-label="Skipped links">
               {Object.entries(run.skipped_by_reason).map(([reason, n]) => (
                 <li key={reason} className="tag">
                   {skipReason(reason)}: {formatNumber(n)}
@@ -152,29 +153,29 @@ export function RunDetail({
       {connectionError && <div className="notice warn">{connectionError}</div>}
       {run.state === "failed" && (
         <div className="notice bad" role="alert">
-          Run gagal: {run.error || "lihat log server"}.
+          The run failed: {run.error || "see the server log"}.
         </div>
       )}
       {(run.state === "interrupted" || run.state === "stopped") && <ResumeNotice run={run} onRestart={onRestart} />}
 
       <dl className="stats">
-        <Stat label="Toko" value={run.stores_done} sub={`dari ${formatNumber(run.stores_total)} target`} />
+        <Stat label="Stores" value={run.stores_done} sub={`of ${formatNumber(run.stores_total)} targeted`} />
         <Stat
-          label="Daftar final"
+          label="Final list"
           value={run.final_stores}
-          sub={`toko multi-brand, ${formatNumber(run.final_products)} produk rajut`}
+          sub={`multi-brand stores, ${formatNumber(run.final_products)} knitwear products`}
         />
-        <Stat label="Produk" value={run.products} sub="ditemukan" />
-        <Stat label="Kontak" value={run.contacts} sub={`dari ${formatNumber(run.pages)} halaman`} />
-        <Stat label="Diblokir" value={count("blocked")} sub="toko menolak akses" alert={count("blocked") > 0} />
-        <Stat label="Gagal" value={count("error")} sub="galat saat mengambil" alert={count("error") > 0} />
+        <Stat label="Products" value={run.products} sub="found" />
+        <Stat label="Contacts" value={run.contacts} sub={`from ${formatNumber(run.pages)} pages`} />
+        <Stat label="Blocked" value={count("blocked")} sub="stores refused access" alert={count("blocked") > 0} />
+        <Stat label="Failed" value={count("error")} sub="errors while fetching" alert={count("error") > 0} />
       </dl>
 
       {needsLook.length > 0 && (
-        <section className="card" aria-label="Perlu dilihat">
+        <section className="card" aria-label="Needs a look">
           <div className="card-head">
-            <span className="label">Perlu dilihat</span>
-            <span className="tag solid">{formatNumber(needsLook.length)} toko</span>
+            <span className="label">Needs a look</span>
+            <span className="tag solid">{plural(needsLook.length, "store")}</span>
           </div>
           <ul className="look-list">
             {needsLook.map((s) => (
@@ -209,7 +210,7 @@ function StopButton({ run }: { run: Run }) {
         api.stopRun(run.run_id).catch(() => setAsked(false));
       }}
     >
-      <Square size={13} /> {asked ? "Menghentikan…" : "Hentikan"}
+      <Square size={13} /> {asked ? "Stopping…" : "Stop"}
     </button>
   );
 }
@@ -224,7 +225,7 @@ function ResumeNotice({ run, onRestart }: { run: Run; onRestart?: () => void }) 
       await api.resumeRun(run.run_id);
       onRestart?.();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Server tidak bisa dihubungi.");
+      setError(e instanceof ApiError ? e.message : "The server cannot be reached.");
     } finally {
       setBusy(false);
     }
@@ -232,12 +233,12 @@ function ResumeNotice({ run, onRestart }: { run: Run; onRestart?: () => void }) 
   return (
     <div className="notice warn">
       <span>
-        {run.state === "stopped" ? "Run dihentikan" : "Run terhenti sebelum selesai (server dimatikan?)"}:{" "}
-        {formatNumber(run.stores_done)} dari {formatNumber(run.stores_total)} toko selesai dan tersimpan.
+        {run.state === "stopped" ? "The run was stopped" : "The run ended before it finished (server shut down?)"}:{" "}
+        {formatNumber(run.stores_done)} of {formatNumber(run.stores_total)} stores are done and saved.
       </span>
       <span className="spacer" />
       <button type="button" className="button" onClick={resume} disabled={busy}>
-        <RotateCw size={14} /> {busy ? "Melanjutkan…" : "Lanjutkan"}
+        <RotateCw size={14} /> {busy ? "Resuming…" : "Resume"}
       </button>
       {error && <span role="alert">{error}</span>}
     </div>
@@ -265,10 +266,10 @@ const FILE_ICONS: Record<string, ReactNode> = {
 
 function Downloads({ run }: { run: Run }) {
   return (
-    <section className="card" aria-label="Unduh hasil">
+    <section className="card" aria-label="Download results">
       <div className="card-head">
-        <h2>Unduh hasil</h2>
-        <p>File hasil run ini, sama dengan isi foldernya di komputer ini.</p>
+        <h2>Download results</h2>
+        <p>The files of this run, the same as its folder on this computer.</p>
       </div>
       <ul className="download-list">
         {run.downloads.map((d) => (
@@ -277,7 +278,7 @@ function Downloads({ run }: { run: Run }) {
               className="download-row"
               href={api.downloadUrl(run.run_id, d.key)}
               download={d.filename}
-              aria-label={`Unduh ${d.label}`}
+              aria-label={`Download ${d.label}`}
             >
               {FILE_ICONS[d.key] ?? <FileText size={18} />}
               <span>
@@ -310,7 +311,7 @@ function ResultCard({ run }: { run: Run }) {
     api
       .rows(run.run_id, table, offset, PAGE_SIZE)
       .then((r) => !cancelled && (setRows(r), setError("")))
-      .catch((e) => !cancelled && setError(e instanceof ApiError ? e.message : "Gagal memuat data."));
+      .catch((e) => !cancelled && setError(e instanceof ApiError ? e.message : "The data could not be loaded."));
     return () => {
       cancelled = true;
     };
@@ -325,9 +326,9 @@ function ResultCard({ run }: { run: Run }) {
   const to = rows ? Math.min(offset + PAGE_SIZE, rows.total) : 0;
 
   return (
-    <section className="card result" aria-label="Hasil">
+    <section className="card result" aria-label="Results">
       <div className="card-head">
-        <h2>Data hasil</h2>
+        <h2>Result data</h2>
         <span className="muted small result-title">{run.source_name}</span>
         <span className="spacer" />
         {run.writers.map((w) => (
@@ -338,7 +339,7 @@ function ResultCard({ run }: { run: Run }) {
       </div>
 
       <div className="tabs-row">
-        <div className="tabs" role="tablist" aria-label="Tabel">
+        <div className="tabs" role="tablist" aria-label="Tables">
           {TABLES.map((t) => (
             <button
               key={t.key}
@@ -355,7 +356,7 @@ function ResultCard({ run }: { run: Run }) {
           ))}
         </div>
         <span className="spacer" />
-        <div className="segmented" role="tablist" aria-label="Tampilan">
+        <div className="segmented" role="tablist" aria-label="View">
           {VIEWS.map((v) => (
             <button key={v.key} type="button" role="tab" aria-selected={view === v.key} onClick={() => setView(v.key)}>
               {v.label}
@@ -372,14 +373,14 @@ function ResultCard({ run }: { run: Run }) {
             <JsonView value={run.config} filename={`${run.run_id}-params.json`} />
           </>
         ) : !rows ? (
-          <p className="empty mono">Memuat…</p>
+          <p className="empty mono">Loading…</p>
         ) : view === "table" ? (
           <DataTable columns={rows.columns} rows={rows.rows} renderers={RENDERERS[table]} hidden={["run_id"]} />
         ) : (
           <JsonView
             value={rows.rows}
             filename={`${run.run_id}-${table}-${from}-${to}.json`}
-            note={rows.truncated_fields ? "teks panjang dipotong di pratinjau; file unduhan berisi semuanya" : undefined}
+            note={rows.truncated_fields ? "long text is cut in the preview; the downloaded file has all of it" : undefined}
           />
         )}
       </div>
@@ -387,12 +388,12 @@ function ResultCard({ run }: { run: Run }) {
       {view !== "params" && rows && rows.total > 0 && (
         <div className="pager mono">
           <span>
-            {formatNumber(from)}–{formatNumber(to)} dari {formatNumber(rows.total)}
+            {formatNumber(from)}–{formatNumber(to)} of {formatNumber(rows.total)}
           </span>
           <button
             type="button"
             className="icon-button"
-            aria-label="Halaman sebelumnya"
+            aria-label="Previous page"
             disabled={offset === 0}
             onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
           >
@@ -401,7 +402,7 @@ function ResultCard({ run }: { run: Run }) {
           <button
             type="button"
             className="icon-button"
-            aria-label="Halaman berikutnya"
+            aria-label="Next page"
             disabled={to >= rows.total}
             onClick={() => setOffset(offset + PAGE_SIZE)}
           >

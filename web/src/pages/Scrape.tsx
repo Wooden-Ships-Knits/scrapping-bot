@@ -22,7 +22,7 @@ import {
   type Upload,
 } from "../api/client";
 import { Menu } from "../components/ui/Menu";
-import { formatNumber, skipReason, writerLabel } from "../labels";
+import { formatNumber, plural, skipReason, writerLabel } from "../labels";
 import { navigate } from "../router";
 import { DiscoveryCard, FindStoresFields, OTHER, parseCount, parseTerms, type FindForm } from "./FindStores";
 
@@ -83,7 +83,7 @@ export function Scrape() {
         setOptions(o);
         setWriters(o.default_writers);
       })
-      .catch(() => setError("Server tidak bisa dihubungi. Jalankan `make serve` lalu muat ulang."));
+      .catch(() => setError("The server cannot be reached. Run `make serve`, then reload."));
   }, []);
 
   const source: Source | null = upload ? { upload_id: upload.upload_id } : text.trim() ? { text } : null;
@@ -199,26 +199,26 @@ export function Scrape() {
 
   const outputLabel = writers.length
     ? writers.slice(0, 2).map(writerLabel).join(", ") + (writers.length > 2 ? ` (+${writers.length - 2})` : "")
-    : "pilih format";
+    : "choose a format";
 
   return (
     <div className="page">
       <header className="page-head">
         <div>
           <h1>Scrape</h1>
-          <p>Tempel atau unggah banyak tautan toko; data produk, harga dan kontak dikumpulkan dari setiap toko.</p>
+          <p>Paste or upload many store links; products, prices and contacts are collected from each store.</p>
         </div>
       </header>
 
       <form className="card composer" onSubmit={onSubmit}>
         {findOptions && (
           <div className="tabs-row">
-            <div className="tabs" role="tablist" aria-label="Sumber toko">
+            <div className="tabs" role="tablist" aria-label="Store source">
               <button type="button" role="tab" aria-selected={mode === "find"} onClick={() => setMode("find")}>
-                Cari toko otomatis
+                Find stores automatically
               </button>
               <button type="button" role="tab" aria-selected={mode === "links"} onClick={() => setMode("links")}>
-                Tempel tautan
+                Paste links
               </button>
             </div>
           </div>
@@ -229,28 +229,28 @@ export function Scrape() {
           <>
             <div className="card-head">
               <span className="label">
-                <Link2 size={14} /> Daftar tautan toko
+                <Link2 size={14} /> Store link list
               </span>
               <span className="spacer" />
-              <span className="muted small" title="Tautan dan toko unik yang terdeteksi" data-testid="link-count">
-                {preview ? `${formatNumber(preview.links)} tautan · ${formatNumber(preview.stores)} toko` : previewing ? "membaca…" : "0 tautan"}
+              <span className="muted small" title="Links and unique stores detected" data-testid="link-count">
+                {preview ? `${plural(preview.links, "link")} · ${plural(preview.stores, "store")}` : previewing ? "reading…" : "0 links"}
               </span>
-              {options && <span className="muted small">maks. {formatNumber(options.max_links)}</span>}
+              {options && <span className="muted small">max. {formatNumber(options.max_links)}</span>}
             </div>
 
             {upload ? (
               <div className="upload-row">
                 <FileSpreadsheet size={18} />
                 <span className="mono">{upload.filename}</span>
-                <span className="muted small">terunggah</span>
+                <span className="muted small">uploaded</span>
                 <span className="spacer" />
-                <button type="button" className="icon-button" aria-label="Hapus file" onClick={() => setUpload(null)}>
+                <button type="button" className="icon-button" aria-label="Remove file" onClick={() => setUpload(null)}>
                   <X size={16} />
                 </button>
               </div>
             ) : (
               <label className="composer-input">
-                <span className="sr-only">Tautan toko</span>
+                <span className="sr-only">Store links</span>
                 <textarea
                   rows={6}
                   value={text}
@@ -262,7 +262,7 @@ export function Scrape() {
                       void onFile(e.dataTransfer.files[0]);
                     }
                   }}
-                  placeholder={"https://monkeesofnaples.com\nhttps://saracampbell.com\n… tempel tautan atau teks apa pun, atau seret file ke sini"}
+                  placeholder={"https://monkeesofnaples.com\nhttps://saracampbell.com\n… paste links or any text, or drop a file here"}
                 />
               </label>
             )}
@@ -272,7 +272,7 @@ export function Scrape() {
         <div className="toolbar">
           {mode === "links" && (
             <button type="button" className="chip" onClick={() => fileInput.current?.click()}>
-              <UploadIcon size={15} /> {upload ? "Ganti file" : "Unggah"}
+              <UploadIcon size={15} /> {upload ? "Replace file" : "Upload"}
             </button>
           )}
           <input
@@ -285,34 +285,34 @@ export function Scrape() {
           />
 
           <Menu
-            ariaLabel="Format keluaran"
+            ariaLabel="Output formats"
             label={
               <>
-                <span className="muted">Keluaran:</span> {outputLabel}
+                <span className="muted">Output:</span> {outputLabel}
                 <ChevronDown size={14} />
               </>
             }
           >
-            <p className="menu-title">Format keluaran</p>
+            <p className="menu-title">Output formats</p>
             {options?.writers.map((name) => (
               <label key={name} className="menu-check">
                 <input type="checkbox" checked={writers.includes(name)} onChange={() => toggleWriter(name)} />
                 {writerLabel(name)}
               </label>
             ))}
-            <p className="menu-note">Laporan dan ringkasan CSV selalu dibuat.</p>
+            <p className="menu-note">The report and the summary CSV are always written.</p>
           </Menu>
 
           {mode === "links" && upload && (
             <Menu
-              ariaLabel="Kolom URL"
+              ariaLabel="URL column"
               icon={<Columns3 size={14} />}
-              label={urlColumn.trim() ? `Kolom: ${urlColumn.trim()}` : "Kolom URL: otomatis"}
+              label={urlColumn.trim() ? `Column: ${urlColumn.trim()}` : "URL column: auto"}
             >
-              <p className="menu-title">Kolom yang berisi tautan</p>
+              <p className="menu-title">Column that holds the links</p>
               <label className="menu-field">
-                Nama kolom
-                <input value={urlColumn} onChange={(e) => setUrlColumn(e.target.value)} placeholder="otomatis" />
+                Column name
+                <input value={urlColumn} onChange={(e) => setUrlColumn(e.target.value)} placeholder="auto" />
               </label>
             </Menu>
           )}
@@ -321,19 +321,19 @@ export function Scrape() {
 
           {mode === "find" ? (
             <button type="submit" className="button primary" disabled={!canFind}>
-              {busy ? "Memulai…" : discovering ? "Sedang mencari…" : "Cari toko & mulai scrape"}
+              {busy ? "Starting…" : discovering ? "Searching…" : "Find stores & start scraping"}
               {!busy && !discovering && <Search size={14} />}
             </button>
           ) : (
             <button type="submit" className="button primary" disabled={!canRun}>
-              {busy ? "Memulai…" : "Mulai scrape"}
+              {busy ? "Starting…" : "Start scraping"}
               {!busy && <Play size={14} />}
             </button>
           )}
         </div>
       </form>
 
-      {writers.length === 0 && options && <div className="notice bad">Pilih minimal satu format keluaran.</div>}
+      {writers.length === 0 && options && <div className="notice bad">Choose at least one output format.</div>}
       {error && (
         <div className="notice bad" role="alert">
           {error}
@@ -349,10 +349,10 @@ export function Scrape() {
       {mode === "links" && (
         <details className="cli-details">
           <summary>
-            <ChevronRight size={16} /> Perintah yang setara (CLI)
+            <ChevronRight size={16} /> Equivalent command (CLI)
           </summary>
           <pre className="cli">{cli}</pre>
-          <p className="muted small">Simpan tautan ke file dulu bila tidak memakai unggahan.</p>
+          <p className="muted small">Save the links to a file first when you are not using an upload.</p>
         </details>
       )}
     </div>
@@ -363,7 +363,7 @@ function PreviewCard({ preview, loading }: { preview: Preview | null; loading: b
   if (!preview) {
     return (
       <section className="card empty-card">
-        <p className="muted">{loading ? "Membaca tautan…" : "Tautan yang terdeteksi akan tampil di sini sebelum run dimulai."}</p>
+        <p className="muted">{loading ? "Reading links…" : "Detected links appear here before the run starts."}</p>
       </section>
     );
   }
@@ -373,22 +373,22 @@ function PreviewCard({ preview, loading }: { preview: Preview | null; loading: b
   return (
     <section className="card" data-testid="preview" aria-live="polite">
       <div className="card-head">
-        <h2>Pratinjau masukan</h2>
-        <span className="muted small">· {formatNumber(preview.links)} tautan terdeteksi</span>
+        <h2>Input preview</h2>
+        <span className="muted small">· {plural(preview.links, "link")} detected</span>
         <span className="spacer" />
         <span className="small">
-          <strong>{formatNumber(preview.stores)} toko unik</strong>
-          <span className="muted"> / {formatNumber(skippedTotal)} dilewati</span>
+          <strong>{plural(preview.stores, "unique store")}</strong>
+          <span className="muted"> / {formatNumber(skippedTotal)} skipped</span>
         </span>
       </div>
       {preview.too_many && (
-        <div className="notice bad">Terlalu banyak: maksimal {formatNumber(preview.max_links)} tautan per run. Pecah daftarnya.</div>
+        <div className="notice bad">Too many: at most {formatNumber(preview.max_links)} links per run. Split the list.</div>
       )}
       <div className="table-wrap">
         <table className="data-table">
           <thead>
             <tr>
-              <th>Tautan</th>
+              <th>Link</th>
               <th className="end">Status</th>
             </tr>
           </thead>
@@ -397,17 +397,17 @@ function PreviewCard({ preview, loading }: { preview: Preview | null; loading: b
               <tr key={d}>
                 <td className="mono">https://{d}</td>
                 <td className="end">
-                  <span className="badge badge-neutral">Siap diproses</span>
+                  <span className="badge badge-neutral">Ready</span>
                 </td>
               </tr>
             ))}
             {preview.skipped_examples.map((s) => (
               <tr key={s.raw + s.reason} className="skipped">
                 <td className="mono">
-                  <s>{s.raw || "(kosong)"}</s>
+                  <s>{s.raw || "(empty)"}</s>
                 </td>
                 <td className="end">
-                  <span className="badge badge-bad">Dilewati: {skipReason(s.reason)}</span>
+                  <span className="badge badge-bad">Skipped: {skipReason(s.reason)}</span>
                 </td>
               </tr>
             ))}
@@ -416,9 +416,9 @@ function PreviewCard({ preview, loading }: { preview: Preview | null; loading: b
       </div>
       {(moreStores > 0 || skipped.length > 0 || preview.duplicates > 0) && (
         <div className="card-foot">
-          {moreStores > 0 && <span>… dan {formatNumber(moreStores)} toko lainnya</span>}
-          {preview.duplicates > 0 && <span>{formatNumber(preview.duplicates)} duplikat digabung</span>}
-          {skipped.length > 0 && <span>Dilewati: {skipped.map(([reason, n]) => `${skipReason(reason)} ${n}`).join(", ")}</span>}
+          {moreStores > 0 && <span>… and {plural(moreStores, "more store")}</span>}
+          {preview.duplicates > 0 && <span>{plural(preview.duplicates, "duplicate")} merged</span>}
+          {skipped.length > 0 && <span>Skipped: {skipped.map(([reason, n]) => `${skipReason(reason)} ${n}`).join(", ")}</span>}
         </div>
       )}
     </section>
@@ -426,5 +426,5 @@ function PreviewCard({ preview, loading }: { preview: Preview | null; loading: b
 }
 
 function message(e: unknown): string {
-  return e instanceof ApiError ? e.message : "Server tidak bisa dihubungi.";
+  return e instanceof ApiError ? e.message : "The server cannot be reached.";
 }

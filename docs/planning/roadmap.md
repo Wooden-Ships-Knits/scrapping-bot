@@ -1,6 +1,6 @@
 # Roadmap
 
-**Updated:** 2026-10-09
+**Updated:** 2026-10-12
 **Requirements:** [PRD](../product/prd.md) · **Design:** [Architecture](../architecture/overview.md)
 
 ## Where we are
@@ -37,7 +37,7 @@ Places and Tavily have not run for real yet (no keys).
 
 **Traffic on our own store is built** (branch `feat/own-store-traffic`,
 [ADR 0009](../decisions/0009-own-store-traffic-from-shopify-analytics.md)): the web
-app's *Traffic toko* page shows live sessions on our Shopify store from Shopify
+app's *Store traffic* page shows live sessions on our Shopify store from Shopify
 Analytics and marks likely bots. Checked against the real store on 2026-10-08 (3,722
 sessions in 24 hours, 254 from Council Bluffs with no cart addition). Scrapers reading
 `/products.json` stay invisible; that needs a proxy in front of the store.
@@ -74,7 +74,7 @@ boutiques publish no machine-readable product data, and v1 reads only JSON-LD.
 | 11 | ~~A running run cannot be stopped from the interface, and an interrupted run cannot resume~~ | `api/manager.py`, `pipeline.py` | ~~Stopping the server is the only way to stop~~ | M2 ✓ |
 | 12 | Shopify's shared edge (23.227.38.x) limits a client IP across all stores: after a burst on 2026-10-05 it answered every Python request with a 429 challenge for a while, while curl still got 200 | `fetch.py` | Shopify stores turn `blocked` until the limit lapses. Mitigated by per-network politeness (one request at a time to 23.227.38.0/24) and the cache; never worked around (ADR 0002). Run large lists in batches | M2 (mitigated) |
 | 13 | Discovery has not run against the real Google Places, Tavily or LLM web search APIs | `discover/` | A request format the providers reject shows up only in a real discovery, as an `error` source in the summary | First real discovery |
-| 14 | ~~Discovery is CLI only~~ | `cli.py` | ~~Operators without a terminal cannot search for stores~~; the web app has a *Cari toko otomatis* tab | Built 2026-10-07 |
+| 14 | ~~Discovery is CLI only~~ | `cli.py` | ~~Operators without a terminal cannot search for stores~~; the web app has a *Find stores automatically* tab | Built 2026-10-07 |
 | 15 | ~~Cloudflare puts `/cdn-cgi/challenge-platform/` into ordinary pages; any page under 60,000 characters that holds it is read as a challenge~~ | `fetch.py` `detect_challenge` | ~~Small stores behind Cloudflare turn `blocked`~~; matched on the challenge page itself (title, `_cf_chl_opt`, `/h/` script), tested on recorded pages | Fixed |
 | 16 | ~~A rate limit on our IP and a store's own block share the status `blocked`~~ | `fetch.py`, `pipeline.py` | ~~306 of 376 `blocked` stores on 2026-10-08 were Shopify's edge limiting us~~; new status `rate_limited`, the network is paused and slowed, the store retried once after the pause. Runs before this fix still hold the old `blocked` rows, which the Detection page counts | Fixed |
 | 17 | ~~The HTTP cache never expires~~ | `fetch.py` | ~~A monthly rerun reads last month's pages~~; pages expire after 7 days (`fetch.cache_max_age_hours`) and are pruned at the start of a run | Fixed |
@@ -114,6 +114,25 @@ list, Wooden Ships' price points, and B2B discovery queries (today's lists hold 
 hotel, resort, club or museum shops).
 
 ## Next phase (separate PRD)
+
+**Drafted on 2026-10-12, not built:**
+[PRD — Competitive and Retailer Analysis](../product/prd-competitive-retailer-analysis.md)
+and [ADR 0012](../decisions/0012-brand-store-map-from-the-retailer-side.md) (proposed). The
+check behind them: none of the four brands named in the proposal (White + Warren, Lilla P,
+Rails, Z Supply) publishes a retailer list the bot may read, while `vendor` in run
+`20261009T073717823Z-e4d60c` already shows 67 stores selling at least one of them. Stages
+C0 to C5 are in the PRD; C0 waits on `brands.csv`, `accounts.csv`, `price_points.csv` and a
+hand-labelled brand list.
+
+**A first version is in the web app** (same day): the *Retailer map* page, under a new
+*Process* group in the menu, shows the stores to approach, brands, regions and published
+lists of the newest processed run. It reads a file written by the exploratory notebooks in
+`process/` (`uv run --group process python process/run_all.py`), so its scores and thresholds
+are proposals, not the method of the PRD
+([architecture, section 4.17](../architecture/overview.md#417-retailer-map--built-web-app-exploratory-figures)).
+Open before it is relied on: Canadian stores seem to be placed on wrong coordinates (two
+Ontario stores share one distance to the nearest stockist), and half of the candidate stores
+have no location.
 
 **Competitor or partner analysis.** It also decides how the customer list (accounts,
 territories, sales) is matched to found stores, which discovery leaves out. Classify

@@ -16,7 +16,7 @@ function run(overrides: Partial<Run> = {}): Run {
     started_at: "2026-10-05T08:52:53+00:00",
     finished_at: "2026-10-05T08:53:08+00:00",
     source_kind: "text",
-    source_name: "Tautan yang ditempel",
+    source_name: "Pasted links",
     writers: ["xlsx"],
     links_in: 4,
     processed: 2,
@@ -36,7 +36,7 @@ function run(overrides: Partial<Run> = {}): Run {
       { domain: "blocked.com", url: "https://blocked.com", status: "blocked", error: "HTTP 403", platform: "", currency: "", source_used: "none", product_count: 0, page_count: 0, contact_count: 0, ssl_bypassed: false },
     ],
     downloads: [
-      { key: "report", label: "Laporan run (.md)", filename: "report.md" },
+      { key: "report", label: "Run report (.md)", filename: "report.md" },
       { key: "xlsx", label: "Excel (.xlsx)", filename: "tables.xlsx" },
     ],
     error: "",
@@ -76,51 +76,51 @@ afterEach(() => {
 describe("RunDetail", () => {
   it("shows the reconciliation, the progress and what needs a look", () => {
     render(<RunDetail run={run()} />);
-    expect(screen.getByTestId("reconciliation")).toHaveTextContent("Tautan masuk 4 = diproses 2 + dilewati 2 ✓ seimbang");
-    expect(screen.getByText("Di luar batas jumlah toko: 1")).toBeInTheDocument();
+    expect(screen.getByTestId("reconciliation")).toHaveTextContent("Links in 4 = processed 2 + skipped 2 ✓ balanced");
+    expect(screen.getByText("Over the store limit: 1")).toBeInTheDocument();
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "2");
-    expect(within(screen.getByRole("region", { name: "Perlu dilihat" })).getByText("HTTP 403")).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Needs a look" })).getByText("HTTP 403")).toBeInTheDocument();
   });
 
   it("opens on the final list: multi-brand stores that sell knitwear", async () => {
     render(<RunDetail run={run()} />);
-    expect(screen.getByText("toko multi-brand, 12 produk rajut")).toBeInTheDocument();
-    const result = screen.getByRole("region", { name: "Hasil" });
-    expect(within(result).getByRole("tab", { name: /Final: toko/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("multi-brand stores, 12 knitwear products")).toBeInTheDocument();
+    const result = screen.getByRole("region", { name: "Results" });
+    expect(within(result).getByRole("tab", { name: /Final: stores/ })).toHaveAttribute("aria-selected", "true");
     expect(await within(result).findByText("Multi-brand")).toHaveClass("badge-good");
   });
 
   it("previews the data: table with status badges, then the raw JSON", async () => {
     const user = userEvent.setup();
     render(<RunDetail run={run()} />);
-    const result = screen.getByRole("region", { name: "Hasil" });
-    await user.click(within(result).getByRole("tab", { name: /^Toko/ }));
+    const result = screen.getByRole("region", { name: "Results" });
+    await user.click(within(result).getByRole("tab", { name: /^Stores/ }));
     expect(await within(result).findByText("blocked.com")).toBeInTheDocument();
-    expect(within(result).getByText("Diblokir")).toHaveClass("badge-bad");
+    expect(within(result).getByText("Blocked")).toHaveClass("badge-bad");
     expect(within(result).queryByText("run_id")).not.toBeInTheDocument();
 
-    await user.click(within(result).getByRole("tab", { name: /Produk/ }));
+    await user.click(within(result).getByRole("tab", { name: /^Products/ }));
     expect(await within(result).findByText("Cher Sweater")).toBeInTheDocument();
     await user.click(within(result).getByRole("tab", { name: "JSON" }));
     expect(within(result).getByTestId("json-view")).toHaveTextContent('"title": "Cher Sweater"');
-    await user.click(within(result).getByRole("tab", { name: "PARAMETER" }));
+    await user.click(within(result).getByRole("tab", { name: "PARAMETERS" }));
     expect(within(result).getByText("uv run scrapebot run links.txt --limit 2 -f xlsx")).toBeInTheDocument();
   });
 
   it("offers every download once a run is done", () => {
     render(<RunDetail run={run()} />);
-    expect(screen.getByRole("region", { name: "Unduh hasil" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Unduh Excel (.xlsx)" })).toHaveAttribute("href", `/api/runs/${RUN_ID}/download/xlsx`);
+    expect(screen.getByRole("region", { name: "Download results" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Download Excel (.xlsx)" })).toHaveAttribute("href", `/api/runs/${RUN_ID}/download/xlsx`);
   });
 
   it("has no downloads while running", () => {
     render(<RunDetail run={run({ state: "running", stores_done: 1, downloads: [] })} />);
-    expect(screen.queryByRole("region", { name: "Unduh hasil" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Download results" })).not.toBeInTheDocument();
   });
 
   it("says when a run failed", () => {
     render(<RunDetail run={run({ state: "failed", error: "RuntimeError: disk full" })} />);
-    expect(screen.getByRole("alert")).toHaveTextContent("Run gagal: RuntimeError: disk full");
+    expect(screen.getByRole("alert")).toHaveTextContent("The run failed: RuntimeError: disk full");
   });
 });
 
@@ -128,14 +128,14 @@ describe("stop and resume", () => {
   it("offers Hentikan while running and Lanjutkan when stopped", async () => {
     const user = userEvent.setup();
     const { unmount } = render(<RunDetail run={run({ state: "running", stores_done: 1, downloads: [] })} />);
-    await user.click(screen.getByRole("button", { name: /Hentikan/ }));
+    await user.click(screen.getByRole("button", { name: /Stop/ }));
     expect(vi.mocked(fetch)).toHaveBeenCalledWith(`/api/runs/${RUN_ID}/stop`, { method: "POST" });
     unmount();
 
     const onRestart = vi.fn();
     render(<RunDetail run={run({ state: "stopped", stores_done: 1, downloads: [] })} onRestart={onRestart} />);
-    expect(screen.getByText(/1 dari 2 toko selesai/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /Lanjutkan/ }));
+    expect(screen.getByText(/1 of 2 stores are done/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Resume/ }));
     expect(vi.mocked(fetch)).toHaveBeenCalledWith(`/api/runs/${RUN_ID}/resume`, { method: "POST" });
     expect(onRestart).toHaveBeenCalled();
   });
