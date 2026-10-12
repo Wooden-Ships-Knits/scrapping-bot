@@ -19,6 +19,7 @@ docs/
 | Document | Language | What it covers |
 |---|---|---|
 | [PRD](product/prd.md) | English | Knitwear stores found or bulk links in, raw data out in any format; users, scope, requirements, data model, milestones, metrics, handover |
+| [PRD: competitive and retailer analysis](product/prd-competitive-retailer-analysis.md) | English | Draft, not built: which stores carry brands like ours, overlap with our stockists, regional gaps, brand risk; what was measured on 2026-10-12 |
 | [Architecture](architecture/overview.md) | English | The pipeline stage by stage, marked Built, Planned or Gated; entry points, config, writers |
 | [Engineering standards](engineering/standards.md) | English | Tooling, code layout, design rules, testing, secrets, definition of done |
 | [Roadmap](planning/roadmap.md) | English | v1 findings, known issues, milestones M0–M6 with gates |
@@ -39,6 +40,7 @@ docs/
 | [0009](decisions/0009-own-store-traffic-from-shopify-analytics.md) | Live traffic on our own store from Shopify Analytics, cached to stay inside the ShopifyQL quota | Accepted |
 | [0011](decisions/0011-wholesale-analysis-stage.md) | Wholesale analysis as its own stage over a finished run: segments, scores with reasons, inputs from the operator | Accepted |
 | [0010](decisions/0010-final-list-multi-brand-knitwear.md) | Final list of multi-brand stores that sell knitwear, with strict knitwear; store type from vendors, then the LLM; LLM on by default | Accepted |
+| [0012](decisions/0012-brand-store-map-from-the-retailer-side.md) | Brand and store map built from the retailer side; brand locators read only where the list is open; one bounded expansion round | Proposed |
 
 ## Exports and archive
 
