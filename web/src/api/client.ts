@@ -20,6 +20,7 @@ export type DiscoverRequest = Schemas["DiscoverIn"];
 export type Detection = Schemas["DetectionOut"];
 export type Traffic = Schemas["TrafficSnapshot"];
 export type TrafficPeriod = Traffic["period"];
+export type RetailerMap = Schemas["RetailerMapOut"];
 export type PreviewTable =
   | "final_stores"
   | "final_products"
@@ -46,7 +47,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const resp = await fetch(path, init);
   if (resp.ok) return (await resp.json()) as T;
   let code = "http_error";
-  let message = `Permintaan gagal (HTTP ${resp.status}).`;
+  let message = `The request failed (HTTP ${resp.status}).`;
   try {
     const body = await resp.json();
     const detail = body?.detail;
@@ -87,6 +88,7 @@ export const api = {
   run: (runId: string) => request<Run>(`/api/runs/${runId}`),
   overview: () => request<Overview>("/api/overview"),
   detection: () => request<Detection>("/api/detection"),
+  retailerMap: () => request<RetailerMap>("/api/retailer-map"),
   traffic: (period: TrafficPeriod) => request<Traffic>(`/api/traffic?period=${period}`),
   rows: (runId: string, table: PreviewTable, offset = 0, limit = 50) =>
     request<Rows>(`/api/runs/${runId}/rows/${table}?offset=${offset}&limit=${limit}`),

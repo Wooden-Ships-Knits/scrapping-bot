@@ -59,38 +59,38 @@ describe("Traffic", () => {
     mockApi((url) => reply(snapshot(new URL(url, "http://x").searchParams.get("period") ?? "24h")));
     render(<Traffic />);
     expect(await screen.findByText("Council Bluffs")).toBeInTheDocument();
-    expect(screen.getByText("Kota data center")).toBeInTheDocument();
-    expect(screen.getByText("Tim sendiri?")).toBeInTheDocument();
+    expect(screen.getByText("Data center city")).toBeInTheDocument();
+    expect(screen.getByText("Own team?")).toBeInTheDocument();
     // 60 sessions and no cart: flagged. Denpasar is the team; 20 sessions is too few to tell.
-    expect(screen.getAllByText("Banyak sesi, 0 keranjang")).toHaveLength(1);
-    expect(screen.getByText("Media sosial")).toBeInTheDocument();
+    expect(screen.getAllByText("Many sessions, 0 carts")).toHaveLength(1);
+    expect(screen.getByText("Social media")).toBeInTheDocument();
     expect(screen.getByText("/collections/all")).toBeInTheDocument();
     expect(screen.getByText(/^Live ·/)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Sesi per jam" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Sessions per hour" })).toBeInTheDocument();
   });
 
   it("asks for the chosen period and remembers it", async () => {
     const calls = mockApi((url) => reply(snapshot(new URL(url, "http://x").searchParams.get("period") ?? "24h")));
     render(<Traffic />);
     await screen.findByText("Council Bluffs");
-    await userEvent.click(screen.getByRole("tab", { name: "7 hari" }));
+    await userEvent.click(screen.getByRole("tab", { name: "7 days" }));
     await waitFor(() => expect(calls).toContain("/api/traffic?period=7d"));
     expect(localStorage.getItem("traffic-period")).toBe("7d");
-    await userEvent.click(screen.getByRole("tab", { name: "1 jam" }));
-    expect(await screen.findByRole("heading", { name: "Sesi per menit" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "1 hour" }));
+    expect(await screen.findByRole("heading", { name: "Sessions per minute" })).toBeInTheDocument();
   });
 
   it("explains what to set when Shopify is not configured", async () => {
     mockApi(() =>
-      reply({ detail: { code: "not_configured", message: "Isi SHOPIFY_STORE_DOMAIN di .env." } }, 422),
+      reply({ detail: { code: "not_configured", message: "Set SHOPIFY_STORE_DOMAIN in .env." } }, 422),
     );
     render(<Traffic />);
-    expect(await screen.findByText("Isi SHOPIFY_STORE_DOMAIN di .env.")).toBeInTheDocument();
+    expect(await screen.findByText("Set SHOPIFY_STORE_DOMAIN in .env.")).toBeInTheDocument();
   });
 
   it("says when the tables are older because the quota is low", async () => {
     mockApi(() => reply(snapshot("24h", { problem: "quota_low" })));
     render(<Traffic />);
-    expect(await screen.findByText(/Kuota Analytics Shopify hampir habis/)).toBeInTheDocument();
+    expect(await screen.findByText(/The Shopify Analytics quota is almost used up/)).toBeInTheDocument();
   });
 });

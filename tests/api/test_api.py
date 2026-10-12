@@ -434,7 +434,7 @@ def test_llm_check_explains_a_bad_key(tmp_path):
         bad_model = c.post("/api/llm/check", json={"model": "gpt-4o-mini"})
     assert resp.json() == {
         "ok": False,
-        "message": "API key ditolak penyedia. Periksa key dan penyedianya.",
+        "message": "The provider rejected the API key. Check the key and the provider.",
     }
     assert bad_model.json()["ok"] is False
 

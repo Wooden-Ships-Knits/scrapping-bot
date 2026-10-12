@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Scrapebot · Retailer map (preview)</title>
+    <style>
+/*APP_CSS*/
+    </style>
+    <style>
+/*PAGE_CSS*/
+    </style>
+  </head>
+  <body>
+    <div class="shell" id="shell">
+      <aside class="sidebar" id="sidebar" aria-label="Main navigation">
+        <a class="brand" href="#"><span class="brand-mark" aria-hidden="true" data-icon="terminal"></span>Scrapebot</a>
+        <nav>
+          <p class="nav-title">Scrape bot</p>
+          <a class="nav-item" href="#"><span data-icon="play"></span>Scrape</a>
+          <a class="nav-item" href="#"><span data-icon="chart-column"></span>Overview</a>
+          <a class="nav-item" href="#"><span data-icon="history"></span>Run history</a>
+          <a class="nav-item" href="#"><span data-icon="shield-alert"></span>Detection</a>
+          <a class="nav-item" href="#"><span data-icon="activity"></span>Store traffic</a>
+          <p class="nav-title">Process</p>
+          <a class="nav-item" href="#" aria-current="page"><span data-icon="store"></span>Retailer map</a>
+        </nav>
+        <p class="sidebar-foot">Internal tool · public pages only · robots.txt respected</p>
+      </aside>
+      <div class="scrim" id="scrim" hidden aria-hidden="true"></div>
+      <div class="main-area">
+        <header class="topbar">
+          <button type="button" class="icon-button" id="menu-toggle" aria-label="Show or hide the menu">
+            <span data-icon="panel-left" data-size="18"></span>
+          </button>
+          <nav class="crumbs" aria-label="Location">
+            <a href="#">Scrapebot</a><span class="sep" aria-hidden="true">/</span><span>Process</span
+            ><span class="sep" aria-hidden="true">/</span><span aria-current="page">Retailer map</span>
+          </nav>
+          <span class="spacer"></span>
+          <span class="host-pill">Local · 127.0.0.1:8765</span>
+          <button type="button" class="theme-switch" id="theme" role="switch" aria-checked="false" aria-label="Dark theme">
+            <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+            <span id="theme-label">LIGHT</span>
+          </button>
+        </header>
+        <main>
+          <div class="page">
+            <header class="page-head">
+              <div>
+                <h1>Retailer map</h1>
+                <p id="lede"></p>
+              </div>
+              <div class="page-actions">
+                <span class="chip rm-static" id="run-chip"></span>
+                <button type="button" class="button ghost" title="Not wired in this preview">
+                  <span data-icon="download"></span>Workbook (.xlsx)
+                </button>
+              </div>
+            </header>
+
+            <div class="notice info">
+              <strong>Preview of a proposed page.</strong>
+              <span>
+                Counts are a sample: the stores the bot could read, not every retailer of a brand. Scores and
+                thresholds come from the exploratory notebooks and are not final.
+              </span>
+            </div>
+
+            <dl class="stats" id="stats"></dl>
+
+            <section class="card rm-tabs">
+              <div class="tabs-row">
+                <div class="tabs" role="tablist" aria-label="Views" id="tabs"></div>
+              </div>
+            </section>
+
+            <div class="rm-panel" id="panel"></div>
+
+            <section class="card">
+              <div class="card-head">
+                <h2>What this page does not show</h2>
+                <p id="limits"></p>
+              </div>
+            </section>
+          </div>
+        </main>
+      </div>
+    </div>
+    <script type="application/json" id="icons">/*ICONS*/</script>
+    <script type="application/json" id="data">/*DATA*/</script>
+    <script>
+/*PAGE_JS*/
+    </script>
+  </body>
+</html>

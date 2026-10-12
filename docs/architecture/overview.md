@@ -85,8 +85,9 @@ flowchart TD
 | Entry point | Role | Status |
 |---|---|---|
 | CLI | `scrapebot run <input>`, optionally with a YAML config. Used directly and by automation (n8n, cron) | Built |
-| Discovery | `scrapebot discover -c discover.yaml`, or the web app's *Cari toko otomatis* tab: finds stores and writes `data/discover/<id>/stores.csv`, the input of a run (section 4.0) | Built |
-| Traffic toko | A page of the web app: live sessions on our own Shopify store from Shopify Analytics, separate from the pipeline (section 4.14) | Built |
+| Discovery | `scrapebot discover -c discover.yaml`, or the web app's *Find stores automatically* tab: finds stores and writes `data/discover/<id>/stores.csv`, the input of a run (section 4.0) | Built |
+| Store traffic | A page of the web app: live sessions on our own Shopify store from Shopify Analytics, separate from the pipeline (section 4.14) | Built |
+| Retailer map | A page of the web app, under *Process* in the menu: where brands like ours are sold, for the newest run that `process/` has read (section 4.17) | Built (exploratory figures) |
 | Web app + local API | `scrapebot serve`: React + TypeScript (`web/`) over a local FastAPI service (`api/`) on 127.0.0.1. Paste or upload links, preview, choose formats, run the whole list, live progress (SSE), stop and resume, history, downloads ([ADR 0007](../decisions/0007-typescript-web-ui-local-api.md)) | Built (LLM settings come with M3) |
 
 Both build the same `RunConfig`. The pipeline is split into `prepare` (read and
@@ -100,7 +101,8 @@ as *interrupted*.
 API routes: `GET /api/options`, `POST /api/uploads`, `POST /api/preview`,
 `POST /api/runs`, `GET /api/runs`, `GET /api/runs/{id}`,
 `GET /api/runs/{id}/events` (SSE), `GET /api/runs/{id}/download/{key}`,
-`GET /api/detection`, `GET /api/traffic?period=1h|24h|7d`. The web app's
+`GET /api/detection`, `GET /api/traffic?period=1h|24h|7d`, `GET /api/retailer-map`.
+The web app's
 TypeScript types are generated from the API's OpenAPI schema (`make api-types`); CI
 fails when they drift.
 
@@ -110,7 +112,7 @@ the API returns. A store's status is drawn by shape as well as label: a filled b
 `error` and skipped links. The overview charts products per run for the last 14 runs,
 using `GET /api/runs`.
 
-The *Deteksi* page (`api/detection.py`) reads `stores.jsonl` of every run folder and
+The *Detection* page (`api/detection.py`) reads `stores.jsonl` of every run folder and
 counts the visits that ended `blocked`: how (the challenge vendor or HTTP status in the
 store's `error`), per run, and per store. A store is *always* blocking when every visit
 was blocked, *sometimes* when the last one was but an earlier one was not, and
@@ -412,7 +414,7 @@ versions, duration and row counts. **Planned:** change summary (M5).
 
 Not a pipeline stage: `traffic.py` reads our own store's Shopify Analytics
 ([ADR 0009](../decisions/0009-own-store-traffic-from-shopify-analytics.md)) for the
-*Traffic toko* page, which polls `GET /api/traffic` every 30 seconds.
+*Store traffic* page, which polls `GET /api/traffic` every 30 seconds.
 
 | Part | How |
 |---|---|
@@ -470,6 +472,27 @@ format, and a README of the inputs used and missing. It never fetches a store.
 - `inputs.py`: loose column matching, so a Salesforce export is used as it comes.
 - `build.py`: matching to customers (domain, phone, name), price fit, segment, score and
   reasons.
+
+### 4.17 Retailer map — Built (web app, exploratory figures)
+
+Not a pipeline stage. The repository has two parts, and the menu of the web app follows
+them: the **scrape bot** (`src/scrapebot/`, `web/`), and the **process** (`process/`), which
+turns one analysed run into tables, charts and the retailer map
+([PRD — Competitive and Retailer Analysis](../product/prd-competitive-retailer-analysis.md)).
+
+- `uv run --group process python process/run_all.py` runs four notebooks and
+  `build_dashboard.py`, and writes `data/process/<run>/`: `tables/` (Parquet), `executed/`
+  (the notebooks with outputs), `retailer_map.json` and `dashboard.html` (the same page as
+  one file that opens without a server).
+- `api/retailer_map.py` serves the newest `retailer_map.json` at `GET /api/retailer-map`,
+  checked against `RetailerMapOut`. It computes nothing and imports nothing from `process/`:
+  the file is the contract. No file gives `no_process_output` with the command to run.
+- The *Retailer map* page shows stores to approach, brands by closeness to ours, regions
+  against our stockists, and which brands publish their retailers.
+
+This is a bridge for the first version. The figures come from notebooks whose thresholds
+are proposals; stage C1 of the PRD moves the brand and store map into `scrapebot analyze`,
+and the page then reads the analysis output instead.
 
 ## 5. Statuses
 

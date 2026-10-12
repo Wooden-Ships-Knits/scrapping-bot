@@ -57,26 +57,26 @@ describe("Detection", () => {
     render(<Detection />);
 
     expect(await screen.findByText("25%")).toBeInTheDocument();
-    expect(screen.getByText("5 dari 20 kunjungan")).toBeInTheDocument();
-    expect(screen.getByRole("list", { name: "Cara memblokir" })).toHaveTextContent("Cloudflare: 3");
+    expect(screen.getByText("5 of 20 visits")).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Block methods" })).toHaveTextContent("Cloudflare: 3");
 
-    const stores = screen.getByRole("region", { name: "Toko yang memblokir" });
+    const stores = screen.getByRole("region", { name: "Stores that block" });
     const dior = within(stores).getByRole("row", { name: /dior\.com/ });
-    expect(within(dior).getByText("Selalu")).toHaveClass("badge-bad");
+    expect(within(dior).getByText("Always")).toHaveClass("badge-bad");
     expect(dior).toHaveTextContent("2 / 2");
-    expect(dior).toHaveTextContent("HTTP 403 (ditolak)");
-    expect(within(stores).getByRole("row", { name: /wooden-ships\.com/ })).toHaveTextContent("Pulih");
+    expect(dior).toHaveTextContent("HTTP 403 (refused)");
+    expect(within(stores).getByRole("row", { name: /wooden-ships\.com/ })).toHaveTextContent("Recovered");
 
-    await user.click(within(stores).getByRole("button", { name: "Salin 1 toko yang selalu memblokir" }));
+    await user.click(within(stores).getByRole("button", { name: "Copy 1 store that always blocks" }));
     expect(writeText).toHaveBeenCalledWith("dior.com");
 
-    const runs = screen.getByRole("region", { name: "Diblokir per run" });
+    const runs = screen.getByRole("region", { name: "Blocked per run" });
     expect(within(runs).getByRole("row", { name: /#aaaaaa/ })).toHaveTextContent("40%");
   });
 
   it("says so when nothing was visited yet", async () => {
     mockApi({ ...DATA, visits: 0, blocked: 0, stores: 0, stores_blocked: 0, by_method: {}, runs: [], blocked_stores: [] });
     render(<Detection />);
-    expect(await screen.findByText(/Belum ada toko yang dikunjungi/)).toBeInTheDocument();
+    expect(await screen.findByText(/No stores visited yet/)).toBeInTheDocument();
   });
 });

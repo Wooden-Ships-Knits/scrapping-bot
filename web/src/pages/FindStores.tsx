@@ -1,7 +1,7 @@
 import { AlertTriangle, Search } from "lucide-react";
 
 import type { DiscoverOptions, Discovery } from "../api/client";
-import { discoverySourceLabel, discoveryState, formatNumber, itemLabel, regionLabel, sourceStatus } from "../labels";
+import { discoverySourceLabel, discoveryState, formatNumber, itemLabel, plural, regionLabel, sourceStatus } from "../labels";
 
 export type FindForm = {
   count: string; // typed by hand; checked on submit
@@ -46,7 +46,7 @@ export function FindStoresFields({
   return (
     <div className="find-fields">
       <label className="find-field">
-        <span>Jumlah toko</span>
+        <span>Number of stores</span>
         <input
           type="number"
           inputMode="numeric"
@@ -55,9 +55,9 @@ export function FindStoresFields({
           value={form.count}
           aria-invalid={!countOk}
           onChange={(e) => onChange({ ...form, count: e.target.value })}
-          placeholder="contoh: 50"
+          placeholder="e.g. 50"
         />
-        <small className={countOk ? "muted" : "bad-text"}>1 – {formatNumber(options.max_count)} toko</small>
+        <small className={countOk ? "muted" : "bad-text"}>1 – {formatNumber(options.max_count)} stores</small>
       </label>
 
       <label className="find-field">
@@ -72,7 +72,7 @@ export function FindStoresFields({
       </label>
 
       <fieldset className="find-field find-items">
-        <legend>Item yang dicari</legend>
+        <legend>Items to look for</legend>
         <div className="find-checks">
           {options.items.map((item) => (
             <label key={item} className="menu-check">
@@ -83,22 +83,22 @@ export function FindStoresFields({
         </div>
         {form.items.includes(OTHER) && (
           <input
-            aria-label="Kata kunci item lainnya"
+            aria-label="Keywords for other items"
             value={form.terms}
             onChange={(e) => onChange({ ...form, terms: e.target.value })}
-            placeholder="pisahkan dengan koma, contoh: poncho, cape"
+            placeholder="separate with commas, e.g. poncho, cape"
           />
         )}
       </fieldset>
 
       <p className="muted small find-sources" data-testid="find-sources">
-        Sumber aktif:{" "}
+        Active sources:{" "}
         {active.length
           ? active
               .map(([s]) => (s === "ai_agent" ? `${discoverySourceLabel(s)} (${options.agent_model})` : discoverySourceLabel(s)))
               .join(", ")
-          : "tidak ada"}
-        {missing.length > 0 && <> · tanpa API key: {missing.map(([s]) => discoverySourceLabel(s)).join(", ")}</>}
+          : "none"}
+        {missing.length > 0 && <> · no API key: {missing.map(([s]) => discoverySourceLabel(s)).join(", ")}</>}
       </p>
     </div>
   );
@@ -115,19 +115,19 @@ export function DiscoveryCard({ discovery }: { discovery: Discovery }) {
         </h2>
         <span className="spacer" />
         <span className="small">
-          <strong>{formatNumber(discovery.found)} toko ditemukan</strong>
+          <strong>{plural(discovery.found, "store")} found</strong>
           <span className="muted"> / target {formatNumber(discovery.count)}</span>
         </span>
       </div>
       <div className="find-progress">
         {discovery.state === "searching" && (
           <p className="muted">
-            {discovery.step ? `Sedang mencari lewat ${discoverySourceLabel(discovery.step)}… ` : "Memulai pencarian… "}
-            Ini bisa memakan beberapa menit; scrape semua toko yang ditemukan dimulai otomatis setelahnya.
+            {discovery.step ? `Searching with ${discoverySourceLabel(discovery.step)}… ` : "Starting the search… "}
+            This can take a few minutes; scraping every store found starts automatically afterwards.
           </p>
         )}
         {discovery.state === "starting_run" && (
-          <p className="muted">{formatNumber(discovery.stores_to_visit)} toko diserahkan ke run…</p>
+          <p className="muted">{plural(discovery.stores_to_visit, "store")} handed to the run…</p>
         )}
         {failed && (
           <div className="notice bad" role="alert">
@@ -138,9 +138,9 @@ export function DiscoveryCard({ discovery }: { discovery: Discovery }) {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Sumber</th>
+                <th>Source</th>
                 <th>Status</th>
-                <th className="end">Temuan</th>
+                <th className="end">Found</th>
               </tr>
             </thead>
             <tbody>
@@ -154,7 +154,7 @@ export function DiscoveryCard({ discovery }: { discovery: Discovery }) {
             </tbody>
           </table>
         )}
-        {discovery.cost_usd > 0 && <p className="muted small">Biaya agen AI: US${discovery.cost_usd.toFixed(3)}</p>}
+        {discovery.cost_usd > 0 && <p className="muted small">AI agent cost: US${discovery.cost_usd.toFixed(3)}</p>}
       </div>
     </section>
   );

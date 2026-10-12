@@ -21,14 +21,14 @@ RUN_ID_RE = re.compile(r"^\d{8}T\d{9}Z-[0-9a-f]{6}$")  # 20261005T085253123Z-561
 # key -> (label, path inside the run folder). Directories are served as a zip.
 DOWNLOADS: dict[str, tuple[str, str]] = {
     "final_xlsx": (
-        "Daftar final: toko multi-brand + produk rajut (.xlsx)",
+        "Final list: multi-brand stores + knitwear products (.xlsx)",
         "export/final/tables.xlsx",
     ),
-    "final_csv": ("Daftar final (CSV .zip)", "export/final/csv"),
-    "knit_xlsx": ("Produk rajut saja, semua toko (.xlsx)", "export/knit/tables.xlsx"),
-    "knit_csv": ("Produk rajut saja, semua toko (CSV .zip)", "export/knit/csv"),
-    "report": ("Laporan run (.md)", REPORT_FILE),
-    "summary": ("Ringkasan per tautan (.csv)", "summary.csv"),
+    "final_csv": ("Final list (CSV .zip)", "export/final/csv"),
+    "knit_xlsx": ("Knitwear products only, all stores (.xlsx)", "export/knit/tables.xlsx"),
+    "knit_csv": ("Knitwear products only, all stores (CSV .zip)", "export/knit/csv"),
+    "report": ("Run report (.md)", REPORT_FILE),
+    "summary": ("Summary per link (.csv)", "summary.csv"),
     "xlsx": ("Excel (.xlsx)", "export/tables.xlsx"),
     "csv": ("CSV (.zip)", "export/csv"),
     "tsv": ("TSV (.zip)", "export/tsv"),
@@ -71,7 +71,7 @@ def _source(config: dict[str, Any]) -> tuple[Literal["text", "file"], str]:
     source = config["input"].get("source")
     if source:
         return "file", Path(source).name
-    return "text", "Tautan yang ditempel"
+    return "text", "Pasted links"
 
 
 def is_finished(root: Path) -> bool:

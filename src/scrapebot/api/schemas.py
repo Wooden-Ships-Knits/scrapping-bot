@@ -259,3 +259,99 @@ class DetectionOut(BaseModel):
     by_method: dict[str, int]  # blocked visits per method, most first
     runs: list[DetectionRunOut]  # newest first
     blocked_stores: list[BlockedStoreOut]
+
+
+Territory = Literal["open", "near", "unknown"]
+BrandKind = Literal["rival", "marker"]
+LocatorStatus = Literal["full", "area", "robots", "own", "none"]
+
+
+class WatchedBrandOut(BaseModel):
+    key: str
+    brand: str
+    stores: int  # read stores that sell it
+
+
+class OpportunityOut(BaseModel):
+    """A store that is not ours and sells brands like ours."""
+
+    domain: str
+    name: str | None
+    city: str | None
+    state: str | None
+    score: float | None  # the analysis stage's store score
+    knit: int  # knitwear products
+    price: float | None  # median knitwear price, as written, in `currency`
+    currency: str | None
+    miles: float | None  # to the nearest stockist; None when the store has no location
+    territory: Territory  # no stockist in the radius | one in the radius | no location
+    email: bool
+    watched: list[str]  # keys of the watched brands it sells
+    relevant: list[str]  # other relevant brands it sells, by name
+
+
+class BrandRowOut(BaseModel):
+    key: str
+    brand: str
+    kind: BrandKind  # competes on knitwear | marks the right kind of boutique
+    watched: bool
+    stores: int
+    shared: int  # of those, our stockists
+    not_ours: int
+    open: int  # of those not ours, with no stockist in the radius
+    knit_share: float | None
+    price: float | None  # its knitwear price over ours; 1.0 is the same
+    rank: float | None
+    full: bool  # the brand's full published list was read as well
+
+
+class RegionOut(BaseModel):
+    state: str
+    opportunities: int
+    open_territory: int
+    stockists: int
+
+
+class LocatorSurveyOut(BaseModel):
+    brand: str
+    locator: str  # the widget provider, as found
+    status: LocatorStatus
+    locations: int | None
+
+
+class LocatorStateOut(BaseModel):
+    state: str
+    brand_retailers: int
+    stockists: int
+    gap: int
+
+
+class PublishedListOut(BaseModel):
+    """One brand's full published retailer list, matched to our stockists."""
+
+    brand: str
+    total: int
+    groups: dict[str, int]  # same | check | near | open -> retailers
+    states: list[LocatorStateOut]  # widest gap first
+
+
+class RetailerMapOut(BaseModel):
+    """Where brands like ours are sold, for one run. Written by `process/` (exploratory):
+    the API serves the file as it is and computes nothing."""
+
+    run_id: str
+    stores: int  # stores in the run
+    readable: int  # of those, stores whose catalogue was read
+    radius_miles: float  # a stockist closer than this makes a territory "near"
+    watched: list[WatchedBrandOut]
+    watched_stores: int  # read stores that sell at least one watched brand
+    watched_customers: int  # of those, our stockists
+    watched_not_ours: int
+    watched_email: int  # of those not ours, with an email address
+    watched_territory: dict[str, int]  # territory -> stores not ours
+    located: int  # opportunities with a known location
+    opportunities: list[OpportunityOut]  # best first
+    brands: list[BrandRowOut]  # closest to ours first
+    regions: list[RegionOut]
+    survey: list[LocatorSurveyOut]
+    locator: PublishedListOut | None

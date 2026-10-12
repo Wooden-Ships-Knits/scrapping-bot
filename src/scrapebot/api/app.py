@@ -32,6 +32,7 @@ from . import library
 from .detection import detection
 from .discovery import DiscoveryManager
 from .manager import FetcherFactory, RunManager
+from .retailer_map import RetailerMapError, retailer_map
 from .schemas import (
     DetectionOut,
     DiscoverIn,
@@ -45,6 +46,7 @@ from .schemas import (
     PreviewIn,
     PreviewOut,
     ProviderOut,
+    RetailerMapOut,
     RowsOut,
     RunIn,
     RunListItem,
@@ -65,7 +67,7 @@ PROVIDERS = (
     ("groq", "Groq", "groq/llama-3.3-70b-versatile"),
     ("openrouter", "OpenRouter", "openrouter/openai/gpt-4o-mini"),
     ("azure", "Azure OpenAI", "azure/<deployment-name>"),
-    ("ollama", "Ollama (lokal)", "ollama/qwen2.5:3b"),
+    ("ollama", "Ollama (local)", "ollama/qwen2.5:3b"),
 )
 SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 EXAMPLES = 8
@@ -84,6 +86,7 @@ class ApiSettings(BaseModel):
     env_file: Path = Path(".env")  # provider keys; read, never written
     discover_dir: Path = Path("data/discover")  # stores found from the interface
     discover_cache_dir: Path = Path("data/.cache/discover")  # paid answers, without keys
+    process_dir: Path = Path("data/process")  # what `process/` wrote per run; read, never written
 
 
 class ApiError(Exception):
@@ -126,13 +129,15 @@ def create_app(
         folder = settings.uploads_dir / upload_id
         files = list(folder.iterdir()) if UPLOAD_ID_RE.match(upload_id) and folder.is_dir() else []
         if len(files) != 1:
-            raise ApiError(404, "upload_not_found", "File unggahan tidak ditemukan; unggah ulang.")
+            raise ApiError(
+                404, "upload_not_found", "The uploaded file was not found; upload it again."
+            )
         return InputConfig(source=files[0], url_column=url_column, max_links=base.max_links)
 
     def root_or_404(run_id: str) -> Path:
         root = library.run_root(runs_dir, run_id)
         if root is None:
-            raise ApiError(404, "run_not_found", f"Run {run_id} tidak ditemukan.")
+            raise ApiError(404, "run_not_found", f"Run {run_id} was not found.")
         return root
 
     def load(run_id: str) -> RunOut:
@@ -170,12 +175,14 @@ def create_app(
             raise ApiError(
                 415,
                 "unsupported_format",
-                f"Format tidak didukung. Gunakan: {', '.join(SUPPORTED_SUFFIXES)}",
+                f"Unsupported format. Use: {', '.join(SUPPORTED_SUFFIXES)}",
             )
         limit = settings.max_upload_mb * 1024 * 1024
         data = await file.read(limit + 1)
         if len(data) > limit:
-            raise ApiError(413, "too_large", f"File lebih dari {settings.max_upload_mb} MB.")
+            raise ApiError(
+                413, "too_large", f"The file is larger than {settings.max_upload_mb} MB."
+            )
         upload_id = secrets.token_hex(16)
         folder = settings.uploads_dir / upload_id
         folder.mkdir(parents=True)
@@ -224,7 +231,7 @@ def create_app(
         """Finish the stores in progress, start no new ones; the run stays resumable."""
         root_or_404(run_id)
         if not manager.stop(run_id):
-            raise ApiError(409, "not_running", "Run ini tidak sedang berjalan.")
+            raise ApiError(409, "not_running", "This run is not running.")
         return load(run_id)
 
     @app.post("/api/runs/{run_id}/resume", status_code=202)
@@ -232,7 +239,7 @@ def create_app(
         """Continue a stopped or interrupted run without revisiting finished stores."""
         root = root_or_404(run_id)
         if load(run_id).state not in ("stopped", "interrupted"):
-            raise ApiError(409, "not_resumable", "Hanya run yang berhenti yang bisa dilanjutkan.")
+            raise ApiError(409, "not_resumable", "Only a run that has stopped can be resumed.")
         try:
             prepared = resume(root)
         except InputError as exc:
@@ -301,16 +308,16 @@ def create_app(
     def start_discovery(body: DiscoverIn) -> DiscoveryOut:
         """Find stores, then start a run on all of them; poll GET /api/discover/{id}."""
         if body.region not in REGIONS:
-            raise ApiError(422, "bad_region", f"Region {body.region} tidak dikenal.")
+            raise ApiError(422, "bad_region", f"Region {body.region} is not known.")
         if OTHER in body.items and not any(t.strip() for t in body.terms):
-            raise ApiError(422, "terms_required", "Isi kata kunci untuk item Lainnya.")
+            raise ApiError(422, "terms_required", "Give keywords for the item Other.")
         keys = load_keys(settings.env_file)
         if not any(discovery_sources(keys).values()):
             raise ApiError(
                 422,
                 "no_discovery_source",
-                "Belum ada API key untuk mencari toko. Isi OPENAI_API_KEY, GEMINI_API_KEY, "
-                "GOOGLE_MAPS_API_KEY atau TAVILY_API_KEY di .env, lalu jalankan ulang server.",
+                "No API key for finding stores yet. Set OPENAI_API_KEY, GEMINI_API_KEY, "
+                "GOOGLE_MAPS_API_KEY or TAVILY_API_KEY in .env, then restart the server.",
             )
         try:
             focus = FocusConfig(items=body.items, terms=body.terms)
@@ -339,7 +346,7 @@ def create_app(
     def discovery(discovery_id: str) -> DiscoveryOut:
         job = finder.get(discovery_id)
         if job is None:
-            raise ApiError(404, "discovery_not_found", "Pencarian ini tidak ditemukan.")
+            raise ApiError(404, "discovery_not_found", "This search was not found.")
         return job.out()
 
     @app.get("/api/llm/providers")
@@ -362,7 +369,7 @@ def create_app(
     def llm_check(body: LLMCheckIn) -> LLMCheckOut:
         """Prove a key and model work before a run (PRD LM-05)."""
         if "/" not in body.model:
-            return LLMCheckOut(ok=False, message="Tulis model sebagai penyedia/model.")
+            return LLMCheckOut(ok=False, message="Write the model as provider/model.")
         keys = run_keys(body.model, body.api_key)
         ok, message = check_connection(body.model, key_for(body.model, keys), body.api_base)
         return LLMCheckOut(ok=ok, message=message)
@@ -395,6 +402,16 @@ def create_app(
                 422 if exc.code == "not_configured" else 502, exc.code, exc.message
             ) from exc
 
+    @app.get("/api/retailer-map")
+    def retailer_map_view() -> RetailerMapOut:
+        """Where brands like ours are sold, for the newest processed run."""
+        try:
+            return retailer_map(settings.process_dir)
+        except RetailerMapError as exc:
+            raise ApiError(
+                404 if exc.code == "no_process_output" else 500, exc.code, exc.message
+            ) from exc
+
     @app.get("/api/runs/{run_id}/rows/{table}")
     def rows(
         run_id: str,
@@ -405,7 +422,7 @@ def create_app(
     ) -> RowsOut:
         root = root_or_404(run_id)
         if table not in library.PREVIEW_TABLES:
-            raise ApiError(404, "table_not_found", f"Tabel {table} tidak bisa dipratinjau.")
+            raise ApiError(404, "table_not_found", f"Table {table} cannot be previewed.")
         columns, total, page, truncated = library.read_rows(root, table, offset, limit, include_raw)
         return RowsOut(
             table=table,
@@ -421,7 +438,7 @@ def create_app(
         root = root_or_404(run_id)
         path = library.download_path(root, key)
         if path is None:
-            raise ApiError(404, "download_not_found", "File ini tidak tersedia untuk run tersebut.")
+            raise ApiError(404, "download_not_found", "This file is not available for that run.")
         return FileResponse(path, filename=path.name)
 
     if settings.web_dist and (settings.web_dist / "index.html").exists():

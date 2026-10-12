@@ -193,7 +193,7 @@ def test_fallback_order_is_used_when_the_first_model_fails():
         ("gemini/gemini-2.5-flash", "error"),
         ("openai/gpt-4o-mini", "ok"),
     ]
-    assert calls[0].error == "API key ditolak penyedia. Periksa key dan penyedianya."
+    assert calls[0].error == "The provider rejected the API key. Check the key and the provider."
 
 
 def busy(model):
@@ -218,7 +218,7 @@ def test_a_busy_provider_is_tried_again_after_a_wait():
     result, calls = extractor.extract("rose.com", [Page(url="https://rose.com/c", text="x")])
     assert result is not None
     assert [c.status for c in calls] == ["error", "ok"]
-    assert calls[0].error.startswith("Penyedia sedang sibuk")
+    assert calls[0].error.startswith("The provider is busy")
     assert waits == [3.0]
 
 
@@ -286,17 +286,17 @@ def test_prompt_cites_every_page_url():
     [
         (
             litellm.exceptions.NotFoundError("x", llm_provider="openai", model="m"),
-            "Model tidak ditemukan",
+            "Model not found",
         ),
         (
             litellm.exceptions.RateLimitError("x", llm_provider="openai", model="m"),
-            "Batas pemakaian",
+            "usage limit",
         ),
         (
             litellm.exceptions.APIConnectionError("x", llm_provider="ollama", model="m"),
-            "tidak bisa dihubungi",
+            "cannot be reached",
         ),
-        (ValueError("boom"), "Gagal memanggil model (ValueError)"),
+        (ValueError("boom"), "The model call failed (ValueError)"),
     ],
 )
 def test_errors_are_explained_in_plain_words(exc, phrase):
@@ -394,13 +394,13 @@ def test_a_failed_llm_says_why_the_store_has_no_products():
                 model="gemini/gemini-2.5-flash",
                 prompt_version="extract-v1",
                 status="error",
-                error="Penyedia sedang sibuk (server penuh). Coba lagi nanti atau pasang model cadangan.",
+                error="The provider is busy (server overloaded). Try again later or set a fallback model.",
             )
             return None, [call]
 
     got = acquire(Target(domain="rose.com", url="https://rose.com"), shop(), llm=DownLLM())
     assert got.status == "no_products"
-    assert got.error.startswith("LLM: Penyedia sedang sibuk")
+    assert got.error.startswith("LLM: The provider is busy")
     assert "llm_failed" in got.layers_tried
 
 

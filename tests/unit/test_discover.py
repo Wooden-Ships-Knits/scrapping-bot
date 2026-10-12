@@ -365,7 +365,7 @@ def test_a_refused_agent_key_stops_the_agent(tmp_path):
 
     cfg = agent_config(tmp_path)
     agent = AgentSource(cfg, keys(gemini="gm-key-123456"), tmp_path / "cache", completion)
-    with pytest.raises(ApiError, match="API key ditolak"):
+    with pytest.raises(ApiError, match="rejected the API key"):
         agent.run()
 
 

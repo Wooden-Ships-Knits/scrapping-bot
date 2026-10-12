@@ -59,10 +59,10 @@ export function JsonView({ value, filename, note }: { value: unknown; filename: 
         <span className="mono muted">{formatBytes(size)}</span>
         {note && <span className="mono muted small">{note}</span>}
         <span className="spacer" />
-        <button type="button" className="icon-button" aria-label="Unduh JSON ini" onClick={download}>
+        <button type="button" className="icon-button" aria-label="Download this JSON" onClick={download}>
           <Download size={15} />
         </button>
-        <button type="button" className="icon-button" aria-label={copied ? "Tersalin" : "Salin JSON"} onClick={copy}>
+        <button type="button" className="icon-button" aria-label={copied ? "Copied" : "Copy JSON"} onClick={copy}>
           {copied ? <Check size={15} /> : <Copy size={15} />}
         </button>
       </div>

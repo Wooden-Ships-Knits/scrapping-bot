@@ -103,7 +103,7 @@ class DiscoveryManager:
             chosen = stores_to_visit(result.stores, config.target_stores)
             job.stores_to_visit = len(chosen)
             if not chosen:
-                job.error = "Tidak ada toko berwebsite yang ditemukan. Lihat status tiap sumber."
+                job.error = "No store with a website was found. See the status of each source."
                 job.state = "failed"
                 return
             links = write_links_file(chosen, result.root / "to_visit.csv")

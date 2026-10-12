@@ -218,9 +218,7 @@ class ShopifyAnalytics:
                 "POST", url, {"Content-Type": "application/json", **headers}, body, TIMEOUT_SECONDS
             )
         except Exception as exc:  # any network failure: no answer at all
-            raise TrafficError(
-                "unreachable", redact(f"Shopify tidak bisa dihubungi: {exc}")
-            ) from exc
+            raise TrafficError("unreachable", redact(f"Shopify cannot be reached: {exc}")) from exc
 
     def _access_token(self) -> str:
         c = self.credentials
@@ -240,7 +238,7 @@ class ShopifyAnalytics:
         if status != 200:
             raise TrafficError(
                 "auth_failed" if status in (400, 401, 403) else "unreachable",
-                f"Shopify menolak client ID/secret (HTTP {status}).",
+                f"Shopify rejected the client ID/secret (HTTP {status}).",
             )
         answer = json.loads(text)
         self._token = str(answer["access_token"])
@@ -265,21 +263,23 @@ class ShopifyAnalytics:
                 continue
             break
         if status in (401, 403):
-            raise TrafficError("auth_failed", f"Shopify menolak akses (HTTP {status}).")
+            raise TrafficError("auth_failed", f"Shopify refused access (HTTP {status}).")
         if status == 429:
-            raise TrafficError("quota_low", "Shopify membatasi permintaan; coba lagi sebentar.")
+            raise TrafficError("quota_low", "Shopify is limiting requests; try again shortly.")
         if status != 200:
-            raise TrafficError("unreachable", f"Shopify menjawab HTTP {status}.")
+            raise TrafficError("unreachable", f"Shopify answered HTTP {status}.")
         answer = json.loads(text)
         quota = _quota(answer.get("extensions") or {})
         errors = answer.get("errors") or []
         if errors:
             message = redact(str(errors[0].get("message", errors[0])))
             code = "quota_low" if "throttl" in json.dumps(errors).lower() else "query_failed"
-            raise TrafficError(code, f"Shopify menolak query: {message}")
+            raise TrafficError(code, f"Shopify rejected the query: {message}")
         result = (answer.get("data") or {}).get("shopifyqlQuery") or {}
         if result.get("parseErrors"):
-            raise TrafficError("query_failed", f"Query ditolak: {result['parseErrors'][0]}")
+            raise TrafficError(
+                "query_failed", f"The query was rejected: {result['parseErrors'][0]}"
+            )
         rows = (result.get("tableData") or {}).get("rows") or []
         return Table(rows=list(rows), quota=quota)
 
@@ -422,8 +422,8 @@ class TrafficService:
             if not credentials.configured:
                 raise TrafficError(
                     "not_configured",
-                    f"Isi {ENV_DOMAIN} dan {ENV_CLIENT_ID} + {ENV_CLIENT_SECRET} (atau "
-                    f"{ENV_ADMIN_TOKEN}) di .env, lalu muat ulang halaman ini.",
+                    f"Set {ENV_DOMAIN} and {ENV_CLIENT_ID} + {ENV_CLIENT_SECRET} (or "
+                    f"{ENV_ADMIN_TOKEN}) in .env, then reload this page.",
                 )
             self._analytics = ShopifyAnalytics(credentials, self.transport, self.clock)
         return self._analytics

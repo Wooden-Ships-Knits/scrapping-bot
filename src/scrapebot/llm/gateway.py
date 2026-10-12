@@ -219,28 +219,34 @@ def explain_error(exc: BaseException) -> str:
     messages: list[tuple[type[BaseException], str]] = [
         (
             errors.ServiceUnavailableError,
-            "Penyedia sedang sibuk (server penuh). Coba lagi nanti atau pasang model cadangan.",
+            "The provider is busy (server overloaded). Try again later or set a fallback model.",
         ),
-        (errors.InternalServerError, "Penyedia sedang bermasalah. Coba lagi nanti."),
-        (errors.AuthenticationError, "API key ditolak penyedia. Periksa key dan penyedianya."),
-        (errors.PermissionDeniedError, "Key ini tidak punya akses ke model tersebut."),
+        (errors.InternalServerError, "The provider has a problem. Try again later."),
+        (
+            errors.AuthenticationError,
+            "The provider rejected the API key. Check the key and the provider.",
+        ),
+        (errors.PermissionDeniedError, "This key has no access to that model."),
         (
             errors.NotFoundError,
-            "Model tidak ditemukan. Tulis sebagai penyedia/model, contoh gemini/gemini-2.5-flash.",
+            "Model not found. Write it as provider/model, for example gemini/gemini-2.5-flash.",
         ),
-        (errors.RateLimitError, "Batas pemakaian penyedia tercapai (rate limit atau kuota)."),
-        (errors.ContextWindowExceededError, "Teks halaman terlalu panjang untuk model ini."),
+        (errors.RateLimitError, "The provider's usage limit was reached (rate limit or quota)."),
+        (errors.ContextWindowExceededError, "The page text is too long for this model."),
         (
             errors.APIConnectionError,
-            "Penyedia tidak bisa dihubungi. Periksa koneksi atau alamat server Ollama.",
+            "The provider cannot be reached. Check the connection or the Ollama server address.",
         ),
-        (errors.BadRequestError, "Permintaan ditolak penyedia (model atau parameter tidak cocok)."),
+        (
+            errors.BadRequestError,
+            "The provider rejected the request (the model or a parameter does not fit).",
+        ),
     ]
     root = _root_cause(exc)
     for kind, message in messages:
         if isinstance(root, kind):
             return message
-    return f"Gagal memanggil model ({type(root).__name__})."
+    return f"The model call failed ({type(root).__name__})."
 
 
 def _root_cause(exc: BaseException) -> BaseException:
@@ -394,4 +400,4 @@ def check_connection(
         litellm.completion(model=model, messages=ping, **kwargs)
     except Exception as exc:
         return False, explain_error(exc)
-    return True, f"Terhubung ke {model}."
+    return True, f"Connected to {model}."
