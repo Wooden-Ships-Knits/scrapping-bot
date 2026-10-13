@@ -522,7 +522,7 @@ turns one analysed run into tables, charts and the retailer map
   against our stockists, and which brands publish their retailers.
 
 This is a bridge for the first version. The figures come from notebooks whose thresholds
-are proposals; stage C1 of the PRD moves the brand and store map into `scrapebot analyze`,
+are proposals; stages R2 to R4 of the PRD move the cleaning, matching and the vendor and store graph into `scrapebot analyze`,
 and the page then reads the analysis output instead.
 
 ## 5. Statuses

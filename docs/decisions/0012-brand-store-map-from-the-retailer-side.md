@@ -1,7 +1,12 @@
 # 0012 — Brand and store map from the retailer side; locators only where the list is open
 
 **Date:** 2026-10-12
-**Status:** Proposed
+**Status:** Superseded by [ADR 0014](0014-vendor-store-graph-locators-first.md) on 2026-10-13, before it was accepted
+
+> The product owner reversed the order of the two sources: store locators and the pages
+> like them come first, the vendors in a store's catalogue are the fallback. The limits
+> on what a locator reader may read, the matching rules and "tables, not a graph
+> database" carry over to ADR 0014.
 
 ## Context
 
