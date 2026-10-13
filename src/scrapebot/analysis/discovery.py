@@ -47,6 +47,7 @@ class Scorecard(BaseModel):
     stores: int
     with_website: int
     confirmed: int  # found by two or more sources
+    read_before: int = 0  # found again, but a run had read them: left out of the visit
     cost_usd: float  # the discovery's own estimate
     countries: list[str]
     # Against the stockist list; all zero or None when there is no list.
@@ -137,6 +138,7 @@ def score(discovery: Path, stockists: list[Customer], run: Path | None = None) -
         stores=len(stores),
         with_website=sum(bool(s.get("website")) for s in stores),
         confirmed=sum(len(s.get("sources") or []) >= 2 for s in stores),
+        read_before=report.get("stores_read_before", 0),
         cost_usd=report.get("cost_usd")
         or round(sum(s.get("cost_usd", 0.0) for s in report.get("sources", [])), 6),
         countries=countries,

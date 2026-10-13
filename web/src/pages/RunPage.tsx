@@ -278,6 +278,8 @@ function QualityCard({ quality: q }: { quality: Scorecard }) {
         {q.stockists_known > 0 &&
           `${percent(q.stockist_share)} of the stores found already carry Wooden Ships: the higher, the closer the search came to stores like our stockists. `}
         A store that is not a stockist is not wrong: it is the prospect the search is for.
+        {(q.read_before ?? 0) > 0 &&
+          ` ${plural(q.read_before ?? 0, "store")} the search found had been scraped before and were left out.`}
         {(q.missing_examples ?? []).length > 0 && ` No website at: ${(q.missing_examples ?? []).join(", ")}.`}
         {q.cost_per_final_store != null && ` Search cost per final store: ${formatUsd(q.cost_per_final_store)}.`}
       </p>

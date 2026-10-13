@@ -126,6 +126,7 @@ describe("RunDetail", () => {
       stores: 26,
       with_website: 24,
       confirmed: 5,
+      read_before: 0,
       cost_usd: 0.4,
       countries: ["US"],
       stockists_known: 499,

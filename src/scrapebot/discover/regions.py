@@ -104,6 +104,9 @@ DEFAULT_REGION = "north_america"
 STORES_PER_AGENT_RUN = 8
 MAX_AGENT_RUNS = 40
 AGENT_USD_PER_RUN = 0.12
+# A search for new stores gets this many times the agent runs: part of every answer is
+# stores read before, which do not count.
+NEW_ONLY_RUNS = 1.5
 
 
 def discover_config(
@@ -115,12 +118,15 @@ def discover_config(
     base: DiscoverConfig | None = None,
     agent_fallbacks: Sequence[str] = (),
     place: Region | None = None,
+    new_only: bool = False,
 ) -> DiscoverConfig:
     """Discovery settings for 'find `count` stores selling `items` in a region', or in
-    `place` when the operator named one that is not in the list."""
+    `place` when the operator named one that is not in the list. `new_only`: stores read
+    before will not count, so the agent may ask more often."""
     region = place or REGIONS[region_key]
     phrase = search_phrase(items, terms)
-    runs = min(MAX_AGENT_RUNS, math.ceil(count / STORES_PER_AGENT_RUN) + 1)
+    runs = math.ceil(count / STORES_PER_AGENT_RUN) + 1
+    runs = min(MAX_AGENT_RUNS, math.ceil(runs * NEW_ONLY_RUNS) if new_only else runs)
     store_words = [_store_query(i, terms) for i in items] or ["sweater boutique"]
     store_words = list(dict.fromkeys(w for group in store_words for w in group))
     data = (base or DiscoverConfig()).model_dump()

@@ -214,6 +214,35 @@ def is_transient(exc: BaseException) -> bool:
     return isinstance(_root_cause(exc), passing)
 
 
+# "Please try again in 5.333s", "Please retry in 1m12s": what a provider says with a 429.
+_TRY_AGAIN = re.compile(r"(?:try again|retry) in\s+(?:(\d+)\s*m\s*)?([\d.]+)\s*(ms|s)", re.I)
+# A 429 that waiting cannot cure: the account has nothing left to spend.
+_SPENT = ("insufficient_quota", "exceeded your current quota", "check your plan and billing")
+DEFAULT_RATE_LIMIT_WAIT = 20.0
+MAX_RATE_LIMIT_WAIT = 65.0  # per-minute limits clear within a minute
+
+
+def is_rate_limit(exc: BaseException) -> bool:
+    from litellm import exceptions as errors
+
+    return isinstance(_root_cause(exc), errors.RateLimitError)
+
+
+def rate_limit_wait(exc: BaseException) -> float | None:
+    """How long to wait before asking again after a rate limit, in seconds: the
+    provider's own figure when it gives one. None when waiting cannot help, because the
+    account's quota is spent."""
+    text = str(_root_cause(exc))
+    if any(mark in text.lower() for mark in _SPENT):
+        return None
+    found = _TRY_AGAIN.search(text)
+    if not found:
+        return DEFAULT_RATE_LIMIT_WAIT
+    minutes, amount, unit = found.groups()
+    seconds = int(minutes or 0) * 60 + float(amount) / (1000 if unit.lower() == "ms" else 1)
+    return min(seconds + 1, MAX_RATE_LIMIT_WAIT)  # a second more: clocks differ
+
+
 def explain_error(exc: BaseException) -> str:
     """A provider error in plain words for the operator (PRD LM-05), never the key."""
     from litellm import exceptions as errors

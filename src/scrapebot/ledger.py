@@ -26,6 +26,9 @@ LEDGER_FILE = "ledger.sqlite"
 # A store that was read, with or without a catalogue, stays as it is for a while. One
 # that was blocked, rate-limited or failed is worth another visit.
 REUSABLE = ("ok", "no_products")
+# A visit that says something about the store itself. An error or a rate limit says
+# nothing, so the store still counts as new to a search.
+SETTLED = (*REUSABLE, "blocked", "js_required")
 LOAD_AT_ONCE = 10  # stores of one run held in memory together while they are loaded
 _DOMAIN = re.compile(r'\{"run_id":"[^"]*","domain":"([^"]*)"')
 
@@ -132,6 +135,22 @@ class Ledger:
             if visit.domain in wanted and self._has_rows(visit.run_id):
                 found[visit.domain] = visit
         return found
+
+    def settled(self, max_age_days: float, now: datetime | None = None) -> list[str]:
+        """The stores a run visited in the last `max_age_days` and got an answer from:
+        read, blocked, or needing a browser. Newest visit first; 0 days gives none. A
+        search for new stores leaves these out (ADR 0013)."""
+        if not max_age_days:
+            return []
+        cutoff = (now or datetime.now(UTC)) - timedelta(days=max_age_days)
+        marks = ", ".join("?" for _ in SETTLED)
+        with closing(self._connect()) as db:
+            rows = db.execute(
+                f"SELECT domain, MAX(fetched_at) AS seen FROM visits "
+                f"WHERE status IN ({marks}) AND fetched_at >= ? GROUP BY domain ORDER BY seen DESC",
+                (*SETTLED, cutoff.isoformat(timespec="seconds")),
+            ).fetchall()
+        return [domain for domain, _ in rows]
 
     def _has_rows(self, run_id: str) -> bool:
         return (self.runs_dir / run_id / "tables" / "stores.jsonl").exists()

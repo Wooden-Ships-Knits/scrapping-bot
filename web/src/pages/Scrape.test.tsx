@@ -172,6 +172,7 @@ function discovery(overrides = {}) {
     step: "ai_agent",
     found: 12,
     stores_to_visit: 0,
+    read_before: 0,
     sources: [],
     cost_usd: 0,
     run_id: null,
@@ -258,12 +259,16 @@ describe("Scrape: find stores", () => {
             state: "done",
             sources: [{ name: "ai_agent", status: "ok", found: 12, error: "", notes: [note], cost_usd: 0.31 }],
             cost_usd: 0.326,
+            read_before: 62,
           }) as Discovery
         }
       />,
     );
     expect(screen.getByTestId("discovery-notes")).toHaveTextContent(`AI agent: ${note}`);
     expect(screen.getByTestId("discovery-cost")).toHaveTextContent("Estimated API cost of this search: US$0.33");
+    expect(screen.getByTestId("discovery-read-before")).toHaveTextContent(
+      "62 stores found had been scraped before: left out, not counted.",
+    );
   });
 
   it("says what a search can cost before it starts", async () => {
@@ -332,7 +337,9 @@ describe("Scrape: find stores", () => {
     const user = userEvent.setup();
     render(<Scrape />);
     const find = await screen.findByRole("button", { name: "Find stores & start scraping" });
-    await user.click(screen.getByRole("checkbox", { name: /Scrape again stores already read in the last 30 days/ }));
+    await user.click(
+      screen.getByRole("checkbox", { name: /Include stores already scraped in the last 30 days, and scrape them again/ }),
+    );
     await waitFor(() => expect(find).toBeEnabled());
     await user.click(find);
     await waitFor(() => expect(calls.find((c) => c.url === "/api/discover")?.body).toMatchObject({ rescrape: true }));

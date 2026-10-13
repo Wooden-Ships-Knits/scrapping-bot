@@ -26,6 +26,14 @@ to revisit once history across runs was needed, starting with SQLite.
   case. `stores.reused_from` names the run the rows came from and `fetched_at` stays the
   day the store was really read. Focus items are matched again with the new run's
   settings. A store that was blocked, rate-limited or failed is always visited.
+- **A search is for new stores (added 2026-10-13).** Asking a search for 100 stores
+  means 100 stores no run has an answer about yet. Stores visited in the window (read,
+  blocked, or needing a browser; not an error or a rate limit, which say nothing) are
+  left out of the visit list and do not count toward the number asked for; the agent
+  is given their websites and asked for others, and may ask half as often again. They
+  stay in `stores.csv`, and the search says how many it left out. Ticking "Include
+  stores already scraped" counts them and scrapes them again. Loading applies to a run
+  on links the operator supplies, where the list is the operator's choice.
 - **The operator is told and can refuse.** The preview says how many stores were read
   before and when; the run page and the report say how many were loaded. "Scrape them
   again anyway" in the interface, `--rescrape` on the command line and

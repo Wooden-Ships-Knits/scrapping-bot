@@ -90,7 +90,7 @@ export function Scrape() {
     let cancelled = false;
     const timer = setTimeout(() => {
       api
-        .discoverEstimate(estimateCount, form.region, form.place)
+        .discoverEstimate(estimateCount, form.region, form.place, form.rescrape)
         .then((e) => !cancelled && setEstimate(e))
         .catch(() => !cancelled && setEstimate(null));
     }, PREVIEW_DELAY_MS);
@@ -98,7 +98,7 @@ export function Scrape() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [mode, estimateCount, form.region, form.place]);
+  }, [mode, estimateCount, form.region, form.place, form.rescrape]);
 
   // Follow a discovery until its run starts, then open that run.
   const discoveryId = discovery?.discovery_id;

@@ -20,7 +20,7 @@ import json
 import logging
 import re
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -32,14 +32,16 @@ from ..llm.gateway import (
     cost_of,
     explain_error,
     is_local,
+    is_rate_limit,
     is_transient,
     key_for,
+    rate_limit_wait,
     usage_of,
 )
 from ..models import LLMCall
 from . import geo
 from .config import DiscoverConfig
-from .merge import Candidate, name_key
+from .merge import Candidate, name_key, store_website
 from .paid import ApiError, read_cached, write_cached
 
 log = logging.getLogger(__name__)
@@ -53,7 +55,7 @@ What counts: independent boutiques, multi-brand clothing stores, and online stor
 sell {items} to consumers, located in or shipping from: {countries}.
 What does not count: marketplaces (Amazon, Etsy, eBay), department-store chains, yarn or \
 knitting-supply shops, wholesalers, and brands' own sites that have no shop.
-{exclude}
+{exclude}{known}
 Search the web several times with different wording, including searches of Instagram and \
 Facebook, where many small boutiques only have a profile. Read the results and collect as \
 many real stores as you can find (aim for 20 or more). Only report a store you actually \
@@ -66,6 +68,8 @@ code) and note (one short line: what it sells and where you saw it). Use an empt
 for anything unknown."""
 # Names of stores already found, sent so the next run looks for new ones.
 MAX_EXCLUDED_NAMES = 80
+# Websites of stores read before, sent so the model spends its answer on new ones.
+MAX_KNOWN_WEBSITES = 150
 
 Completion = Callable[..., Any]
 
@@ -79,6 +83,10 @@ AGENT_MODELS = (
 )
 # A failure that may pass is tried once more after this wait, then the next model is used.
 RETRY_DELAY_SECONDS = 3.0
+# A rate limit is waited out, as long as the provider says, this many times per task:
+# search models have small per-minute token limits, and a search asks several times a
+# minute. Measured 2026-10-13: 45,000 tokens a minute, about two asks.
+RATE_LIMIT_WAITS = 2
 # With no model left to take over, the agent stops after this many failed tasks in a row.
 MAX_FAILED_TASKS = 2
 # Gemini counts its thinking against max_tokens and, unless told otherwise, thinks as
@@ -181,8 +189,13 @@ class AgentSource:
         cache_dir: Path,
         completion: Completion | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        known: Collection[str] = (),
     ):
         self.config = config
+        # Domains of stores read before, newest first. They do not count toward the
+        # target, and the model is asked for others.
+        self.known = list(dict.fromkeys(known))
+        self._known = set(self.known)
         self.opts = config.ai_agent
         self.keys = keys
         # The models that can answer, in order. One without its key is passed over.
@@ -221,8 +234,15 @@ class AgentSource:
         return tasks
 
     def stores_found(self) -> int:
-        """Distinct stores with a website so far: what a target counts."""
-        return len({name_key(c.name) for c in self.found if c.website})
+        """Distinct stores with a website so far, without those read before: what a
+        target counts."""
+        return len(
+            {
+                name_key(c.name)
+                for c in self.found
+                if c.website and store_website(c.website) not in self._known
+            }
+        )
 
     def _prompt(self, task: str) -> str:
         names = list(dict.fromkeys(c.name for c in self.found))[-MAX_EXCLUDED_NAMES:]
@@ -231,11 +251,19 @@ class AgentSource:
             if names
             else ""
         )
+        known = (
+            "These websites are already known; do not report their stores: "
+            + "; ".join(self.known[:MAX_KNOWN_WEBSITES])
+            + "\n"
+            if self.known
+            else ""
+        )
         return PROMPT.format(
             items=search_phrase(self.config.items, self.config.terms),
             task=task,
             countries=" / ".join(self.config.countries),
             exclude=exclude,
+            known=known,
         )
 
     def run(self, progress: Callable[[int], None] | None = None) -> None:
@@ -321,10 +349,11 @@ class AgentSource:
         return True
 
     def _call(self, prompt: str) -> str | None:
-        """The answer of the model in use. A failure that may pass is tried once more;
-        after that, or at once when it cannot pass, the next model takes over. With none
-        left the task is skipped, and the agent stops when that keeps happening."""
-        retried = False
+        """The answer of the model in use. A rate limit is waited out as long as the
+        provider asks; another failure that may pass is tried once more. After that, or
+        at once when it cannot pass, the next model takes over. With none left the task
+        is skipped, and the agent stops when that keeps happening."""
+        retried, waits = False, 0
         while True:
             started = time.monotonic()
             try:
@@ -341,12 +370,20 @@ class AgentSource:
                     )
                 )
                 passing = is_transient(exc)
-                if passing and not retried:
+                if is_rate_limit(exc):
+                    wait = rate_limit_wait(exc)
+                    if wait is not None and waits < RATE_LIMIT_WAITS:
+                        waits += 1
+                        self._note(f"{self.model}: rate limit reached; waited and asked again.")
+                        log.info("ai_agent: rate limit, waiting %.0f s", wait)
+                        self._sleep(wait)
+                        continue
+                elif passing and not retried:
                     retried = True
                     self._sleep(RETRY_DELAY_SECONDS)
                     continue
                 if self._next_model(message):
-                    retried = False
+                    retried, waits = False, 0
                     continue
                 self._failed_tasks += 1
                 if not passing or self._failed_tasks >= MAX_FAILED_TASKS:

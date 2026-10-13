@@ -178,6 +178,12 @@ nothing new, or a cap is hit. The stores with a website (the ones most sources a
 first) become `to_visit.csv`, and a run starts on all of them; `GET /api/discover/{id}`
 reports progress until then. One discovery runs at a time, in its own thread.
 
+A search is for new stores: `POST /api/discover` asks the ledger (`ledger.settled`) for
+the stores a run visited in the last `fetch.reuse_days` days and passes their domains
+to `run_discover(known=...)`. They do not count toward the number asked for, the agent
+is told their websites, and `stores_to_visit` leaves them out; `rescrape: true` turns
+this off and scrapes them again (ADR 0013).
+
 The search can also be written in words ("cashmere and knitwear boutiques in Las
 Vegas"). `POST /api/discover/interpret` (`discover/request.py`) asks the run's LLM once
 to turn it into the form's settings: items, keywords, a region or one named place with

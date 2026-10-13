@@ -35,6 +35,7 @@ from ..extract.focus import ITEMS as FOCUS_ITEMS
 from ..inputs.readers import SUPPORTED_SUFFIXES, InputError
 from ..inputs.resolve import DUPLICATE, resolve
 from ..keys import load_keys
+from ..ledger import Ledger
 from ..llm.gateway import (
     KEY_VARIABLES,
     Budget,
@@ -332,6 +333,13 @@ def create_app(
             "ai_agent": bool(pick_agent_model(keys)),
         }
 
+    def left_out(rescrape: bool) -> list[str]:
+        """The stores a search leaves out, newest first: those a run read in the last
+        `fetch.reuse_days` days (ADR 0013). None when the operator asks for them to be
+        scraped again: a search is for new stores unless told otherwise."""
+        days = 0 if rescrape else settings.base.fetch.reuse_days
+        return Ledger(runs_dir).settled(days) if days else []
+
     def prompt_model(keys: dict[str, SecretStr]) -> str:
         """The model that reads a search written in words: the run's own LLM, when its
         key is set."""
@@ -396,6 +404,7 @@ def create_app(
         count: Annotated[int, Query(ge=1, le=MAX_DISCOVER_COUNT)],
         region: str = DEFAULT_REGION,
         place: Annotated[str, Query(max_length=60)] = "",
+        rescrape: bool = False,
     ) -> DiscoverEstimateOut:
         """What finding `count` stores and reading them can cost at most, before any of
         it is spent: each source's cap at list price, plus the run's LLM stage."""
@@ -411,6 +420,7 @@ def create_app(
             pick_agent_model(keys),
             agent_fallbacks=models[1:],
             place=place_region(place, "US") if place else None,  # the country costs nothing
+            new_only=bool(left_out(rescrape)),
         )
         lines = [CostLineOut(**line.model_dump()) for line in estimate(config, keys)]
         llm = settings.base.llm
@@ -433,6 +443,7 @@ def create_app(
         if OTHER in body.items and not any(t.strip() for t in body.terms):
             raise ApiError(422, "terms_required", "Give keywords for the item Other.")
         keys = load_keys(settings.env_file)
+        known = left_out(body.rescrape)
         if not any(discovery_sources(keys).values()):
             raise ApiError(
                 422,
@@ -450,6 +461,7 @@ def create_app(
                 pick_agent_model(keys),
                 agent_fallbacks=agent_models(keys)[1:],
                 place=place_region(place, country) if place else None,
+                new_only=bool(known),
             ).model_copy(
                 update={"out_dir": settings.discover_dir, "cache_dir": settings.discover_cache_dir}
             )
@@ -469,7 +481,7 @@ def create_app(
             manager.submit(prepared, keys)
             return prepared.run_id
 
-        return finder.submit(config, keys, start_run).out()
+        return finder.submit(config, keys, start_run, known).out()
 
     @app.get("/api/discover/{discovery_id}")
     def discovery(discovery_id: str) -> DiscoveryOut:

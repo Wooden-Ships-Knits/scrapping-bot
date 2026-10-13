@@ -12,7 +12,7 @@ A source without its key is skipped and the others still run (PRD section 9).
 import csv
 import json
 import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -24,7 +24,15 @@ from .. import __version__
 from .agent import AgentSource, Completion
 from .config import DiscoverConfig
 from .costs import request_cost
-from .merge import EXPORT_COLUMNS, Candidate, FoundStore, export_row, fold_by_website, merge
+from .merge import (
+    EXPORT_COLUMNS,
+    Candidate,
+    FoundStore,
+    export_row,
+    fold_by_website,
+    merge,
+    store_website,
+)
 from .paid import ApiError, BudgetReached, PaidApi, Transport
 from .places import PlacesSource
 from .search import SocialSearchSource, WebSearchSource, WebsiteLookup
@@ -58,6 +66,7 @@ class DiscoverResult:
     sources: list[SourceReport]
     websites_looked_up: int
     lookup_cost_usd: float = 0.0  # the website lookup's requests, at list price
+    known: int = 0  # stores found that a run read before: left out of a new-stores search
 
     @property
     def with_website(self) -> int:
@@ -109,8 +118,9 @@ def _run_agent(
     report: SourceReport,
     progress: Progress | None,
     found_before: int,
+    known: Collection[str] = (),
 ) -> list[Candidate]:
-    agent = AgentSource(config, keys, config.cache_dir, completion=completion)
+    agent = AgentSource(config, keys, config.cache_dir, completion=completion, known=known)
     if not agent.model:
         report.status = "disabled"
         report.notes = ["ai_agent.model is empty"]
@@ -165,8 +175,13 @@ def run_discover(
     transport: Transport | None = None,
     completion: Completion | None = None,
     progress: Progress | None = None,
+    known: Collection[str] = (),
 ) -> DiscoverResult:
+    """`known` holds the domains of stores read before. Given, the search is for new
+    stores: those do not count toward `target_stores` and are left out of the visit
+    list (`stores_to_visit`), though they stay in stores.csv with the rest."""
     started = datetime.now(UTC)
+    known_set = frozenset(known)
     discovery_id = started.strftime("%Y%m%dT%H%M%SZ")
     root = config.out_dir / discovery_id
     root.mkdir(parents=True, exist_ok=True)
@@ -183,7 +198,9 @@ def run_discover(
             report.status = "disabled"
             continue
         if name == "ai_agent":
-            candidates += _run_agent(config, keys, completion, report, progress, len(candidates))
+            candidates += _run_agent(
+                config, keys, completion, report, progress, len(candidates), known
+            )
             continue
         key = _secret(keys, SOURCE_KEYS[name])
         if not key:
@@ -237,6 +254,7 @@ def run_discover(
         ),
         "candidates": len(candidates),
         "stores": len(stores),
+        "stores_read_before": sum(is_known(s, known_set) for s in stores),
         "stores_with_website": sum(bool(s.website) for s in stores),
     }
     report_path = root / "report.json"
@@ -250,13 +268,23 @@ def run_discover(
         sources=reports,
         websites_looked_up=looked_up,
         lookup_cost_usd=request_cost("resolve", lookup_api.sent),
+        known=sum(is_known(s, known_set) for s in stores),
     )
 
 
-def stores_to_visit(stores: list[FoundStore], count: int | None) -> list[FoundStore]:
-    """The stores a run should visit: those with a website, at most `count`, in the order
-    the sources found them most often (stores several sources agree on first)."""
-    with_site = [s for s in stores if s.website]
+def is_known(store: FoundStore, known: Collection[str]) -> bool:
+    """Whether a found store is one a run read before, by its website's domain."""
+    return bool(store.website) and store_website(store.website) in known
+
+
+def stores_to_visit(
+    stores: list[FoundStore], count: int | None, known: Collection[str] = ()
+) -> list[FoundStore]:
+    """The stores a run should visit: those with a website and not read before, at most
+    `count`, in the order the sources found them most often (stores several sources
+    agree on first)."""
+    known = frozenset(known)
+    with_site = [s for s in stores if s.website and not is_known(s, known)]
     with_site.sort(key=lambda s: -len(s.sources))
     return with_site[:count] if count else with_site
 

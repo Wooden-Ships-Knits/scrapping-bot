@@ -137,15 +137,53 @@ def test_one_click_finds_stores_then_runs_all_of_them(client):
     assert cher["matched_items"] == ["knitwear"]
 
 
-def test_a_search_can_ask_to_scrape_again_stores_read_before(client):
+def test_a_search_counts_only_new_stores_unless_asked_to_include_the_old(client):
+    """ADR 0013: the agent names Monkees, The Boutique and Third Shop every time."""
     assert client.get("/api/discover/options").json()["reuse_days"] == 30
-    for rescrape, days in ((False, 30), (True, 0)):
-        found = wait_for_discovery(
-            client, discover(client, rescrape=rescrape).json()["discovery_id"]
-        )
-        run = wait_until_finished(client, found["run_id"])
-        assert run["config"]["fetch"]["reuse_days"] == days
-    assert run["reused_stores"] == 0, "asked to scrape again: nothing was loaded"
+
+    def search(**body):
+        found = wait_for_discovery(client, discover(client, **body).json()["discovery_id"])
+        assert found["state"] == "done", found["error"]
+        return found, wait_until_finished(client, found["run_id"])
+
+    first, run = search()
+    assert (first["read_before"], first["stores_to_visit"]) == (0, 2)
+    assert {s["domain"] for s in run["stores"]} == {"monkees.com", "boutique.com"}
+
+    again, run = search()
+    assert (again["state"], again["read_before"], again["stores_to_visit"]) == ("done", 2, 1)
+    assert [s["domain"] for s in run["stores"]] == ["thirdshop.com"], "the one not read before"
+    assert run["reused_stores"] == 0, "nothing old is loaded into a search for new stores"
+    known = client.agent_calls[-1]["messages"][0]["content"]  # type: ignore[attr-defined]
+    assert "These websites are already known; do not report their stores:" in known
+    assert "monkees.com" in known
+
+    def agent_cap(**params):
+        got = client.get("/api/discover/estimate", params={"count": 100, **params}).json()
+        return next(line["max_usd"] for line in got["lines"] if line["name"] == "ai_agent")
+
+    assert (agent_cap(), agent_cap(rescrape=True)) == (2.52, 1.68), (
+        "a search for new stores may ask half as often again: part of each answer is old"
+    )
+
+    included, run = search(rescrape=True)
+    assert (included["read_before"], included["stores_to_visit"]) == (0, 2)
+    assert run["config"]["fetch"]["reuse_days"] == 0
+    assert run["reused_stores"] == 0, "asked to scrape again: visited, not loaded"
+
+
+def test_a_search_that_finds_only_stores_read_before_says_so(tmp_path):
+    def only_two(**kwargs):
+        stores = json.loads(AGENT_ANSWER)[:2]
+        return litellm.completion(mock_response=json.dumps(stores), **kwargs)
+
+    app, _ = make_client(tmp_path, "OPENAI_API_KEY=sk-test-0123456789abcdef\n", only_two)
+    with TestClient(app) as c:
+        first = wait_for_discovery(c, discover(c).json()["discovery_id"])
+        wait_until_finished(c, first["run_id"])
+        again = wait_for_discovery(c, discover(c).json()["discovery_id"])
+        assert (again["state"], again["read_before"], again["run_id"]) == ("failed", 2, None)
+        assert again["error"].startswith("Every store with a website that was found has been")
 
 
 def test_other_needs_its_words(client):

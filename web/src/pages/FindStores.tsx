@@ -18,7 +18,9 @@ export type FindForm = {
   region: string;
   items: string[];
   terms: string;
-  rescrape: boolean; // visit stores a run read recently too, instead of loading their data
+  // Stores a run read recently: a search leaves them out and counts only new ones, a run
+  // on pasted links loads their data. True scrapes them again in both cases.
+  rescrape: boolean;
   prompt: string; // the search in the operator's own words; it only fills in this form
   place: string; // one named place ("Las Vegas, NV") instead of a region; "" uses `region`
   country: string; // the place's country code
@@ -184,8 +186,11 @@ export function FindStoresFields({
             onChange={(e) => onChange({ ...form, rescrape: e.target.checked })}
           />
           <span>
-            Scrape again stores already read in the last {formatNumber(options.reuse_days)} days
-            <span className="muted small"> (otherwise their data is loaded: no requests, no LLM cost)</span>
+            Include stores already scraped in the last {formatNumber(options.reuse_days)} days, and scrape them again
+            <span className="muted small">
+              {" "}
+              (otherwise the search is for new stores only: those are skipped and not counted)
+            </span>
           </span>
         </label>
       )}
@@ -232,7 +237,12 @@ export function DiscoveryCard({ discovery }: { discovery: Discovery }) {
           </p>
         )}
         {discovery.state === "starting_run" && (
-          <p className="muted">{plural(discovery.stores_to_visit, "store")} handed to the run…</p>
+          <p className="muted">{plural(discovery.stores_to_visit, "new store")} handed to the run…</p>
+        )}
+        {discovery.read_before > 0 && (
+          <p className="muted small" data-testid="discovery-read-before">
+            {plural(discovery.read_before, "store")} found had been scraped before: left out, not counted.
+          </p>
         )}
         {failed && (
           <div className="notice bad" role="alert">

@@ -83,10 +83,11 @@ export const api = {
   },
   startRun: (body: RunRequest) => request<Run>("/api/runs", json(body)),
   discoverOptions: () => request<DiscoverOptions>("/api/discover/options"),
-  discoverEstimate: (count: number, region: string, place = "") =>
+  discoverEstimate: (count: number, region: string, place = "", rescrape = false) =>
     request<DiscoverEstimate>(
       `/api/discover/estimate?count=${count}&region=${encodeURIComponent(region)}` +
-        (place ? `&place=${encodeURIComponent(place)}` : ""),
+        (place ? `&place=${encodeURIComponent(place)}` : "") +
+        (rescrape ? "&rescrape=true" : ""),
     ),
   interpret: (prompt: string) => request<Interpreted>("/api/discover/interpret", json({ prompt })),
   startDiscovery: (body: DiscoverRequest) => request<Discovery>("/api/discover", json(body)),

@@ -610,6 +610,8 @@ export interface components {
             error: string;
             /** Found */
             found: number;
+            /** Read Before */
+            read_before: number;
             /** Run Id */
             run_id: string | null;
             /** Sources */
@@ -1100,6 +1102,11 @@ export interface components {
             precision?: number | null;
             /** Read */
             read?: number | null;
+            /**
+             * Read Before
+             * @default 0
+             */
+            read_before: number;
             /** Recall */
             recall: number | null;
             /**

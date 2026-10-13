@@ -287,7 +287,14 @@ Successful responses are cached in `data/.cache`, so re-runs are near-instant.
 Failures (timeouts, 429, 5xx) are never cached, so a re-run retries them. Delete the
 cache to force fresh fetches.
 
-**A store read in the last 30 days is loaded, not visited again** (ADR 0013). Its rows
+**A search finds new stores.** Ask *Find stores* for 100 and it looks for 100 stores no
+run has visited in the last 30 days: the ones already scraped are left out and not
+counted, and the search says how many. Tick "Include stores already scraped in the last
+30 days, and scrape them again" to count them and visit them again. If fewer new stores
+exist than you asked for, the run starts with the ones found.
+
+**In a run on your own links, a store read in the last 30 days is loaded, not visited
+again** (ADR 0013). Its rows
 come from the run that read it, marked with `stores.reused_from` and that run's
 `fetched_at`: no requests to the store, no LLM cost. The preview says how many stores
 were read before, the run page and the report how many were loaded. Stores that were

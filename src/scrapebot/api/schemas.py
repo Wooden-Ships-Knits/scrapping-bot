@@ -205,7 +205,9 @@ class DiscoverIn(_In):
     items: list[str] = Field(min_length=1)
     terms: list[str] = Field(default_factory=list)  # the operator's own words, item "other"
     writers: list[str] = Field(min_length=1)
-    rescrape: bool = False  # visit stores a run read recently too (ADR 0013)
+    # False: the search is for new stores; those a run read recently are not counted and
+    # not visited. True: they count, and are scraped again (ADR 0013).
+    rescrape: bool = False
     # One named place instead of a region ("Las Vegas, NV"), with its country code: what a
     # request in the operator's own words gives. `region` is then not used.
     place: str = Field(default="", max_length=60)
@@ -244,7 +246,8 @@ class DiscoveryOut(BaseModel):
     count: int  # stores asked for
     step: str  # the source being searched now; "" when none
     found: int  # stores or sightings so far
-    stores_to_visit: int  # stores with a website handed to the run
+    stores_to_visit: int  # new stores with a website handed to the run
+    read_before: int  # stores found that a run read recently: left out, not counted
     sources: list[DiscoverySourceOut]
     cost_usd: float  # every source and the website lookup, estimated at list prices
     run_id: str | None
