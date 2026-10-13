@@ -35,6 +35,12 @@ cares about knitwear.
 - **Every paid call is capped and cached.** Each source has a hard request cap; the
   agent has a cost cap. Successful answers are cached on disk without the key, so a
   repeated discovery costs nothing. A source without its key is skipped.
+- **A search can be written in words (added 2026-10-13).** One small model call turns
+  "cashmere and knitwear in Las Vegas" into the form's settings, which the operator sees
+  before paying for a search. The request is quoted data, the answer has a fixed shape,
+  and anything that is not a store, brand, product or wholesale research request is
+  refused with one message, a plainly unrelated one without a model call
+  (`discover/request.py`). A fixed list of such requests is tested (negative tests).
 - **The agent has a second model (added 2026-10-13).** When its model fails (quota, a
   refused key, a busy server), the next of `ai_agent.fallbacks` takes over for the rest
   of the search and the report says so. The interface puts Gemini first, because its

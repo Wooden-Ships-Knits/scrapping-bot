@@ -206,6 +206,27 @@ class DiscoverIn(_In):
     terms: list[str] = Field(default_factory=list)  # the operator's own words, item "other"
     writers: list[str] = Field(min_length=1)
     rescrape: bool = False  # visit stores a run read recently too (ADR 0013)
+    # One named place instead of a region ("Las Vegas, NV"), with its country code: what a
+    # request in the operator's own words gives. `region` is then not used.
+    place: str = Field(default="", max_length=60)
+    country: str = ""
+
+
+class InterpretIn(_In):
+    prompt: str  # a search in the operator's own words
+
+
+class InterpretOut(BaseModel):
+    """A request as form settings; the operator sees them before anything is searched."""
+
+    items: list[str]
+    terms: list[str]
+    region: str  # "" when a place was named, or none at all
+    place: str
+    country: str
+    count: int | None
+    cost_usd: float  # what reading the request came to (estimated)
+    cached: bool  # the same request was read before: no call was made
 
 
 class DiscoverySourceOut(BaseModel):
@@ -240,6 +261,8 @@ class DiscoverOptionsOut(BaseModel):
     agent_fallbacks: list[str]  # take over in order when `agent_model` fails
     sources: dict[str, bool]  # source -> its key is set
     reuse_days: float  # a store read this recently is loaded, not visited again; 0: off
+    prompt_model: str  # reads a search written in words; "" when its key is not set
+    max_prompt_chars: int
 
 
 class CostLineOut(BaseModel):

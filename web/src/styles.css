@@ -1517,6 +1517,39 @@ input:not([type]) {
   gap: 0.15rem 0.75rem;
 }
 
+.find-prompt-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.find-prompt-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.find-prompt > label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.find-place {
+  padding: 0.45rem 0;
+  font-size: 0.85rem;
+}
+
+.link-button {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.find-prompt,
 .find-sources,
 .find-rescrape,
 .find-estimate {

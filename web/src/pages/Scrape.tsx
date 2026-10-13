@@ -23,9 +23,17 @@ import {
   type Upload,
 } from "../api/client";
 import { Menu } from "../components/ui/Menu";
-import { formatNumber, formatTime, plural, skipReason, writerLabel } from "../labels";
+import { formatNumber, formatTime, itemLabel, plural, regionLabel, skipReason, writerLabel } from "../labels";
 import { navigate } from "../router";
-import { DiscoveryCard, FindStoresFields, OTHER, parseCount, parseTerms, type FindForm } from "./FindStores";
+import {
+  DiscoveryCard,
+  FindStoresFields,
+  OTHER,
+  parseCount,
+  parseTerms,
+  type FindForm,
+  type PromptNote,
+} from "./FindStores";
 
 const PREVIEW_DELAY_MS = 400;
 const DISCOVERY_POLL_MS = 1000;
@@ -45,7 +53,18 @@ export function Scrape() {
   const fileInput = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<Mode>("links");
   const [findOptions, setFindOptions] = useState<DiscoverOptions | null>(null);
-  const [form, setForm] = useState<FindForm>({ count: "20", region: "", items: [], terms: "", rescrape: false });
+  const [form, setForm] = useState<FindForm>({
+    count: "20",
+    region: "",
+    items: [],
+    terms: "",
+    rescrape: false,
+    prompt: "",
+    place: "",
+    country: "",
+  });
+  const [interpreting, setInterpreting] = useState(false);
+  const [promptNote, setPromptNote] = useState<PromptNote | null>(null);
   const [discovery, setDiscovery] = useState<Discovery | null>(null);
   const [estimate, setEstimate] = useState<DiscoverEstimate | null>(null);
 
@@ -71,7 +90,7 @@ export function Scrape() {
     let cancelled = false;
     const timer = setTimeout(() => {
       api
-        .discoverEstimate(estimateCount, form.region)
+        .discoverEstimate(estimateCount, form.region, form.place)
         .then((e) => !cancelled && setEstimate(e))
         .catch(() => !cancelled && setEstimate(null));
     }, PREVIEW_DELAY_MS);
@@ -79,7 +98,7 @@ export function Scrape() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [mode, estimateCount, form.region]);
+  }, [mode, estimateCount, form.region, form.place]);
 
   // Follow a discovery until its run starts, then open that run.
   const discoveryId = discovery?.discovery_id;
@@ -167,6 +186,37 @@ export function Scrape() {
     !busy &&
     !discovering;
 
+  // Read the described search and fill in the form. Nothing is searched here: the
+  // operator checks the fields, then starts.
+  async function onInterpret() {
+    if (!findOptions || !form.prompt.trim()) return;
+    setInterpreting(true);
+    setPromptNote(null);
+    try {
+      const got = await api.interpret(form.prompt);
+      const count = got.count ? Math.min(got.count, findOptions.max_count) : null;
+      setForm((f) => ({
+        ...f,
+        count: count ? String(count) : f.count,
+        items: got.items.length ? got.items : f.items,
+        terms: got.terms.length ? got.terms.join(", ") : f.terms,
+        region: got.region || f.region,
+        place: got.region ? "" : got.place || f.place,
+        country: got.region ? "" : got.place ? got.country : f.country,
+      }));
+      const parts = [
+        got.items.map((i) => (i === OTHER ? got.terms.join(", ") : itemLabel(i))).join(", "),
+        got.place ? `${got.place} (${got.country})` : got.region ? regionLabel(got.region) : "",
+        count ? plural(count, "store") : "",
+      ].filter(Boolean);
+      setPromptNote({ ok: true, text: `Understood: ${parts.join(" · ")}. Check the fields below, then start.` });
+    } catch (e) {
+      setPromptNote({ ok: false, text: message(e) });
+    } finally {
+      setInterpreting(false);
+    }
+  }
+
   async function onFind() {
     if (!canFind || findCount === null) return;
     setBusy(true);
@@ -180,6 +230,8 @@ export function Scrape() {
           terms: form.items.includes(OTHER) ? findTerms : [],
           writers,
           rescrape: form.rescrape,
+          place: form.place,
+          country: form.country,
         }),
       );
     } catch (e) {
@@ -249,7 +301,15 @@ export function Scrape() {
           </div>
         )}
         {mode === "find" && findOptions ? (
-          <FindStoresFields options={findOptions} form={form} estimate={estimate} onChange={setForm} />
+          <FindStoresFields
+            options={findOptions}
+            form={form}
+            estimate={estimate}
+            onChange={setForm}
+            onInterpret={onInterpret}
+            interpreting={interpreting}
+            promptNote={promptNote}
+          />
         ) : (
           <>
             <div className="card-head">

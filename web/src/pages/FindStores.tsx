@@ -19,7 +19,13 @@ export type FindForm = {
   items: string[];
   terms: string;
   rescrape: boolean; // visit stores a run read recently too, instead of loading their data
+  prompt: string; // the search in the operator's own words; it only fills in this form
+  place: string; // one named place ("Las Vegas, NV") instead of a region; "" uses `region`
+  country: string; // the place's country code
 };
+
+/** What reading a described search gave: the settings it filled in, or why it was refused. */
+export type PromptNote = { ok: boolean; text: string };
 
 export const OTHER = "other";
 
@@ -41,11 +47,17 @@ export function FindStoresFields({
   form,
   estimate,
   onChange,
+  onInterpret,
+  interpreting = false,
+  promptNote,
 }: {
   options: DiscoverOptions;
   form: FindForm;
   estimate?: DiscoverEstimate | null; // what this search can cost; absent while it is unknown
   onChange: (form: FindForm) => void;
+  onInterpret?: () => void; // read `form.prompt` and fill in the fields
+  interpreting?: boolean;
+  promptNote?: PromptNote | null;
 }) {
   const countOk = parseCount(form.count, options.max_count) !== null;
   const toggleItem = (item: string) =>
@@ -60,6 +72,42 @@ export function FindStoresFields({
 
   return (
     <div className="find-fields">
+      {options.prompt_model && onInterpret && (
+        <div className="find-field find-prompt">
+          <label htmlFor="find-prompt">Describe the search (optional)</label>
+          <div className="find-prompt-row">
+            <input
+              id="find-prompt"
+              value={form.prompt}
+              maxLength={options.max_prompt_chars}
+              onChange={(e) => onChange({ ...form, prompt: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter") return;
+                e.preventDefault(); // Enter fills in the form; it never starts the paid search
+                if (form.prompt.trim() && !interpreting) onInterpret();
+              }}
+              placeholder="e.g. cashmere and knitwear boutiques in Las Vegas"
+            />
+            <button type="button" className="chip" disabled={!form.prompt.trim() || interpreting} onClick={onInterpret}>
+              {interpreting ? "Reading…" : "Fill in the form"}
+            </button>
+          </div>
+          <small className="muted">
+            Read once by {options.prompt_model}, for a fraction of a cent. It only fills in the fields below: nothing is
+            searched until you start. Store, brand, product or wholesale research only.
+          </small>
+          {promptNote && (
+            <div
+              className={`notice ${promptNote.ok ? "info" : "bad"}`}
+              role={promptNote.ok ? "status" : "alert"}
+              data-testid="prompt-note"
+            >
+              {promptNote.text}
+            </div>
+          )}
+        </div>
+      )}
+
       <label className="find-field">
         <span>Number of stores</span>
         <input
@@ -75,16 +123,28 @@ export function FindStoresFields({
         <small className={countOk ? "muted" : "bad-text"}>1 – {formatNumber(options.max_count)} stores</small>
       </label>
 
-      <label className="find-field">
-        <span>Region</span>
-        <select value={form.region} onChange={(e) => onChange({ ...form, region: e.target.value })}>
-          {options.regions.map((r) => (
-            <option key={r} value={r}>
-              {regionLabel(r)}
-            </option>
-          ))}
-        </select>
-      </label>
+      {form.place ? (
+        <div className="find-field" data-testid="find-place">
+          <span>Place</span>
+          <div className="find-place">
+            <strong>{form.place}</strong> <span className="muted">({form.country})</span>
+          </div>
+          <button type="button" className="link-button" onClick={() => onChange({ ...form, place: "", country: "" })}>
+            Use a region instead
+          </button>
+        </div>
+      ) : (
+        <label className="find-field">
+          <span>Region</span>
+          <select value={form.region} onChange={(e) => onChange({ ...form, region: e.target.value })}>
+            {options.regions.map((r) => (
+              <option key={r} value={r}>
+                {regionLabel(r)}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       <fieldset className="find-field find-items">
         <legend>Items to look for</legend>
@@ -123,14 +183,18 @@ export function FindStoresFields({
             checked={form.rescrape}
             onChange={(e) => onChange({ ...form, rescrape: e.target.checked })}
           />
-          Scrape again stores already read in the last {formatNumber(options.reuse_days)} days
-          <span className="muted small"> (otherwise their data is loaded: no requests, no LLM cost)</span>
+          <span>
+            Scrape again stores already read in the last {formatNumber(options.reuse_days)} days
+            <span className="muted small"> (otherwise their data is loaded: no requests, no LLM cost)</span>
+          </span>
         </label>
       )}
 
       {estimate && estimate.lines.length > 0 && (
         <div className="notice info find-estimate" role="status" data-testid="find-estimate">
-          <strong>Estimated cost: up to {formatUsd(estimate.max_usd)}</strong> for {plural(estimate.count, "store")}.{" "}
+          <strong>
+            Estimated cost for {plural(estimate.count, "store")}: up to {formatUsd(estimate.max_usd)}
+          </strong>{" "}
           {estimate.lines
             .map((l) => `${costLine(l.name)} up to ${formatUsd(l.max_usd)}${l.note ? ` (${l.note})` : ""}`)
             .join(" · ")}

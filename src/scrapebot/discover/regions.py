@@ -114,9 +114,11 @@ def discover_config(
     agent_model: str,
     base: DiscoverConfig | None = None,
     agent_fallbacks: Sequence[str] = (),
+    place: Region | None = None,
 ) -> DiscoverConfig:
-    """Discovery settings for 'find `count` stores selling `items` in a region'."""
-    region = REGIONS[region_key]
+    """Discovery settings for 'find `count` stores selling `items` in a region', or in
+    `place` when the operator named one that is not in the list."""
+    region = place or REGIONS[region_key]
     phrase = search_phrase(items, terms)
     runs = min(MAX_AGENT_RUNS, math.ceil(count / STORES_PER_AGENT_RUN) + 1)
     store_words = [_store_query(i, terms) for i in items] or ["sweater boutique"]

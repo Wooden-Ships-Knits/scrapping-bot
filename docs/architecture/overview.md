@@ -177,6 +177,17 @@ nothing new, or a cap is hit. The stores with a website (the ones most sources a
 first) become `to_visit.csv`, and a run starts on all of them; `GET /api/discover/{id}`
 reports progress until then. One discovery runs at a time, in its own thread.
 
+The search can also be written in words ("cashmere and knitwear boutiques in Las
+Vegas"). `POST /api/discover/interpret` (`discover/request.py`) asks the run's LLM once
+to turn it into the form's settings: items, keywords, a region or one named place with
+its country, and a count. Nothing is searched: the interface fills in the form and the
+operator starts the search as before. A named place becomes a region of its own (one
+agent area, one Maps city). The bot only finds stores, so anything else is refused with
+one fixed message. An empty, overlong or plainly unrelated request (asking to drop the
+rules, asking about a person) is refused without a model call; the model reads the
+request as quoted data under fixed instructions and may only answer in a fixed shape,
+from which unknown values are dropped. Answers are kept by a hash of the request.
+
 The items chosen also go into the run's config (`focus`): each product gets the items
 it matches in `products.matched_items` (`extract/focus.py`), each store a
 `focus_count`. Season items look for words such as *fall*, *winter*, *FW25*.

@@ -355,6 +355,13 @@ class LiteLLMExtractor:
         messages = build_judge_messages(domain, pages, vendors, titles)
         return self._ask(domain, messages, StoreTypeJudgement, JUDGE_PROMPT_VERSION)
 
+    def ask(
+        self, label: str, messages: list[dict[str, str]], answer: type[Answer], version: str
+    ) -> tuple[Answer | None, list[CallRecord]]:
+        """One question outside a store visit, answered in the shape of `answer`: the
+        same models, retries, budget and answer cache. `label` names it in the log."""
+        return self._ask(label, messages, answer, version)
+
     def _ask(
         self, domain: str, messages: list[dict[str, str]], answer: type[Answer], version: str
     ) -> tuple[Answer | None, list[CallRecord]]:

@@ -149,6 +149,8 @@ const FIND_OPTIONS = {
   agent_model: "openai/gpt-5-search-api",
   agent_fallbacks: [] as string[],
   reuse_days: 30,
+  prompt_model: "openai/gpt-4o-mini",
+  max_prompt_chars: 300,
   sources: { google_places: false, web_search: false, social_search: false, ai_agent: true },
 };
 
@@ -178,7 +180,10 @@ function discovery(overrides = {}) {
   };
 }
 
-function mockFind(findOptions = FIND_OPTIONS) {
+const OUT_OF_SCOPE =
+  "This request is outside the scope of Scrapebot. Please provide a store, brand, product, or wholesale research request.";
+
+function mockFind(findOptions = FIND_OPTIONS, interpreted: object | null = null) {
   calls = [];
   let polls = 0;
   vi.stubGlobal(
@@ -188,6 +193,10 @@ function mockFind(findOptions = FIND_OPTIONS) {
       if (url === "/api/options") return reply(OPTIONS);
       if (url === "/api/discover/options") return reply(findOptions);
       if (url.startsWith("/api/discover/estimate")) return reply(ESTIMATE);
+      if (url === "/api/discover/interpret")
+        return interpreted
+          ? reply(interpreted)
+          : reply({ detail: { code: "out_of_scope", message: OUT_OF_SCOPE } }, 422);
       if (url === "/api/discover") return reply(discovery(), 202);
       if (url === "/api/discover/D1") {
         polls += 1;
@@ -227,6 +236,8 @@ describe("Scrape: find stores", () => {
       terms: ["poncho", "cape"],
       writers: ["xlsx", "csv"],
       rescrape: false,
+      place: "",
+      country: "",
     });
     await waitFor(() => expect(window.location.hash).toBe("#/runs/R9"), { timeout: 4000 });
   });
@@ -259,10 +270,61 @@ describe("Scrape: find stores", () => {
     mockFind();
     render(<Scrape />);
     const estimate = await screen.findByTestId("find-estimate");
-    expect(estimate).toHaveTextContent("Estimated cost: up to US$0.66 for 20 stores.");
+    expect(estimate).toHaveTextContent("Estimated cost for 20 stores: up to US$0.66");
     expect(estimate).toHaveTextContent("AI agent up to US$0.48 (nothing while Gemini's free tier lasts)");
     expect(estimate).toHaveTextContent("Website lookup up to US$0.16 · Reading stores (LLM) up to US$0.020");
     expect(calls.some((c) => c.url === "/api/discover/estimate?count=20&region=north_america")).toBe(true);
+  });
+
+  it("fills in the form from a search written in words, and searches only on start", async () => {
+    mockFind(FIND_OPTIONS, {
+      items: ["cashmere_wool", "knitwear"],
+      terms: [],
+      region: "",
+      place: "Las Vegas, NV",
+      country: "US",
+      count: null,
+      cost_usd: 0.0001,
+      cached: false,
+    });
+    const user = userEvent.setup();
+    render(<Scrape />);
+    const find = await screen.findByRole("button", { name: "Find stores & start scraping" });
+
+    const box = screen.getByRole("textbox", { name: "Describe the search (optional)" });
+    await user.type(box, "seaf=rch data for cashmere/knitewaer in las vegasa{Enter}");
+    expect(await screen.findByTestId("prompt-note")).toHaveTextContent(
+      "Understood: Cashmere / wool, Knitwear · Las Vegas, NV (US). Check the fields below, then start.",
+    );
+    expect(calls.some((c) => c.url === "/api/discover"), "Enter never starts the paid search").toBe(false);
+    expect(screen.getByTestId("find-place")).toHaveTextContent("Las Vegas, NV (US)");
+    expect(screen.getByRole("checkbox", { name: "Cashmere / wool" })).toBeChecked();
+    expect(screen.queryByRole("combobox", { name: "Region" })).not.toBeInTheDocument();
+
+    await waitFor(() => expect(find).toBeEnabled());
+    await user.click(find);
+    await waitFor(() =>
+      expect(calls.find((c) => c.url === "/api/discover")?.body).toMatchObject({
+        count: 20,
+        items: ["cashmere_wool", "knitwear"],
+        place: "Las Vegas, NV",
+        country: "US",
+      }),
+    );
+  });
+
+  it("refuses a request that is not a store search and leaves the form alone", async () => {
+    mockFind();
+    const user = userEvent.setup();
+    render(<Scrape />);
+    await screen.findByRole("button", { name: "Find stores & start scraping" });
+    await user.type(screen.getByRole("textbox", { name: "Describe the search (optional)" }), "best casinos in vegas");
+    await user.click(screen.getByRole("button", { name: "Fill in the form" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(OUT_OF_SCOPE);
+    expect(screen.getByRole("combobox", { name: "Region" })).toHaveValue("north_america");
+    expect(screen.getByRole("checkbox", { name: "Knitwear" })).toBeChecked();
+    expect(calls.some((c) => c.url === "/api/discover")).toBe(false);
   });
 
   it("can scrape again the stores a run read recently", async () => {

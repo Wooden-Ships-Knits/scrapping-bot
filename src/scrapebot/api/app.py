@@ -20,12 +20,28 @@ from ..discover.agent import Completion, agent_models, pick_agent_model
 from ..discover.costs import estimate
 from ..discover.paid import Transport
 from ..discover.regions import DEFAULT_REGION, REGIONS, discover_config
+from ..discover.request import (
+    MAX_PROMPT_CHARS,
+    OUT_OF_SCOPE,
+    NoAnswer,
+    OutOfScope,
+    place_region,
+    understand,
+)
 from ..extract.focus import DEFAULT_ITEMS, OTHER
 from ..extract.focus import ITEMS as FOCUS_ITEMS
 from ..inputs.readers import SUPPORTED_SUFFIXES, InputError
 from ..inputs.resolve import DUPLICATE, resolve
 from ..keys import load_keys
-from ..llm.gateway import KEY_VARIABLES, check_connection, key_for, provider_of
+from ..llm.gateway import (
+    KEY_VARIABLES,
+    Budget,
+    LiteLLMExtractor,
+    check_connection,
+    is_local,
+    key_for,
+    provider_of,
+)
 from ..outputs import available_writers
 from ..pipeline import load_records, prepare, read_before, resume
 from ..traffic import Period, TrafficError, TrafficService, TrafficSnapshot
@@ -42,6 +58,8 @@ from .schemas import (
     DiscoverOptionsOut,
     DiscoveryOut,
     ErrorOut,
+    InterpretIn,
+    InterpretOut,
     LLMCheckIn,
     LLMCheckOut,
     OptionsOut,
@@ -75,6 +93,7 @@ PROVIDERS = (
 SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 EXAMPLES = 8
 MAX_DISCOVER_COUNT = 500
+REQUEST_BUDGET_USD = 0.05  # the most reading one search request may cost
 FINISHED = ("done", "failed", "interrupted", "stopped")
 
 
@@ -103,6 +122,7 @@ def create_app(
     discover_transport: Transport | None = None,
     discover_completion: Completion | None = None,
     traffic_transport: Transport | None = None,
+    request_completion: Completion | None = None,
 ) -> FastAPI:
     settings = settings or ApiSettings()
     manager = RunManager(fetcher_factory)
@@ -298,6 +318,12 @@ def create_app(
             "ai_agent": bool(pick_agent_model(keys)),
         }
 
+    def prompt_model(keys: dict[str, SecretStr]) -> str:
+        """The model that reads a search written in words: the run's own LLM, when its
+        key is set."""
+        model = settings.base.llm.model
+        return model if is_local(model) or key_for(model, keys) else ""
+
     @app.get("/api/discover/options")
     def discover_options() -> DiscoverOptionsOut:
         """What the interface offers for finding stores, and which sources have a key.
@@ -313,16 +339,53 @@ def create_app(
             agent_fallbacks=agent_models(keys)[1:],
             sources=discovery_sources(keys),
             reuse_days=settings.base.fetch.reuse_days,
+            prompt_model=prompt_model(keys),
+            max_prompt_chars=MAX_PROMPT_CHARS,
         )
+
+    @app.post("/api/discover/interpret")
+    def interpret(body: InterpretIn) -> InterpretOut:
+        """Turn a search written in words into form settings. Nothing is searched: the
+        operator sees the settings first. A request that is not a store search is
+        refused, always with the same message."""
+        keys = load_keys(settings.env_file)
+        model = prompt_model(keys)
+        if not model:
+            raise ApiError(
+                422,
+                "no_llm_key",
+                f"Describing a search needs the API key for {settings.base.llm.model} in .env.",
+            )
+        if len(body.prompt.strip()) > MAX_PROMPT_CHARS:
+            raise ApiError(
+                422, "prompt_too_long", f"Keep the request under {MAX_PROMPT_CHARS} characters."
+            )
+        asker = LiteLLMExtractor(
+            model,
+            keys,
+            Budget(REQUEST_BUDGET_USD),
+            fallbacks=settings.base.llm.fallbacks,
+            api_base=settings.base.llm.api_base,
+            completion=request_completion,
+            cache_dir=settings.discover_cache_dir / "requests",
+        )
+        try:
+            got = understand(body.prompt, asker)
+        except OutOfScope as exc:
+            raise ApiError(422, "out_of_scope", OUT_OF_SCOPE) from exc
+        except NoAnswer as exc:
+            raise ApiError(502, "llm_failed", f"The request could not be read: {exc}") from exc
+        return InterpretOut(**got.model_dump())
 
     @app.get("/api/discover/estimate")
     def discover_estimate(
         count: Annotated[int, Query(ge=1, le=MAX_DISCOVER_COUNT)],
         region: str = DEFAULT_REGION,
+        place: Annotated[str, Query(max_length=60)] = "",
     ) -> DiscoverEstimateOut:
         """What finding `count` stores and reading them can cost at most, before any of
         it is spent: each source's cap at list price, plus the run's LLM stage."""
-        if region not in REGIONS:
+        if not place and region not in REGIONS:
             raise ApiError(422, "bad_region", f"Region {region} is not known.")
         keys = load_keys(settings.env_file)
         models = agent_models(keys)
@@ -333,6 +396,7 @@ def create_app(
             [],
             pick_agent_model(keys),
             agent_fallbacks=models[1:],
+            place=place_region(place, "US") if place else None,  # the country costs nothing
         )
         lines = [CostLineOut(**line.model_dump()) for line in estimate(config, keys)]
         llm = settings.base.llm
@@ -346,7 +410,11 @@ def create_app(
     @app.post("/api/discover", status_code=202)
     def start_discovery(body: DiscoverIn) -> DiscoveryOut:
         """Find stores, then start a run on all of them; poll GET /api/discover/{id}."""
-        if body.region not in REGIONS:
+        place = " ".join(body.place.split())
+        country = body.country.strip().upper()
+        if place and not (len(country) == 2 and country.isalpha()):
+            raise ApiError(422, "bad_place", f"The country of {place} is not known.")
+        if not place and body.region not in REGIONS:
             raise ApiError(422, "bad_region", f"Region {body.region} is not known.")
         if OTHER in body.items and not any(t.strip() for t in body.terms):
             raise ApiError(422, "terms_required", "Give keywords for the item Other.")
@@ -367,6 +435,7 @@ def create_app(
                 focus.terms,
                 pick_agent_model(keys),
                 agent_fallbacks=agent_models(keys)[1:],
+                place=place_region(place, country) if place else None,
             ).model_copy(
                 update={"out_dir": settings.discover_dir, "cache_dir": settings.discover_cache_dir}
             )

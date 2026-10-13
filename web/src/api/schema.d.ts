@@ -65,6 +65,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/discover/interpret": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Interpret
+         * @description Turn a search written in words into form settings. Nothing is searched: the
+         *     operator sees the settings first. A request that is not a store search is
+         *     refused, always with the same message.
+         */
+        post: operations["interpret_api_discover_interpret_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/discover/options": {
         parameters: {
             query?: never;
@@ -504,8 +526,18 @@ export interface components {
         DiscoverIn: {
             /** Count */
             count: number;
+            /**
+             * Country
+             * @default
+             */
+            country: string;
             /** Items */
             items: string[];
+            /**
+             * Place
+             * @default
+             */
+            place: string;
             /** Region */
             region: string;
             /**
@@ -532,6 +564,10 @@ export interface components {
             items: string[];
             /** Max Count */
             max_count: number;
+            /** Max Prompt Chars */
+            max_prompt_chars: number;
+            /** Prompt Model */
+            prompt_model: string;
             /** Regions */
             regions: string[];
             /** Reuse Days */
@@ -595,6 +631,33 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** InterpretIn */
+        InterpretIn: {
+            /** Prompt */
+            prompt: string;
+        };
+        /**
+         * InterpretOut
+         * @description A request as form settings; the operator sees them before anything is searched.
+         */
+        InterpretOut: {
+            /** Cached */
+            cached: boolean;
+            /** Cost Usd */
+            cost_usd: number;
+            /** Count */
+            count: number | null;
+            /** Country */
+            country: string;
+            /** Items */
+            items: string[];
+            /** Place */
+            place: string;
+            /** Region */
+            region: string;
+            /** Terms */
+            terms: string[];
         };
         /** LLMCheckIn */
         LLMCheckIn: {
@@ -1239,6 +1302,7 @@ export interface operations {
             query: {
                 count: number;
                 region?: string;
+                place?: string;
             };
             header?: never;
             path?: never;
@@ -1253,6 +1317,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DiscoverEstimateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    interpret_api_discover_interpret_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InterpretIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InterpretOut"];
                 };
             };
             /** @description Validation Error */

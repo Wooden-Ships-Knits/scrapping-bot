@@ -56,10 +56,17 @@ always block, so they can be left out of the next list. The interface is local o
 
 **In the interface**, the *Find stores automatically* tab of the Scrape page does it in one
 click: type how many stores, pick a region or continent, tick the items (knitwear,
-cashmere/wool, fall/winter, spring/summer, or *Lainnya* with your own words) and press
-**Cari toko & mulai scrape**. It finds the stores, then scrapes all of them and opens
+cashmere/wool, fall/winter, spring/summer, or *Other* with your own words) and press
+**Find stores & start scraping**. It finds the stores, then scrapes all of them and opens
 the run page. The tab is the default when `.env` has at least one search key. To try a
 few stores first, use the command line: `scrapebot run <input> --limit 2`.
+
+You can also **describe the search in words**, for example "cashmere and knitwear
+boutiques in Las Vegas", and press **Fill in the form**. The run's LLM reads it once (a
+fraction of a cent) and fills in the items, the place and the count; nothing is searched
+until you start. A place that is not in the region list is searched on its own. The box
+only takes store, brand, product or wholesale research: anything else gets "This request
+is outside the scope of Scrapebot." and costs nothing or next to nothing.
 
 **From the command line**, `scrapebot discover` finds knitwear stores and writes them as
 a links file for a run ([ADR 0008](docs/decisions/0008-store-discovery-paid-search.md)):
