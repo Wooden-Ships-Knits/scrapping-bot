@@ -115,7 +115,9 @@ can cost: each source's request cap at list price (Google Maps US$0.035 a reques
 Tavily US$0.008; `discover/costs.py`), the agent's cost cap and the run's LLM stage.
 Afterwards it shows what the requests sent came to, per source, and the run page shows
 the LLM stage's cost. These are not bills: free monthly allowances and Gemini's free
-tier are not subtracted, and cached answers cost nothing.
+tier are not subtracted, and cached search answers cost nothing. A search for new stores
+asks the agent afresh each time. The LLM line is the run's LLM budget, the only thing
+that stops it; what past runs came to is shown beside it.
 
 ## Command line
 

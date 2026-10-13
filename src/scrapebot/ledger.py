@@ -11,7 +11,7 @@ import logging
 import re
 import sqlite3
 from collections.abc import Container, Iterable, Iterator
-from contextlib import closing
+from contextlib import closing, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -23,6 +23,9 @@ from .store import SUMMARY_ROWS_FILE
 log = logging.getLogger(__name__)
 
 LEDGER_FILE = "ledger.sqlite"
+# Bumped when the table changes. A ledger of another version, or one whose first build
+# did not finish, is thrown away and built again from the run folders.
+SCHEMA_VERSION = 2
 # A store that was read, with or without a catalogue, stays as it is for a while. One
 # that was blocked, rate-limited or failed is worth another visit.
 REUSABLE = ("ok", "no_products")
@@ -39,6 +42,7 @@ CREATE TABLE IF NOT EXISTS visits (
     fetched_at TEXT NOT NULL,
     status TEXT NOT NULL,
     product_count INTEGER NOT NULL,
+    unfinished INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (domain, run_id)
 )
 """
@@ -53,6 +57,9 @@ class Visit:
     fetched_at: str  # ISO 8601, UTC
     status: str
     product_count: int
+    # The LLM stage could still change what was found, and did not get to: see
+    # `is_unfinished`. Such a visit is only good enough for a run that has no LLM either.
+    unfinished: bool = False
 
 
 @dataclass
@@ -65,92 +72,157 @@ class Loaded:
     summary: dict[str, Any] | None
 
 
+def is_unfinished(status: str, store_type: str, llm_worked: bool) -> bool:
+    """Whether a visit left a question the LLM stage answers (no catalogue found, or a
+    store type nothing decided) while that stage did not work for it: switched off, no
+    key, or every call failed. Without this, a store read on a day the key was wrong
+    would count as done for a month."""
+    open_question = status == "no_products" or (status == "ok" and store_type in ("", "unknown"))
+    return open_question and not llm_worked
+
+
 def _rows(path: Path) -> Iterator[dict[str, Any]]:
+    """A table's rows. A line that is not JSON (a run killed mid-write) is passed over."""
     if not path.exists():
         return
     with path.open(encoding="utf-8") as fh:
         for line in fh:
-            if line.strip():
+            if not line.strip():
+                continue
+            try:
                 yield json.loads(line)
+            except ValueError:
+                log.warning("Skipped a broken line in %s", path)
+
+
+def _run_visits(root: Path) -> Iterator[Visit]:
+    """The visits one run folder records. Whether its LLM stage worked is read from its
+    config, its `runs` row and its `llm_calls`."""
+    tables = root / "tables"
+    config: dict[str, Any] = {}
+    with suppress(OSError, ValueError):
+        config = json.loads((root / "config.json").read_text(encoding="utf-8"))
+    run = next(_rows(tables / "runs.jsonl"), {})
+    stage_on = bool((config.get("llm") or {}).get("enabled")) and not run.get("llm_skipped")
+    answered: set[str] = set()
+    failed: set[str] = set()
+    for call in _rows(tables / "llm_calls.jsonl"):
+        (answered if call.get("status") == "ok" else failed).add(call.get("domain", ""))
+    for row in _rows(tables / "stores.jsonl"):
+        if row.get("reused_from") or "domain" not in row:
+            continue
+        domain, status = row["domain"], row.get("status", "")
+        worked = stage_on and (domain in answered or domain not in failed)
+        yield Visit(
+            domain=domain,
+            run_id=root.name,
+            fetched_at=row.get("fetched_at", ""),
+            status=status,
+            product_count=row.get("product_count", 0),
+            unfinished=is_unfinished(status, row.get("store_type", ""), worked),
+        )
 
 
 class Ledger:
     def __init__(self, runs_dir: Path):
         self.runs_dir = Path(runs_dir)
         self.path = self.runs_dir / LEDGER_FILE
-        fresh = not self.path.exists()
         self.runs_dir.mkdir(parents=True, exist_ok=True)
-        with closing(self._connect()) as db, db:
-            db.execute(_SCHEMA)
-        if fresh:
+        with closing(self._connect()) as db:
+            built = db.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+        if not built:
             self.rebuild()
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.path, timeout=30)
 
     def record(self, visits: Iterable[Visit]) -> None:
-        rows = [(v.domain, v.run_id, v.fetched_at, v.status, v.product_count) for v in visits]
-        with closing(self._connect()) as db, db:
-            db.executemany("INSERT OR REPLACE INTO visits VALUES (?, ?, ?, ?, ?)", rows)
-
-    def rebuild(self) -> int:
-        """Read every run folder's `stores` table again; returns the visits found."""
-        visits = [
-            Visit(
-                domain=row["domain"],
-                run_id=root.name,
-                fetched_at=row.get("fetched_at", ""),
-                status=row.get("status", ""),
-                product_count=row.get("product_count", 0),
-            )
-            for root in sorted(p for p in self.runs_dir.iterdir() if p.is_dir())
-            for row in _rows(root / "tables" / "stores.jsonl")
-            if not row.get("reused_from")
+        rows = [
+            (v.domain, v.run_id, v.fetched_at, v.status, v.product_count, int(v.unfinished))
+            for v in visits
         ]
         with closing(self._connect()) as db, db:
-            db.execute("DELETE FROM visits")
+            db.executemany("INSERT OR REPLACE INTO visits VALUES (?, ?, ?, ?, ?, ?)", rows)
+
+    def rebuild(self) -> int:
+        """Throw the table away and read every run folder again; returns the visits
+        found. The version is written last, so a rebuild that did not finish is done
+        again the next time the ledger is opened."""
+        visits = [
+            visit
+            for root in sorted(p for p in self.runs_dir.iterdir() if p.is_dir())
+            for visit in _run_visits(root)
+        ]
+        with closing(self._connect()) as db, db:
+            db.execute("PRAGMA user_version = 0")
+            db.execute("DROP TABLE IF EXISTS visits")
+            db.execute(_SCHEMA)
         self.record(visits)
+        with closing(self._connect()) as db, db:
+            db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         log.info("Ledger rebuilt from %s: %d store visits", self.runs_dir, len(visits))
         return len(visits)
 
+    def _newest(self, max_age_days: float, now: datetime | None) -> dict[str, Visit]:
+        """Each store's newest visit in the last `max_age_days`, whatever its outcome:
+        the newest one is what is known about the store. Visits whose run folder is gone
+        are not counted: deleting a run forgets its stores."""
+        cutoff = (now or datetime.now(UTC)) - timedelta(days=max_age_days)
+        with closing(self._connect()) as db:
+            rows = db.execute(
+                "SELECT domain, run_id, fetched_at, status, product_count, unfinished "
+                "FROM visits WHERE fetched_at >= ? ORDER BY fetched_at",
+                (cutoff.isoformat(timespec="seconds"),),
+            ).fetchall()
+        present: dict[str, bool] = {}
+        newest: dict[str, Visit] = {}
+        for domain, run_id, fetched_at, status, products, unfinished in rows:  # oldest first
+            if run_id not in present:
+                present[run_id] = self._has_rows(run_id)
+            if present[run_id]:
+                newest[domain] = Visit(
+                    domain, run_id, fetched_at, status, products, bool(unfinished)
+                )
+        return newest
+
     def recent(
-        self, domains: Iterable[str], max_age_days: float, now: datetime | None = None
+        self,
+        domains: Iterable[str],
+        max_age_days: float,
+        now: datetime | None = None,
+        with_unfinished: bool = False,
     ) -> dict[str, Visit]:
-        """For each of `domains`, its newest reusable visit in the last `max_age_days`
-        whose run folder still holds the rows. 0 days finds nothing."""
+        """The stores of `domains` that can be loaded instead of visited: their newest
+        visit in the last `max_age_days` read the store. A store whose newest visit was
+        blocked or failed is visited again, whatever an older visit found. One the LLM
+        stage did not get to is only loaded `with_unfinished`: by a run that has no LLM
+        stage either. 0 days finds nothing."""
         wanted = set(domains)
         if not wanted or not max_age_days:
             return {}
-        cutoff = (now or datetime.now(UTC)) - timedelta(days=max_age_days)
-        marks = ", ".join("?" for _ in REUSABLE)
-        with closing(self._connect()) as db:
-            rows = db.execute(
-                f"SELECT domain, run_id, fetched_at, status, product_count FROM visits "
-                f"WHERE status IN ({marks}) AND fetched_at >= ? ORDER BY fetched_at",
-                (*REUSABLE, cutoff.isoformat(timespec="seconds")),
-            ).fetchall()
-        found: dict[str, Visit] = {}
-        for row in rows:  # oldest first: the newest one wins
-            visit = Visit(*row)
-            if visit.domain in wanted and self._has_rows(visit.run_id):
-                found[visit.domain] = visit
-        return found
+        return {
+            domain: visit
+            for domain, visit in self._newest(max_age_days, now).items()
+            if domain in wanted
+            and visit.status in REUSABLE
+            and (with_unfinished or not visit.unfinished)
+        }
 
-    def settled(self, max_age_days: float, now: datetime | None = None) -> list[str]:
-        """The stores a run visited in the last `max_age_days` and got an answer from:
-        read, blocked, or needing a browser. Newest visit first; 0 days gives none. A
-        search for new stores leaves these out (ADR 0013)."""
+    def settled(
+        self, max_age_days: float, now: datetime | None = None, with_unfinished: bool = False
+    ) -> list[str]:
+        """The stores whose newest visit in the last `max_age_days` gave an answer: read,
+        blocked, or needing a browser. Newest first; 0 days gives none. A search for new
+        stores leaves these out (ADR 0013). One the LLM stage did not get to still counts
+        as new, unless `with_unfinished`."""
         if not max_age_days:
             return []
-        cutoff = (now or datetime.now(UTC)) - timedelta(days=max_age_days)
-        marks = ", ".join("?" for _ in SETTLED)
-        with closing(self._connect()) as db:
-            rows = db.execute(
-                f"SELECT domain, MAX(fetched_at) AS seen FROM visits "
-                f"WHERE status IN ({marks}) AND fetched_at >= ? GROUP BY domain ORDER BY seen DESC",
-                (*SETTLED, cutoff.isoformat(timespec="seconds")),
-            ).fetchall()
-        return [domain for domain, _ in rows]
+        visits = [
+            v
+            for v in self._newest(max_age_days, now).values()
+            if v.status in SETTLED and (with_unfinished or not v.unfinished)
+        ]
+        return [v.domain for v in sorted(visits, key=lambda v: v.fetched_at, reverse=True)]
 
     def _has_rows(self, run_id: str) -> bool:
         return (self.runs_dir / run_id / "tables" / "stores.jsonl").exists()

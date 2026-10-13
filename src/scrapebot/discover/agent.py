@@ -20,7 +20,7 @@ import json
 import logging
 import re
 import time
-from collections.abc import Callable, Collection, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -94,6 +94,12 @@ MAX_FAILED_TASKS = 2
 # long as it likes: the store list then comes back cut off or empty. "low" is 1,024
 # thinking tokens in LiteLLM.
 GEMINI_REASONING_EFFORT = "low"
+
+
+def usable_models(models: Iterable[str], keys: Mapping[str, SecretStr]) -> list[str]:
+    """Of `models`, in order and once each, those that can answer: local ones, and those
+    whose provider has a key."""
+    return [m for m in dict.fromkeys(models) if m and (is_local(m) or key_for(m, keys))]
 
 
 def agent_models(keys: Mapping[str, SecretStr]) -> list[str]:
@@ -200,11 +206,7 @@ class AgentSource:
         self.opts = config.ai_agent
         self.keys = keys
         # The models that can answer, in order. One without its key is passed over.
-        self.models = [
-            m
-            for m in dict.fromkeys([self.opts.model, *self.opts.fallbacks])
-            if m and (is_local(m) or key_for(m, keys))
-        ]
+        self.models = usable_models([self.opts.model, *self.opts.fallbacks], keys)
         self.model = self.models[0] if self.models else self.opts.model  # the one in use
         self.cache_dir = Path(cache_dir) / self.name
         self.budget = Budget(self.opts.budget_usd)

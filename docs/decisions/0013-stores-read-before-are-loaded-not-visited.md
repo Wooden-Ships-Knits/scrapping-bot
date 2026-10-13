@@ -34,6 +34,19 @@ to revisit once history across runs was needed, starting with SQLite.
   stay in `stores.csv`, and the search says how many it left out. Ticking "Include
   stores already scraped" counts them and scrapes them again. Loading applies to a run
   on links the operator supplies, where the list is the operator's choice.
+- **The newest visit decides, and an unfinished one does not count (added 2026-10-13).**
+  What is known about a store is its newest visit in the window: a store that was read
+  and later blocked or failed is visited again. A visit is *unfinished* when it left a
+  question the LLM stage answers (no catalogue found, or a store type nothing decided)
+  and that stage did not work for it: switched off, no key, or every call failed. Such
+  a store is loaded, and left out of a search, only by a run whose LLM stage cannot work
+  either; a run that has one reads it again. On 2026-10-12 six runs read 251 stores with
+  a rejected key and left 185 of them open; they had counted as done.
+- **A store is visited when the input asks for its product or page links**, which the
+  earlier run may not have read.
+- **The ledger knows whether it was built.** Its schema version is written after the
+  build, so one whose first build was cut short, or of an older version, is built again.
+  A broken last line in a run's table is passed over.
 - **The operator is told and can refuse.** The preview says how many stores were read
   before and when; the run page and the report say how many were loaded. "Scrape them
   again anyway" in the interface, `--rescrape` on the command line and
@@ -65,4 +78,8 @@ to revisit once history across runs was needed, starting with SQLite.
   which is never stored (ADR 0006).
 - Model calls of a loaded store are not copied: `llm_used` is false and the cost stays
   with the run that paid for it.
-- Deleting a run folder removes its stores from reuse; the next run visits them.
+- Deleting a run folder removes its stores from reuse and from what a search leaves out;
+  the next run visits them.
+- A search for new stores asks the agent afresh each time: the websites it is told to
+  avoid are part of the question, so its cached answers, which name stores already read,
+  are not reused. Repeating such a search is paid for again.

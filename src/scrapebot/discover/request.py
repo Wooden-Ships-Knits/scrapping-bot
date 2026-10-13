@@ -180,10 +180,11 @@ def understand(prompt: str, asker: Asker) -> Understood:
         raise OutOfScope
     region, place, country = answer.region, answer.place, answer.country
     if place:
-        region = ""
         country = country or geo.region_of(place, "")
-    if place and not country:
-        place = ""  # a place the bot cannot put in a country is not searched
+    if place and country:
+        region = ""  # the place is searched, not the region around it
+    else:
+        place = country = ""  # a place the bot cannot put in a country is not searched
     items = [*answer.items, *([OTHER] if answer.terms else [])]
     if not (items or region or place or answer.count):
         raise OutOfScope  # in scope, yet nothing a search could use
