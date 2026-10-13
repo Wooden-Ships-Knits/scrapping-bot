@@ -10,6 +10,9 @@ Its answers are leads, not facts: a store it names is only kept with a website,
 profile or town, and the run on that website shows what it really sells. Answers are
 cached on disk, so repeating a discovery costs nothing; spending stops at
 `budget_usd`.
+
+When the model fails, the next one in `ai_agent.fallbacks` takes over for the rest of
+the search, and a note says so. Only models whose key is set are used.
 """
 
 import hashlib
@@ -66,19 +69,32 @@ MAX_EXCLUDED_NAMES = 80
 
 Completion = Callable[..., Any]
 
-# Models with web search, tried in this order when the interface picks one by the keys
-# that are set. Verified 2026-10-07: openai/gpt-5-search-api (the -search-preview
-# models are deprecated).
+# Models with web search, in the order the interface uses them: the first whose key is
+# set answers, the next takes over when it fails. Gemini first: its free tier costs
+# nothing. Verified 2026-10-07: openai/gpt-5-search-api (the -search-preview models are
+# deprecated).
 AGENT_MODELS = (
     ("gemini", "gemini/gemini-2.5-flash"),
     ("openai", "openai/gpt-5-search-api"),
-    ("anthropic", "anthropic/claude-sonnet-4-5"),
 )
+# A failure that may pass is tried once more after this wait, then the next model is used.
+RETRY_DELAY_SECONDS = 3.0
+# With no model left to take over, the agent stops after this many failed tasks in a row.
+MAX_FAILED_TASKS = 2
+# Gemini counts its thinking against max_tokens and, unless told otherwise, thinks as
+# long as it likes: the store list then comes back cut off or empty. "low" is 1,024
+# thinking tokens in LiteLLM.
+GEMINI_REASONING_EFFORT = "low"
+
+
+def agent_models(keys: Mapping[str, SecretStr]) -> list[str]:
+    """The agent models whose provider has a key, in the order they are tried."""
+    return [model for provider, model in AGENT_MODELS if provider in keys]
 
 
 def pick_agent_model(keys: Mapping[str, SecretStr]) -> str:
     """The first agent model whose provider has a key; "" when none has."""
-    return next((model for provider, model in AGENT_MODELS if provider in keys), "")
+    return next(iter(agent_models(keys)), "")
 
 
 class AgentStore(BaseModel):
@@ -164,19 +180,32 @@ class AgentSource:
         keys: Mapping[str, SecretStr],
         cache_dir: Path,
         completion: Completion | None = None,
+        sleep: Callable[[float], None] = time.sleep,
     ):
         self.config = config
         self.opts = config.ai_agent
-        self.model = self.opts.model
-        self.key = key_for(self.model, keys)
+        self.keys = keys
+        # The models that can answer, in order. One without its key is passed over.
+        self.models = [
+            m
+            for m in dict.fromkeys([self.opts.model, *self.opts.fallbacks])
+            if m and (is_local(m) or key_for(m, keys))
+        ]
+        self.model = self.models[0] if self.models else self.opts.model  # the one in use
         self.cache_dir = Path(cache_dir) / self.name
         self.budget = Budget(self.opts.budget_usd)
         self._completion = completion
+        self._sleep = sleep
+        self._failed_tasks = 0
         self.found: list[Candidate] = []
         self.notes: list[str] = []
         self.calls: list[LLMCall] = []
         self.sent = 0
         self.cached = 0
+
+    @property
+    def key(self) -> str | None:
+        return key_for(self.model, self.keys)
 
     @property
     def needs_key(self) -> bool:
@@ -253,13 +282,17 @@ class AgentSource:
             if not target or self.stores_found() == before:
                 return
 
+    def _cache_file(self, model: str, prompt: str) -> Path:
+        digest = hashlib.sha256(f"{model}\n{PROMPT_VERSION}\n{prompt}".encode()).hexdigest()
+        return self.cache_dir / f"{digest[:32]}.json"
+
     def _ask(self, prompt: str) -> list[AgentStore] | None:
-        digest = hashlib.sha256(f"{self.model}\n{PROMPT_VERSION}\n{prompt}".encode()).hexdigest()
-        cache_file = self.cache_dir / f"{digest[:32]}.json"
-        cached = read_cached(cache_file)
-        if isinstance(cached, list):
-            self.cached += 1
-            return _to_stores(cached)
+        # An answer any of the models gave before is free, whichever is in use now.
+        for model in self.models or [self.model]:
+            cached = read_cached(self._cache_file(model, prompt))
+            if isinstance(cached, list):
+                self.cached += 1
+                return _to_stores(cached)
         if self.budget.exhausted():
             self.calls.append(
                 LLMCall(model=self.model, prompt_version=PROMPT_VERSION, status="skipped_budget")
@@ -270,10 +303,60 @@ class AgentSource:
             return None
         stores = stores_in_text(text)
         if stores:  # an empty or unreadable answer is asked again next time
-            write_cached(cache_file, [s.model_dump() for s in stores])
+            write_cached(self._cache_file(self.model, prompt), [s.model_dump() for s in stores])
         return stores
 
+    def _note(self, note: str) -> None:
+        if note not in self.notes:
+            self.notes.append(note)
+
+    def _next_model(self, message: str) -> bool:
+        """Hand the rest of the search to the next model; False when none is left."""
+        later = self.models[self.models.index(self.model) + 1 :] if self.models else []
+        if not later:
+            return False
+        self._note(f"{self.model}: {message} Continued with {later[0]}.")
+        log.warning("ai_agent: %s failed, continuing with %s", self.model, later[0])
+        self.model = later[0]
+        return True
+
     def _call(self, prompt: str) -> str | None:
+        """The answer of the model in use. A failure that may pass is tried once more;
+        after that, or at once when it cannot pass, the next model takes over. With none
+        left the task is skipped, and the agent stops when that keeps happening."""
+        retried = False
+        while True:
+            started = time.monotonic()
+            try:
+                text = self._complete(prompt)
+            except Exception as exc:
+                message = explain_error(exc)
+                self.calls.append(
+                    LLMCall(
+                        model=self.model,
+                        prompt_version=PROMPT_VERSION,
+                        status="error",
+                        duration_seconds=round(time.monotonic() - started, 2),
+                        error=message,
+                    )
+                )
+                passing = is_transient(exc)
+                if passing and not retried:
+                    retried = True
+                    self._sleep(RETRY_DELAY_SECONDS)
+                    continue
+                if self._next_model(message):
+                    retried = False
+                    continue
+                self._failed_tasks += 1
+                if not passing or self._failed_tasks >= MAX_FAILED_TASKS:
+                    raise ApiError(f"ai_agent: {message}") from None
+                self._note(message)
+                return None
+            self._failed_tasks = 0
+            return text
+
+    def _complete(self, prompt: str) -> str:
         import litellm
 
         litellm.suppress_debug_info = True
@@ -284,27 +367,13 @@ class AgentSource:
             "max_tokens": self.opts.max_tokens,
             "web_search_options": {"search_context_size": "medium"},
         }
+        if self.model.startswith("gemini/"):
+            kwargs["reasoning_effort"] = GEMINI_REASONING_EFFORT
         if self.key:
             kwargs["api_key"] = self.key
         started = time.monotonic()
         self.sent += 1
-        try:
-            completion: Any = complete(**kwargs)
-        except Exception as exc:
-            message = explain_error(exc)
-            self.calls.append(
-                LLMCall(
-                    model=self.model,
-                    prompt_version=PROMPT_VERSION,
-                    status="error",
-                    duration_seconds=round(time.monotonic() - started, 2),
-                    error=message,
-                )
-            )
-            if not is_transient(exc):
-                raise ApiError(f"ai_agent: {message}") from None
-            self.notes.append(message)
-            return None
+        completion: Any = complete(**kwargs)
         tokens_in, tokens_out = usage_of(completion)
         cost, estimated = cost_of(completion, self.model, tokens_in, tokens_out)
         self.budget.add(cost)
@@ -321,6 +390,13 @@ class AgentSource:
             )
         )
         try:
-            return completion.choices[0].message.content or ""
+            choice = completion.choices[0]
+            text = choice.message.content or ""
         except (AttributeError, IndexError):
             return ""
+        if getattr(choice, "finish_reason", "") == "length":
+            self._note(
+                f"{self.model}: an answer was cut off at max_tokens "
+                f"({self.opts.max_tokens}); only the complete stores in it are kept."
+            )
+        return text

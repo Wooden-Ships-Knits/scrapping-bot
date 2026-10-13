@@ -473,6 +473,8 @@ export interface components {
         };
         /** DiscoverOptionsOut */
         DiscoverOptionsOut: {
+            /** Agent Fallbacks */
+            agent_fallbacks: string[];
             /** Agent Model */
             agent_model: string;
             /** Default Items */
@@ -524,6 +526,8 @@ export interface components {
             found: number;
             /** Name */
             name: string;
+            /** Notes */
+            notes: string[];
             /** Status */
             status: string;
         };

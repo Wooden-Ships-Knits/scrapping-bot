@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError
 
 from ..config import FocusConfig, InputConfig, RunConfig
-from ..discover.agent import Completion, pick_agent_model
+from ..discover.agent import Completion, agent_models, pick_agent_model
 from ..discover.paid import Transport
 from ..discover.regions import DEFAULT_REGION, REGIONS, discover_config
 from ..extract.focus import DEFAULT_ITEMS, OTHER
@@ -60,7 +60,7 @@ UPLOAD_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 
 # (provider, label, example model). Any LiteLLM provider/model works; these are offered.
 PROVIDERS = (
-    ("gemini", "Google Gemini", "gemini/gemini-3.5-flash"),
+    ("gemini", "Google Gemini", "gemini/gemini-2.5-flash"),
     ("openai", "OpenAI", "openai/gpt-4o-mini"),
     ("anthropic", "Anthropic Claude", "anthropic/claude-haiku-4-5-20251001"),
     ("mistral", "Mistral", "mistral/mistral-small-latest"),
@@ -301,6 +301,7 @@ def create_app(
             default_items=list(DEFAULT_ITEMS),
             max_count=MAX_DISCOVER_COUNT,
             agent_model=pick_agent_model(keys),
+            agent_fallbacks=agent_models(keys)[1:],
             sources=discovery_sources(keys),
         )
 
@@ -322,7 +323,12 @@ def create_app(
         try:
             focus = FocusConfig(items=body.items, terms=body.terms)
             config = discover_config(
-                body.count, body.region, focus.items, focus.terms, pick_agent_model(keys)
+                body.count,
+                body.region,
+                focus.items,
+                focus.terms,
+                pick_agent_model(keys),
+                agent_fallbacks=agent_models(keys)[1:],
             ).model_copy(
                 update={"out_dir": settings.discover_dir, "cache_dir": settings.discover_cache_dir}
             )

@@ -203,6 +203,7 @@ class DiscoverySourceOut(BaseModel):
     status: str  # ok | disabled | no_api_key | budget_reached | error
     found: int
     error: str
+    notes: list[str]  # e.g. a model that took over from another
 
 
 class DiscoveryOut(BaseModel):
@@ -225,6 +226,7 @@ class DiscoverOptionsOut(BaseModel):
     default_items: list[str]
     max_count: int
     agent_model: str  # "" when no LLM key is set
+    agent_fallbacks: list[str]  # take over in order when `agent_model` fails
     sources: dict[str, bool]  # source -> its key is set
 
 

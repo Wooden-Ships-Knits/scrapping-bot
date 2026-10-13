@@ -8,7 +8,7 @@ import json
 
 import litellm
 import pytest
-from litellm.exceptions import AuthenticationError
+from litellm.exceptions import AuthenticationError, RateLimitError
 from pydantic import SecretStr
 
 from scrapebot.cli import main
@@ -369,6 +369,156 @@ def test_a_refused_agent_key_stops_the_agent(tmp_path):
         agent.run()
 
 
+def fallback_config(tmp_path, **agent):
+    return config(
+        tmp_path,
+        ai_agent={
+            "model": "gemini/gemini-2.5-flash",
+            "fallbacks": ["openai/gpt-5-search-api"],
+            "areas": ["Colorado", "Utah"],
+            "budget_usd": 1,
+            **agent,
+        },
+    )
+
+
+def gemini_fails(error, seen):
+    """A completion where Gemini raises `error` and every other model answers."""
+
+    def completion(**kwargs):
+        seen.append(kwargs)
+        if kwargs["model"].startswith("gemini/"):
+            raise error
+        return litellm.completion(mock_response=AGENT_ANSWER, **kwargs)
+
+    return completion
+
+
+def out_of_quota():
+    return RateLimitError("quota", llm_provider="gemini", model="gemini-2.5-flash")
+
+
+BOTH_KEYS = {"gemini": "gm-key-123456", "openai": "sk-key-123456"}
+
+
+def test_the_next_model_takes_over_when_the_first_keeps_failing(tmp_path):
+    seen, waits = [], []
+    agent = AgentSource(
+        fallback_config(tmp_path),
+        keys(**BOTH_KEYS),
+        tmp_path / "cache",
+        gemini_fails(out_of_quota(), seen),
+        sleep=waits.append,
+    )
+    agent.run()
+    assert [k["model"].split("/")[0] for k in seen] == ["gemini", "gemini", "openai", "openai"], (
+        "one more try, then OpenAI for this task and the rest of the search"
+    )
+    assert waits == [3.0]
+    assert seen[2]["api_key"] == "sk-key-123456"
+    assert [c.status for c in agent.calls] == ["error", "error", "ok", "ok"]
+    assert len(agent.found) == 2, "no task was lost"
+    assert agent.notes == [
+        "gemini/gemini-2.5-flash: The provider's usage limit was reached (rate limit or "
+        "quota). Continued with openai/gpt-5-search-api."
+    ]
+
+
+def test_a_failure_that_cannot_pass_hands_over_at_once(tmp_path):
+    seen, waits = [], []
+    refused = AuthenticationError("bad key", llm_provider="gemini", model="gemini-2.5-flash")
+    agent = AgentSource(
+        fallback_config(tmp_path),
+        keys(**BOTH_KEYS),
+        tmp_path / "cache",
+        gemini_fails(refused, seen),
+        sleep=waits.append,
+    )
+    agent.run()
+    assert [k["model"].split("/")[0] for k in seen] == ["gemini", "openai", "openai"]
+    assert waits == []
+    assert len(agent.found) == 2
+
+
+def test_a_model_without_its_key_is_passed_over(tmp_path):
+    seen = []
+    agent = AgentSource(
+        fallback_config(tmp_path),
+        keys(openai="sk-key-123456"),
+        tmp_path / "cache",
+        gemini_fails(out_of_quota(), seen),
+    )
+    agent.run()
+    assert agent.models == ["openai/gpt-5-search-api"]
+    assert {k["model"] for k in seen} == {"openai/gpt-5-search-api"}
+
+
+def test_with_no_model_left_the_agent_stops_and_says_why(tmp_path):
+    seen = []
+
+    def completion(**kwargs):
+        seen.append(kwargs["model"])
+        raise out_of_quota()
+
+    cfg = fallback_config(tmp_path, areas=["A", "B", "C", "D"])
+    agent = AgentSource(
+        cfg, keys(**BOTH_KEYS), tmp_path / "cache", completion, sleep=lambda s: None
+    )
+    with pytest.raises(ApiError, match="usage limit was reached"):
+        agent.run()
+    assert seen.count("openai/gpt-5-search-api") == 4, "two tasks, each tried twice, not all four"
+
+
+def test_an_answer_another_model_gave_before_is_reused(tmp_path):
+    seen = []
+    cfg = fallback_config(tmp_path, areas=["Colorado"])
+    first = AgentSource(
+        cfg, keys(**BOTH_KEYS), tmp_path / "cache", gemini_fails(out_of_quota(), seen),
+        sleep=lambda s: None,
+    )  # fmt: skip
+    first.run()
+    paid = len(seen)
+    again = AgentSource(
+        cfg, keys(**BOTH_KEYS), tmp_path / "cache", gemini_fails(out_of_quota(), seen)
+    )
+    again.run()
+    assert (len(seen), again.cached, len(again.found)) == (paid, 1, 1)
+
+
+def test_a_cut_off_answer_is_noted_and_gemini_s_thinking_is_limited(tmp_path):
+    seen = []
+
+    def completion(**kwargs):
+        seen.append(kwargs)
+        answer = litellm.completion(
+            mock_response='[{"name": "A", "city": "Boulder"}, {"na', **kwargs
+        )
+        answer.choices[0].finish_reason = "length"  # type: ignore[attr-defined]
+        return answer
+
+    agent = AgentSource(
+        fallback_config(tmp_path, areas=["Colorado"]),
+        keys(**BOTH_KEYS),
+        tmp_path / "cache",
+        completion,
+    )
+    agent.run()
+    assert [c.name for c in agent.found] == ["A"]
+    assert seen[0]["reasoning_effort"] == "low"
+    assert agent.notes == [
+        "gemini/gemini-2.5-flash: an answer was cut off at max_tokens (8000); only the "
+        "complete stores in it are kept."
+    ]
+    openai_only = AgentSource(
+        fallback_config(tmp_path, areas=["Utah"]),
+        keys(openai="sk-key-123456"),
+        tmp_path / "cache",
+        completion,
+    )
+    openai_only.run()
+    assert "reasoning_effort" not in seen[-1], "the OpenAI search model refuses that setting"
+
+
 # --- website lookup ---------------------------------------------------------------
 
 
@@ -669,8 +819,15 @@ def test_a_region_request_becomes_a_capped_discovery():
     from scrapebot.discover.regions import discover_config
 
     cfg = discover_config(
-        50, "europe", ["knitwear", "other"], ["ponchos"], "openai/gpt-5-search-api"
+        50,
+        "europe",
+        ["knitwear", "other"],
+        ["ponchos"],
+        "gemini/gemini-2.5-flash",
+        agent_fallbacks=["openai/gpt-5-search-api"],
     )
+    assert cfg.ai_agent.model == "gemini/gemini-2.5-flash"
+    assert cfg.ai_agent.fallbacks == ["openai/gpt-5-search-api"]
     assert "FR" in cfg.countries
     assert "Paris, France" in cfg.locations
     assert cfg.target_stores == 50

@@ -76,7 +76,7 @@ uv run scrapebot run data/discover/<id>/stores.csv --limit 2   # then scrape the
 | `google_places` | `GOOGLE_MAPS_API_KEY` (Places API (New)) | Physical shops: name, address, phone, usually the website |
 | `web_search` | `TAVILY_API_KEY` | Online stores; retailers of the `brands` you list |
 | `social_search` | `TAVILY_API_KEY` | Boutiques known mainly by an Instagram or Facebook profile, read from search results only |
-| `ai_agent` | the key of `ai_agent.model`'s provider, e.g. `GEMINI_API_KEY` | Reading "best boutiques in ..." articles; one run per area |
+| `ai_agent` | the key of `ai_agent.model`'s provider, e.g. `GEMINI_API_KEY`; `ai_agent.fallbacks` take over when it fails | Reading "best boutiques in ..." articles; one run per area |
 | `resolve` | `TAVILY_API_KEY` | The website of a store found only by name or profile |
 
 A source without its key is skipped; the others run. Every source is **paid per

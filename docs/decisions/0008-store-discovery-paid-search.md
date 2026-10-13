@@ -35,6 +35,10 @@ cares about knitwear.
 - **Every paid call is capped and cached.** Each source has a hard request cap; the
   agent has a cost cap. Successful answers are cached on disk without the key, so a
   repeated discovery costs nothing. A source without its key is skipped.
+- **The agent has a second model (added 2026-10-13).** When its model fails (quota, a
+  refused key, a busy server), the next of `ai_agent.fallbacks` takes over for the rest
+  of the search and the report says so. The interface puts Gemini first, because its
+  free tier costs nothing, and OpenAI second; the cost cap covers both.
 - **Discovery never opens a store's website.** Whether a store sells knitwear, which
   brands it carries and whether it is multi-brand are read from the data a run
   collects. The finder's labelling (`classify`, its AI second opinion), its scraper and

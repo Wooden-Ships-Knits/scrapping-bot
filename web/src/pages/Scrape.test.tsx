@@ -2,6 +2,8 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { Discovery } from "../api/client";
+import { DiscoveryCard } from "./FindStores";
 import { Scrape } from "./Scrape";
 
 const OPTIONS = {
@@ -121,6 +123,7 @@ const FIND_OPTIONS = {
   default_items: ["knitwear"],
   max_count: 500,
   agent_model: "openai/gpt-5-search-api",
+  agent_fallbacks: [] as string[],
   sources: { google_places: false, web_search: false, social_search: false, ai_agent: true },
 };
 
@@ -189,6 +192,28 @@ describe("Scrape: find stores", () => {
       writers: ["xlsx", "csv"],
     });
     await waitFor(() => expect(window.location.hash).toBe("#/runs/R9"), { timeout: 4000 });
+  });
+
+  it("names the model that takes over, and shows the agent's notes", async () => {
+    mockFind({ ...FIND_OPTIONS, agent_model: "gemini/gemini-2.5-flash", agent_fallbacks: ["openai/gpt-5-search-api"] });
+    render(<Scrape />);
+    await screen.findByRole("button", { name: "Find stores & start scraping" });
+    expect(screen.getByTestId("find-sources")).toHaveTextContent(
+      "AI agent (gemini/gemini-2.5-flash, then openai/gpt-5-search-api)",
+    );
+
+    const note = "gemini/gemini-2.5-flash: The provider's usage limit was reached (rate limit or quota). Continued with openai/gpt-5-search-api.";
+    render(
+      <DiscoveryCard
+        discovery={
+          discovery({
+            state: "done",
+            sources: [{ name: "ai_agent", status: "ok", found: 12, error: "", notes: [note] }],
+          }) as Discovery
+        }
+      />,
+    );
+    expect(screen.getByTestId("discovery-notes")).toHaveTextContent(`AI agent: ${note}`);
   });
 
   it("refuses a count that is not a whole number in range", async () => {

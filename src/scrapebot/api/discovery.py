@@ -95,7 +95,13 @@ class DiscoveryManager:
                 progress=progress,
             )
             job.sources = [
-                DiscoverySourceOut(name=r.name, status=r.status, found=r.candidates, error=r.error)
+                DiscoverySourceOut(
+                    name=r.name,
+                    status=r.status,
+                    found=r.candidates,
+                    error=r.error,
+                    notes=[redact(note) for note in r.notes],
+                )
                 for r in result.sources
             ]
             job.cost_usd = round(sum(r.cost_usd for r in result.sources), 6)

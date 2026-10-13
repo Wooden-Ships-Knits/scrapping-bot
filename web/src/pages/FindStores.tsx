@@ -41,6 +41,8 @@ export function FindStoresFields({
       items: form.items.includes(item) ? form.items.filter((i) => i !== item) : [...form.items, item],
     });
   const active = Object.entries(options.sources).filter(([, on]) => on);
+  // "gemini/… then openai/…": the second takes over when the first fails.
+  const agentModels = [options.agent_model, ...options.agent_fallbacks].join(", then ");
   const missing = Object.entries(options.sources).filter(([, on]) => !on);
 
   return (
@@ -95,7 +97,7 @@ export function FindStoresFields({
         Active sources:{" "}
         {active.length
           ? active
-              .map(([s]) => (s === "ai_agent" ? `${discoverySourceLabel(s)} (${options.agent_model})` : discoverySourceLabel(s)))
+              .map(([s]) => (s === "ai_agent" ? `${discoverySourceLabel(s)} (${agentModels})` : discoverySourceLabel(s)))
               .join(", ")
           : "none"}
         {missing.length > 0 && <> · no API key: {missing.map(([s]) => discoverySourceLabel(s)).join(", ")}</>}
@@ -153,6 +155,17 @@ export function DiscoveryCard({ discovery }: { discovery: Discovery }) {
               ))}
             </tbody>
           </table>
+        )}
+        {discovery.sources.some((s) => s.notes.length > 0) && (
+          <ul className="muted small" data-testid="discovery-notes">
+            {discovery.sources.flatMap((s) =>
+              s.notes.map((note) => (
+                <li key={`${s.name}-${note}`}>
+                  {discoverySourceLabel(s.name)}: {note}
+                </li>
+              )),
+            )}
+          </ul>
         )}
         {discovery.cost_usd > 0 && <p className="muted small">AI agent cost: US${discovery.cost_usd.toFixed(3)}</p>}
       </div>

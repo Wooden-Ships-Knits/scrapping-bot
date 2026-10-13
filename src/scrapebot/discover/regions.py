@@ -7,6 +7,7 @@ is derived here, with request and cost caps that grow with the number of stores.
 """
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from ..extract.focus import ITEMS, OTHER, search_phrase
@@ -112,6 +113,7 @@ def discover_config(
     terms: list[str],
     agent_model: str,
     base: DiscoverConfig | None = None,
+    agent_fallbacks: Sequence[str] = (),
 ) -> DiscoverConfig:
     """Discovery settings for 'find `count` stores selling `items` in a region'."""
     region = REGIONS[region_key]
@@ -146,6 +148,7 @@ def discover_config(
     data["ai_agent"].update(
         enabled=bool(agent_model),
         model=agent_model,
+        fallbacks=list(agent_fallbacks),
         areas=list(region.areas),
         brand_tasks=False,
         max_runs=runs,

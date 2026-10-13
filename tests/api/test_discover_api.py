@@ -7,6 +7,7 @@ import time
 import litellm
 import pytest
 from fastapi.testclient import TestClient
+from litellm.exceptions import AuthenticationError
 
 from scrapebot.api import ApiSettings, create_app
 from scrapebot.config import RunConfig
@@ -25,11 +26,17 @@ AGENT_ANSWER = json.dumps(
 )  # fmt: skip
 
 
-def make_client(tmp_path, env: str):
+def make_client(tmp_path, env: str, answer=None):
     env_file = tmp_path / ".env"
     env_file.write_text(env)
+    # The LLM stage is off: the run that follows a discovery would call the provider
+    # for real with the test key.
     base = RunConfig.model_validate(
-        {"output": {"runs_dir": tmp_path / "runs"}, "fetch": {"cache_dir": tmp_path / "cache"}}
+        {
+            "output": {"runs_dir": tmp_path / "runs"},
+            "fetch": {"cache_dir": tmp_path / "cache"},
+            "llm": {"enabled": False},
+        }
     )
     settings = ApiSettings(
         base=base,
@@ -43,6 +50,8 @@ def make_client(tmp_path, env: str):
 
     def completion(**kwargs):
         calls.append(kwargs)
+        if answer:
+            return answer(**kwargs)
         return litellm.completion(mock_response=AGENT_ANSWER, **kwargs)
 
     app = create_app(
@@ -88,6 +97,7 @@ def test_options_offer_regions_items_and_say_which_sources_have_a_key(client):
     assert body["items"] == ["knitwear", "cashmere_wool", "fall_winter", "spring_summer", "other"]
     assert body["default_items"] == ["knitwear"]
     assert body["agent_model"] == "openai/gpt-5-search-api"
+    assert body["agent_fallbacks"] == []
     assert body["sources"] == {
         "google_places": False,
         "web_search": False,
@@ -142,6 +152,39 @@ def test_without_any_search_key_nothing_starts(tmp_path):
         assert resp.json()["detail"]["code"] == "no_discovery_source"
         assert c.get("/api/discover/options").json()["agent_model"] == ""
     assert calls == []
+
+
+def test_gemini_answers_first_and_openai_takes_over_when_it_fails(tmp_path):
+    def answer(**kwargs):
+        if kwargs["model"].startswith("gemini/"):
+            raise AuthenticationError("bad key", llm_provider="gemini", model=kwargs["model"])
+        return litellm.completion(mock_response=AGENT_ANSWER, **kwargs)
+
+    env = "GEMINI_API_KEY=gm-test-0123456789abcdef\nOPENAI_API_KEY=sk-test-0123456789abcdef\n"
+    app, calls = make_client(tmp_path, env, answer)
+    with TestClient(app) as c:
+        options = c.get("/api/discover/options").json()
+        assert options["agent_model"] == "gemini/gemini-2.5-flash"
+        assert options["agent_fallbacks"] == ["openai/gpt-5-search-api"]
+
+        found = wait_for_discovery(c, discover(c).json()["discovery_id"])
+        assert found["state"] == "done", found["error"]
+        agent = next(s for s in found["sources"] if s["name"] == "ai_agent")
+        assert (agent["status"], agent["found"]) == ("ok", 4)
+        assert agent["notes"] == [
+            "gemini/gemini-2.5-flash: The provider rejected the API key. Check the key and "
+            "the provider. Continued with openai/gpt-5-search-api."
+        ]
+        assert "gm-test" not in json.dumps(found)
+        wait_until_finished(c, found["run_id"])
+    assert [k["model"].split("/")[0] for k in calls][:2] == ["gemini", "openai"]
+
+
+def test_an_anthropic_key_alone_does_not_switch_the_agent_on(tmp_path):
+    app, _ = make_client(tmp_path, "ANTHROPIC_API_KEY=sk-ant-test-0123456789abcdef\n")
+    with TestClient(app) as c:
+        options = c.get("/api/discover/options").json()
+        assert (options["agent_model"], options["sources"]["ai_agent"]) == ("", False)
 
 
 def test_an_unknown_discovery_is_404(client):
