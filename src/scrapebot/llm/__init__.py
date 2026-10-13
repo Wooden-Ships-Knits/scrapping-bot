@@ -7,3 +7,10 @@ import os
 # the copy bundled with the installed version. Use the bundled copy: no hidden
 # network call, and costs that match the pinned version.
 os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+
+# In its default "DEV" mode LiteLLM copies the working directory's `.env` into the
+# process environment when it is imported. The environment wins over `.env`
+# (`keys.load_keys`), so a key corrected in `.env` stayed wrong until the server was
+# restarted, and every key leaked into child processes. Keys are read from `.env` by
+# `keys.load_keys` alone.
+os.environ.setdefault("LITELLM_MODE", "PRODUCTION")

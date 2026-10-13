@@ -3,6 +3,9 @@
 import functools
 import json
 import logging
+import os
+import subprocess
+import sys
 
 import litellm
 import pytest
@@ -231,6 +234,17 @@ def test_the_same_text_is_never_paid_for_twice(tmp_path):
     assert (known.model_dump() == first.model_dump(), call.cached) == (True, True), (
         "a kept answer needs no budget"
     )
+
+
+def test_importing_the_llm_stage_never_copies_dotenv_into_the_environment(tmp_path):
+    """LiteLLM does that by default; the environment then hides a key corrected in .env."""
+    (tmp_path / ".env").write_text("SCRAPEBOT_TEST_ONLY_KEY=from-dotenv\n")
+    code = "import os, scrapebot.llm, litellm; print('SCRAPEBOT_TEST_ONLY_KEY' in os.environ)"
+    env = {k: v for k, v in os.environ.items() if k != "LITELLM_MODE"}
+    done = subprocess.run(
+        [sys.executable, "-c", code], cwd=tmp_path, env=env, capture_output=True, text=True
+    )
+    assert done.stdout.strip() == "False", done.stderr[-300:]
 
 
 def busy(model):

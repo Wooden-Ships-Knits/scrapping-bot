@@ -4,6 +4,8 @@ import os
 
 # Keep LiteLLM offline: use its bundled price list instead of fetching one.
 os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
+# Keep LiteLLM from copying a developer's .env into the environment on import.
+os.environ["LITELLM_MODE"] = "PRODUCTION"
 
 
 import pytest
