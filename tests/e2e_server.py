@@ -79,6 +79,7 @@ def main() -> None:
         env_file=work / ".env",
         discover_dir=work / "discover",
         discover_cache_dir=work / "discover-cache",
+        inputs_dir=work / "inputs",
     )
     app = create_app(settings, fetcher_factory=lambda: SlowFakeFetcher(args.delay))
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")

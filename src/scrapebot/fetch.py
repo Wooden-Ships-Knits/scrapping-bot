@@ -136,8 +136,9 @@ def detect_challenge(status: int | None, body: str) -> str:
 
 
 # Folders inside the cache that are not pages and must never be pruned: the paid
-# discovery answers (ADR 0008) live in data/.cache/discover.
-CACHE_KEEP = frozenset({"discover"})
+# discovery answers (ADR 0008) live in data/.cache/discover, the LLM stage's answers
+# (ADR 0013) in data/.cache/llm.
+CACHE_KEEP = frozenset({"discover", "llm"})
 
 
 def prune_cache(cache_dir: Path, max_age_seconds: float, now: float | None = None) -> int:

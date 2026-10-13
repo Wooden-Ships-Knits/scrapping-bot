@@ -15,18 +15,38 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError
 
-from ..config import FocusConfig, InputConfig, RunConfig
-from ..discover.agent import Completion, pick_agent_model
+from ..analysis import inputs as analysis_inputs
+from ..analysis.discovery import Scorecard, score
+from ..config import LLM_USD_PER_STORE, FocusConfig, InputConfig, RunConfig
+from ..discover.agent import Completion, agent_models, pick_agent_model
+from ..discover.costs import estimate
 from ..discover.paid import Transport
 from ..discover.regions import DEFAULT_REGION, REGIONS, discover_config
+from ..discover.request import (
+    MAX_PROMPT_CHARS,
+    OUT_OF_SCOPE,
+    NoAnswer,
+    OutOfScope,
+    place_region,
+    understand,
+)
 from ..extract.focus import DEFAULT_ITEMS, OTHER
 from ..extract.focus import ITEMS as FOCUS_ITEMS
 from ..inputs.readers import SUPPORTED_SUFFIXES, InputError
 from ..inputs.resolve import DUPLICATE, resolve
 from ..keys import load_keys
-from ..llm.gateway import KEY_VARIABLES, check_connection, key_for, provider_of
+from ..ledger import Ledger
+from ..llm.gateway import (
+    KEY_VARIABLES,
+    Budget,
+    LiteLLMExtractor,
+    check_connection,
+    is_local,
+    key_for,
+    provider_of,
+)
 from ..outputs import available_writers
-from ..pipeline import load_records, prepare, resume
+from ..pipeline import load_records, prepare, read_before, resume
 from ..traffic import Period, TrafficError, TrafficService, TrafficSnapshot
 from . import library
 from .detection import detection
@@ -34,11 +54,15 @@ from .discovery import DiscoveryManager
 from .manager import FetcherFactory, RunManager
 from .retailer_map import RetailerMapError, retailer_map
 from .schemas import (
+    CostLineOut,
     DetectionOut,
+    DiscoverEstimateOut,
     DiscoverIn,
     DiscoverOptionsOut,
     DiscoveryOut,
     ErrorOut,
+    InterpretIn,
+    InterpretOut,
     LLMCheckIn,
     LLMCheckOut,
     OptionsOut,
@@ -60,7 +84,7 @@ UPLOAD_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 
 # (provider, label, example model). Any LiteLLM provider/model works; these are offered.
 PROVIDERS = (
-    ("gemini", "Google Gemini", "gemini/gemini-3.5-flash"),
+    ("gemini", "Google Gemini", "gemini/gemini-2.5-flash"),
     ("openai", "OpenAI", "openai/gpt-4o-mini"),
     ("anthropic", "Anthropic Claude", "anthropic/claude-haiku-4-5-20251001"),
     ("mistral", "Mistral", "mistral/mistral-small-latest"),
@@ -71,7 +95,8 @@ PROVIDERS = (
 )
 SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 EXAMPLES = 8
-MAX_DISCOVER_COUNT = 500
+MAX_DISCOVER_COUNT = 1000
+REQUEST_BUDGET_USD = 0.05  # the most reading one search request may cost
 FINISHED = ("done", "failed", "interrupted", "stopped")
 
 
@@ -87,6 +112,7 @@ class ApiSettings(BaseModel):
     discover_dir: Path = Path("data/discover")  # stores found from the interface
     discover_cache_dir: Path = Path("data/.cache/discover")  # paid answers, without keys
     process_dir: Path = Path("data/process")  # what `process/` wrote per run; read, never written
+    inputs_dir: Path = Path("data/inputs")  # the operator's own files (stockists); read only
 
 
 class ApiError(Exception):
@@ -100,6 +126,7 @@ def create_app(
     discover_transport: Transport | None = None,
     discover_completion: Completion | None = None,
     traffic_transport: Transport | None = None,
+    request_completion: Completion | None = None,
 ) -> FastAPI:
     settings = settings or ApiSettings()
     manager = RunManager(fetcher_factory)
@@ -198,6 +225,7 @@ def create_app(
             raise ApiError(422, "bad_input", str(exc)) from exc
         resolution = resolve(records)
         skipped = [i for i in resolution.inputs if i.status not in ("processed", DUPLICATE)]
+        known = read_before(settings.base, resolution)
         return PreviewOut(
             links=len(records),
             stores=len(resolution.targets),
@@ -207,6 +235,9 @@ def create_app(
             store_examples=[t.domain for t in resolution.targets[:EXAMPLES]],
             max_links=cfg.max_links,
             too_many=len(records) > cfg.max_links,
+            read_before=len(known),
+            read_before_latest=max((v.fetched_at for v in known.values()), default=""),
+            reuse_days=settings.base.fetch.reuse_days,
         )
 
     @app.post("/api/runs", status_code=202)
@@ -214,6 +245,8 @@ def create_app(
         data = settings.base.model_dump()
         data["input"] = input_config(body.source, body.url_column).model_dump()
         data["output"]["writers"] = body.writers
+        if body.rescrape:
+            data["fetch"]["reuse_days"] = 0
         keys: dict[str, SecretStr] = {}
         if body.llm and body.llm.enabled:
             data["llm"] = body.llm.model_dump(exclude={"api_key"})
@@ -257,6 +290,17 @@ def create_app(
     def run_detail(run_id: str) -> RunOut:
         return load(run_id)
 
+    @app.get("/api/runs/{run_id}/quality")
+    def run_quality(run_id: str) -> Scorecard:
+        """For a run on stores the bot found itself: how far to trust that search. Known
+        stockists found, agreement between sources, and what this run made of the stores."""
+        root = root_or_404(run_id)
+        found = library.discovery_of(root)
+        if found is None:
+            raise ApiError(404, "no_discovery", "This run did not start from a store search.")
+        stockists = analysis_inputs.load(folder=settings.inputs_dir).stockists
+        return score(found, stockists, root)
+
     @app.get("/api/runs/{run_id}/events")
     async def run_events(run_id: str, request: Request) -> StreamingResponse:
         """Server-sent events: the full run state each time it changes, until it ends."""
@@ -289,6 +333,19 @@ def create_app(
             "ai_agent": bool(pick_agent_model(keys)),
         }
 
+    def left_out(rescrape: bool) -> list[str]:
+        """The stores a search leaves out, newest first: those a run read in the last
+        `fetch.reuse_days` days (ADR 0013). None when the operator asks for them to be
+        scraped again: a search is for new stores unless told otherwise."""
+        days = 0 if rescrape else settings.base.fetch.reuse_days
+        return Ledger(runs_dir).settled(days) if days else []
+
+    def prompt_model(keys: dict[str, SecretStr]) -> str:
+        """The model that reads a search written in words: the run's own LLM, when its
+        key is set."""
+        model = settings.base.llm.model
+        return model if is_local(model) or key_for(model, keys) else ""
+
     @app.get("/api/discover/options")
     def discover_options() -> DiscoverOptionsOut:
         """What the interface offers for finding stores, and which sources have a key.
@@ -301,17 +358,92 @@ def create_app(
             default_items=list(DEFAULT_ITEMS),
             max_count=MAX_DISCOVER_COUNT,
             agent_model=pick_agent_model(keys),
+            agent_fallbacks=agent_models(keys)[1:],
             sources=discovery_sources(keys),
+            reuse_days=settings.base.fetch.reuse_days,
+            prompt_model=prompt_model(keys),
+            max_prompt_chars=MAX_PROMPT_CHARS,
+        )
+
+    @app.post("/api/discover/interpret")
+    def interpret(body: InterpretIn) -> InterpretOut:
+        """Turn a search written in words into form settings. Nothing is searched: the
+        operator sees the settings first. A request that is not a store search is
+        refused, always with the same message."""
+        keys = load_keys(settings.env_file)
+        model = prompt_model(keys)
+        if not model:
+            raise ApiError(
+                422,
+                "no_llm_key",
+                f"Describing a search needs the API key for {settings.base.llm.model} in .env.",
+            )
+        if len(body.prompt.strip()) > MAX_PROMPT_CHARS:
+            raise ApiError(
+                422, "prompt_too_long", f"Keep the request under {MAX_PROMPT_CHARS} characters."
+            )
+        asker = LiteLLMExtractor(
+            model,
+            keys,
+            Budget(REQUEST_BUDGET_USD),
+            fallbacks=settings.base.llm.fallbacks,
+            api_base=settings.base.llm.api_base,
+            completion=request_completion,
+            cache_dir=settings.discover_cache_dir / "requests",
+        )
+        try:
+            got = understand(body.prompt, asker)
+        except OutOfScope as exc:
+            raise ApiError(422, "out_of_scope", OUT_OF_SCOPE) from exc
+        except NoAnswer as exc:
+            raise ApiError(502, "llm_failed", f"The request could not be read: {exc}") from exc
+        return InterpretOut(**got.model_dump())
+
+    @app.get("/api/discover/estimate")
+    def discover_estimate(
+        count: Annotated[int, Query(ge=1, le=MAX_DISCOVER_COUNT)],
+        region: str = DEFAULT_REGION,
+        place: Annotated[str, Query(max_length=60)] = "",
+        rescrape: bool = False,
+    ) -> DiscoverEstimateOut:
+        """What finding `count` stores and reading them can cost at most, before any of
+        it is spent: each source's cap at list price, plus the run's LLM stage."""
+        if not place and region not in REGIONS:
+            raise ApiError(422, "bad_region", f"Region {region} is not known.")
+        keys = load_keys(settings.env_file)
+        models = agent_models(keys)
+        config = discover_config(
+            count,
+            region,
+            list(DEFAULT_ITEMS),
+            [],
+            pick_agent_model(keys),
+            agent_fallbacks=models[1:],
+            place=place_region(place, "US") if place else None,  # the country costs nothing
+            new_only=bool(left_out(rescrape)),
+        )
+        lines = [CostLineOut(**line.model_dump()) for line in estimate(config, keys)]
+        llm = settings.base.llm
+        if llm.enabled and key_for(llm.model, keys):
+            reading = min(llm.budget_usd, count * LLM_USD_PER_STORE)
+            lines.append(CostLineOut(name="llm", max_usd=round(reading, 6), note=""))
+        return DiscoverEstimateOut(
+            count=count, lines=lines, max_usd=round(sum(line.max_usd for line in lines), 6)
         )
 
     @app.post("/api/discover", status_code=202)
     def start_discovery(body: DiscoverIn) -> DiscoveryOut:
         """Find stores, then start a run on all of them; poll GET /api/discover/{id}."""
-        if body.region not in REGIONS:
+        place = " ".join(body.place.split())
+        country = body.country.strip().upper()
+        if place and not (len(country) == 2 and country.isalpha()):
+            raise ApiError(422, "bad_place", f"The country of {place} is not known.")
+        if not place and body.region not in REGIONS:
             raise ApiError(422, "bad_region", f"Region {body.region} is not known.")
         if OTHER in body.items and not any(t.strip() for t in body.terms):
             raise ApiError(422, "terms_required", "Give keywords for the item Other.")
         keys = load_keys(settings.env_file)
+        known = left_out(body.rescrape)
         if not any(discovery_sources(keys).values()):
             raise ApiError(
                 422,
@@ -322,13 +454,22 @@ def create_app(
         try:
             focus = FocusConfig(items=body.items, terms=body.terms)
             config = discover_config(
-                body.count, body.region, focus.items, focus.terms, pick_agent_model(keys)
+                body.count,
+                body.region,
+                focus.items,
+                focus.terms,
+                pick_agent_model(keys),
+                agent_fallbacks=agent_models(keys)[1:],
+                place=place_region(place, country) if place else None,
+                new_only=bool(known),
             ).model_copy(
                 update={"out_dir": settings.discover_dir, "cache_dir": settings.discover_cache_dir}
             )
             base = settings.base.model_dump()
             base["output"]["writers"] = body.writers
             base["focus"] = focus.model_dump()
+            if body.rescrape:
+                base["fetch"]["reuse_days"] = 0
             RunConfig.model_validate(base)  # fail now, not after paying for the search
         except ValidationError as exc:
             raise ApiError(422, "bad_settings", exc.errors()[0]["msg"]) from exc
@@ -340,7 +481,7 @@ def create_app(
             manager.submit(prepared, keys)
             return prepared.run_id
 
-        return finder.submit(config, keys, start_run).out()
+        return finder.submit(config, keys, start_run, known).out()
 
     @app.get("/api/discover/{discovery_id}")
     def discovery(discovery_id: str) -> DiscoveryOut:

@@ -35,6 +35,16 @@ cares about knitwear.
 - **Every paid call is capped and cached.** Each source has a hard request cap; the
   agent has a cost cap. Successful answers are cached on disk without the key, so a
   repeated discovery costs nothing. A source without its key is skipped.
+- **A search can be written in words (added 2026-10-13).** One small model call turns
+  "cashmere and knitwear in Las Vegas" into the form's settings, which the operator sees
+  before paying for a search. The request is quoted data, the answer has a fixed shape,
+  and anything that is not a store, brand, product or wholesale research request is
+  refused with one message, a plainly unrelated one without a model call
+  (`discover/request.py`). A fixed list of such requests is tested (negative tests).
+- **The agent has a second model (added 2026-10-13).** When its model fails (quota, a
+  refused key, a busy server), the next of `ai_agent.fallbacks` takes over for the rest
+  of the search and the report says so. The interface puts Gemini first, because its
+  free tier costs nothing, and OpenAI second; the cost cap covers both.
 - **Discovery never opens a store's website.** Whether a store sells knitwear, which
   brands it carries and whether it is multi-brand are read from the data a run
   collects. The finder's labelling (`classify`, its AI second opinion), its scraper and
@@ -63,6 +73,13 @@ cares about knitwear.
 
 - Discovery costs money per request: Google Places bills per search, Tavily per
   query, the agent per token. The caps in `discover.example.yaml` bound one discovery.
+  The interface shows the most a search can cost before it starts and what its requests
+  came to afterwards, at list prices (`discover/costs.py`): an estimate, not the bill.
+- A model's answer is a lead, not a fact. It is checked against things the bot did not
+  invent (`analysis/discovery.py`): the operator's stockist list, agreement between
+  sources, and what the run then finds at each website. A question-answering metric
+  suite such as RAGAS does not fit: the output is a list of stores, not an answer drawn
+  from retrieved text.
 - Search coverage follows the configured places and queries: Google returns at most
   60 places per search, so a town not listed is missed.
 - Google's terms for Places content limit how long it may be cached and where it may

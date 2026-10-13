@@ -8,7 +8,7 @@ lives in memory; its files (stores found, report) stay in the discovery folder.
 import logging
 import secrets
 import threading
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -36,6 +36,7 @@ class LiveDiscovery:
     step: str = ""
     found: int = 0
     stores_to_visit: int = 0
+    read_before: int = 0
     sources: list[DiscoverySourceOut] = field(default_factory=list)
     cost_usd: float = 0.0
     run_id: str | None = None
@@ -49,6 +50,7 @@ class LiveDiscovery:
             step=self.step,
             found=self.found,
             stores_to_visit=self.stores_to_visit,
+            read_before=self.read_before,
             sources=list(self.sources),
             cost_usd=self.cost_usd,
             run_id=self.run_id,
@@ -69,11 +71,14 @@ class DiscoveryManager:
         config: DiscoverConfig,
         keys: Mapping[str, SecretStr],
         start_run: StartRun,
+        known: Sequence[str] = (),
     ) -> LiveDiscovery:
+        """`known`: domains of stores read before, newest first. Given, the search is
+        for new stores only: those are not counted and not handed to the run."""
         job = LiveDiscovery(discovery_id=secrets.token_hex(8), count=config.target_stores or 0)
         with self._lock:
             self._jobs[job.discovery_id] = job
-        self._executor.submit(self._work, job, config, dict(keys), start_run)
+        self._executor.submit(self._work, job, config, dict(keys), start_run, list(known))
         return job
 
     def _work(
@@ -82,6 +87,7 @@ class DiscoveryManager:
         config: DiscoverConfig,
         keys: Mapping[str, SecretStr],
         start_run: StartRun,
+        known: Sequence[str] = (),
     ) -> None:
         def progress(step: str, found: int) -> None:
             job.step, job.found = step, found
@@ -93,17 +99,33 @@ class DiscoveryManager:
                 transport=self._transport,
                 completion=self._completion,
                 progress=progress,
+                known=known,
             )
             job.sources = [
-                DiscoverySourceOut(name=r.name, status=r.status, found=r.candidates, error=r.error)
+                DiscoverySourceOut(
+                    name=r.name,
+                    status=r.status,
+                    found=r.candidates,
+                    error=r.error,
+                    notes=[redact(note) for note in r.notes],
+                    cost_usd=r.cost_usd,
+                )
                 for r in result.sources
             ]
-            job.cost_usd = round(sum(r.cost_usd for r in result.sources), 6)
-            job.step, job.found = "", len(result.stores)
-            chosen = stores_to_visit(result.stores, config.target_stores)
+            job.cost_usd = result.cost_usd
+            job.read_before = result.known
+            # Every new store with a website, before the count asked for cuts the list.
+            job.step, job.found = "", len(stores_to_visit(result.stores, None, known))
+            chosen = stores_to_visit(result.stores, config.target_stores, known)
             job.stores_to_visit = len(chosen)
             if not chosen:
-                job.error = "No store with a website was found. See the status of each source."
+                job.error = (
+                    "Every store with a website that was found has been scraped before. "
+                    "Search another place or other items, or include the stores already "
+                    "scraped."
+                    if result.known
+                    else "No store with a website was found. See the status of each source."
+                )
                 job.state = "failed"
                 return
             links = write_links_file(chosen, result.root / "to_visit.csv")

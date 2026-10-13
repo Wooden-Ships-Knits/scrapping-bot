@@ -82,7 +82,10 @@ class StoreRow(Row):
     # kept, so this is the only record of it (extract.identity).
     identity: dict[str, Any] = Field(default_factory=dict)
     input_ids: list[int] = Field(default_factory=list)
-    fetched_at: str
+    fetched_at: str  # when the store was read; for a loaded store, by the run in `reused_from`
+    # The run this store's rows were loaded from, when it was read in the last
+    # `fetch.reuse_days` days and so not visited again (ADR 0013). "" for a visit.
+    reused_from: str = ""
 
 
 class ProductRow(Row):
@@ -158,6 +161,7 @@ class LLMCallRow(Row):
     output_tokens: int = 0
     cost_usd: float = 0.0
     cost_estimated: bool = False
+    cached: bool = False  # answered from the answer cache: no call, no cost (ADR 0013)
     duration_seconds: float = 0.0
     error: str = ""
 

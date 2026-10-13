@@ -44,6 +44,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/discover/estimate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Discover Estimate
+         * @description What finding `count` stores and reading them can cost at most, before any of
+         *     it is spent: each source's cap at list price, plus the run's LLM stage.
+         */
+        get: operations["discover_estimate_api_discover_estimate_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/discover/interpret": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Interpret
+         * @description Turn a search written in words into form settings. Nothing is searched: the
+         *     operator sees the settings first. A request that is not a store search is
+         *     refused, always with the same message.
+         */
+        post: operations["interpret_api_discover_interpret_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/discover/options": {
         parameters: {
             query?: never;
@@ -266,6 +309,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{run_id}/quality": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run Quality
+         * @description For a run on stores the bot found itself: how far to trust that search. Known
+         *     stockists found, agreement between sources, and what this run made of the stores.
+         */
+        get: operations["run_quality_api_runs__run_id__quality_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{run_id}/resume": {
         parameters: {
             query?: never;
@@ -422,6 +486,15 @@ export interface components {
             /** Watched */
             watched: boolean;
         };
+        /** CostLineOut */
+        CostLineOut: {
+            /** Max Usd */
+            max_usd: number;
+            /** Name */
+            name: string;
+            /** Note */
+            note: string;
+        };
         /**
          * DetectionOut
          * @description How often stores detect and block the bot, across every run on disk.
@@ -456,16 +529,43 @@ export interface components {
             visits: number;
         };
         /**
+         * DiscoverEstimateOut
+         * @description The most finding `count` stores and reading them can cost, at list prices.
+         */
+        DiscoverEstimateOut: {
+            /** Count */
+            count: number;
+            /** Lines */
+            lines: components["schemas"]["CostLineOut"][];
+            /** Max Usd */
+            max_usd: number;
+        };
+        /**
          * DiscoverIn
          * @description Find stores, then start a run on them (ADR 0008).
          */
         DiscoverIn: {
             /** Count */
             count: number;
+            /**
+             * Country
+             * @default
+             */
+            country: string;
             /** Items */
             items: string[];
+            /**
+             * Place
+             * @default
+             */
+            place: string;
             /** Region */
             region: string;
+            /**
+             * Rescrape
+             * @default false
+             */
+            rescrape: boolean;
             /** Terms */
             terms?: string[];
             /** Writers */
@@ -473,6 +573,8 @@ export interface components {
         };
         /** DiscoverOptionsOut */
         DiscoverOptionsOut: {
+            /** Agent Fallbacks */
+            agent_fallbacks: string[];
             /** Agent Model */
             agent_model: string;
             /** Default Items */
@@ -483,8 +585,14 @@ export interface components {
             items: string[];
             /** Max Count */
             max_count: number;
+            /** Max Prompt Chars */
+            max_prompt_chars: number;
+            /** Prompt Model */
+            prompt_model: string;
             /** Regions */
             regions: string[];
+            /** Reuse Days */
+            reuse_days: number;
             /** Sources */
             sources: {
                 [key: string]: boolean;
@@ -502,6 +610,8 @@ export interface components {
             error: string;
             /** Found */
             found: number;
+            /** Read Before */
+            read_before: number;
             /** Run Id */
             run_id: string | null;
             /** Sources */
@@ -518,12 +628,16 @@ export interface components {
         };
         /** DiscoverySourceOut */
         DiscoverySourceOut: {
+            /** Cost Usd */
+            cost_usd: number;
             /** Error */
             error: string;
             /** Found */
             found: number;
             /** Name */
             name: string;
+            /** Notes */
+            notes: string[];
             /** Status */
             status: string;
         };
@@ -540,6 +654,33 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** InterpretIn */
+        InterpretIn: {
+            /** Prompt */
+            prompt: string;
+        };
+        /**
+         * InterpretOut
+         * @description A request as form settings; the operator sees them before anything is searched.
+         */
+        InterpretOut: {
+            /** Cached */
+            cached: boolean;
+            /** Cost Usd */
+            cost_usd: number;
+            /** Count */
+            count: number | null;
+            /** Country */
+            country: string;
+            /** Items */
+            items: string[];
+            /** Place */
+            place: string;
+            /** Region */
+            region: string;
+            /** Terms */
+            terms: string[];
         };
         /** LLMCheckIn */
         LLMCheckIn: {
@@ -688,6 +829,12 @@ export interface components {
             links: number;
             /** Max Links */
             max_links: number;
+            /** Read Before */
+            read_before: number;
+            /** Read Before Latest */
+            read_before_latest: string;
+            /** Reuse Days */
+            reuse_days: number;
             /** Skipped */
             skipped: {
                 [key: string]: number;
@@ -804,6 +951,11 @@ export interface components {
         /** RunIn */
         RunIn: {
             llm?: components["schemas"]["LLMIn"] | null;
+            /**
+             * Rescrape
+             * @default false
+             */
+            rescrape: boolean;
             source: components["schemas"]["SourceIn"];
             /**
              * Url Column
@@ -885,6 +1037,10 @@ export interface components {
             processed: number;
             /** Products */
             products: number;
+            /** Reuse Days */
+            reuse_days: number;
+            /** Reused Stores */
+            reused_stores: number;
             /** Run Id */
             run_id: string;
             /** Skipped */
@@ -920,6 +1076,61 @@ export interface components {
             /** Writers */
             writers: string[];
         };
+        /** Scorecard */
+        Scorecard: {
+            /** Blocked */
+            blocked?: number | null;
+            /** Confirmed */
+            confirmed: number;
+            /** Cost Per Final Store */
+            cost_per_final_store?: number | null;
+            /** Cost Usd */
+            cost_usd: number;
+            /** Countries */
+            countries: string[];
+            /** Discovery Id */
+            discovery_id: string;
+            /** Failed */
+            failed?: number | null;
+            /** Final */
+            final?: number | null;
+            /** Missing */
+            missing?: number | null;
+            /** Missing Examples */
+            missing_examples?: string[];
+            /** Precision */
+            precision?: number | null;
+            /** Read */
+            read?: number | null;
+            /**
+             * Read Before
+             * @default 0
+             */
+            read_before: number;
+            /** Recall */
+            recall: number | null;
+            /**
+             * Run Id
+             * @default
+             */
+            run_id: string;
+            /** Sources */
+            sources?: components["schemas"]["SourceScore"][];
+            /** Stockist Examples */
+            stockist_examples?: string[];
+            /** Stockist Share */
+            stockist_share: number | null;
+            /** Stockists Found */
+            stockists_found: number;
+            /** Stockists Known */
+            stockists_known: number;
+            /** Stores */
+            stores: number;
+            /** Visited */
+            visited?: number | null;
+            /** With Website */
+            with_website: number;
+        };
         /** SkippedLink */
         SkippedLink: {
             /** Raw */
@@ -937,6 +1148,17 @@ export interface components {
             /** Upload Id */
             upload_id?: string | null;
         };
+        /** SourceScore */
+        SourceScore: {
+            /** Name */
+            name: string;
+            /** Stockists */
+            stockists: number;
+            /** Stores */
+            stores: number;
+            /** With Website */
+            with_website: number;
+        };
         /** StoreOut */
         StoreOut: {
             /** Contact Count */
@@ -953,6 +1175,11 @@ export interface components {
             platform: string;
             /** Product Count */
             product_count: number;
+            /**
+             * Reused From
+             * @default
+             */
+            reused_from: string;
             /** Source Used */
             source_used: string;
             /** Ssl Bypassed */
@@ -1146,6 +1373,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DiscoveryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    discover_estimate_api_discover_estimate_get: {
+        parameters: {
+            query: {
+                count: number;
+                region?: string;
+                place?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoverEstimateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    interpret_api_discover_interpret_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InterpretIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InterpretOut"];
                 };
             };
             /** @description Validation Error */
@@ -1490,6 +1783,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_quality_api_runs__run_id__quality_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Scorecard"];
                 };
             };
             /** @description Validation Error */

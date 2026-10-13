@@ -1,14 +1,33 @@
 import { AlertTriangle, Search } from "lucide-react";
 
-import type { DiscoverOptions, Discovery } from "../api/client";
-import { discoverySourceLabel, discoveryState, formatNumber, itemLabel, plural, regionLabel, sourceStatus } from "../labels";
+import type { DiscoverEstimate, DiscoverOptions, Discovery } from "../api/client";
+import {
+  costLine,
+  discoverySourceLabel,
+  discoveryState,
+  formatNumber,
+  formatUsd,
+  itemLabel,
+  plural,
+  regionLabel,
+  sourceStatus,
+} from "../labels";
 
 export type FindForm = {
   count: string; // typed by hand; checked on submit
   region: string;
   items: string[];
   terms: string;
+  // Stores a run read recently: a search leaves them out and counts only new ones, a run
+  // on pasted links loads their data. True scrapes them again in both cases.
+  rescrape: boolean;
+  prompt: string; // the search in the operator's own words; it only fills in this form
+  place: string; // one named place ("Las Vegas, NV") instead of a region; "" uses `region`
+  country: string; // the place's country code
 };
+
+/** What reading a described search gave: the settings it filled in, or why it was refused. */
+export type PromptNote = { ok: boolean; text: string };
 
 export const OTHER = "other";
 
@@ -28,11 +47,19 @@ export function parseTerms(text: string): string[] {
 export function FindStoresFields({
   options,
   form,
+  estimate,
   onChange,
+  onInterpret,
+  interpreting = false,
+  promptNote,
 }: {
   options: DiscoverOptions;
   form: FindForm;
+  estimate?: DiscoverEstimate | null; // what this search can cost; absent while it is unknown
   onChange: (form: FindForm) => void;
+  onInterpret?: () => void; // read `form.prompt` and fill in the fields
+  interpreting?: boolean;
+  promptNote?: PromptNote | null;
 }) {
   const countOk = parseCount(form.count, options.max_count) !== null;
   const toggleItem = (item: string) =>
@@ -41,10 +68,48 @@ export function FindStoresFields({
       items: form.items.includes(item) ? form.items.filter((i) => i !== item) : [...form.items, item],
     });
   const active = Object.entries(options.sources).filter(([, on]) => on);
+  // "gemini/… then openai/…": the second takes over when the first fails.
+  const agentModels = [options.agent_model, ...options.agent_fallbacks].join(", then ");
   const missing = Object.entries(options.sources).filter(([, on]) => !on);
 
   return (
     <div className="find-fields">
+      {options.prompt_model && onInterpret && (
+        <div className="find-field find-prompt">
+          <label htmlFor="find-prompt">Describe the search (optional)</label>
+          <div className="find-prompt-row">
+            <input
+              id="find-prompt"
+              value={form.prompt}
+              maxLength={options.max_prompt_chars}
+              onChange={(e) => onChange({ ...form, prompt: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter") return;
+                e.preventDefault(); // Enter fills in the form; it never starts the paid search
+                if (form.prompt.trim() && !interpreting) onInterpret();
+              }}
+              placeholder="e.g. cashmere and knitwear boutiques in Las Vegas"
+            />
+            <button type="button" className="chip" disabled={!form.prompt.trim() || interpreting} onClick={onInterpret}>
+              {interpreting ? "Reading…" : "Fill in the form"}
+            </button>
+          </div>
+          <small className="muted">
+            Read once by {options.prompt_model}, for a fraction of a cent. It only fills in the fields below: nothing is
+            searched until you start. Store, brand, product or wholesale research only.
+          </small>
+          {promptNote && (
+            <div
+              className={`notice ${promptNote.ok ? "info" : "bad"}`}
+              role={promptNote.ok ? "status" : "alert"}
+              data-testid="prompt-note"
+            >
+              {promptNote.text}
+            </div>
+          )}
+        </div>
+      )}
+
       <label className="find-field">
         <span>Number of stores</span>
         <input
@@ -60,16 +125,28 @@ export function FindStoresFields({
         <small className={countOk ? "muted" : "bad-text"}>1 – {formatNumber(options.max_count)} stores</small>
       </label>
 
-      <label className="find-field">
-        <span>Region</span>
-        <select value={form.region} onChange={(e) => onChange({ ...form, region: e.target.value })}>
-          {options.regions.map((r) => (
-            <option key={r} value={r}>
-              {regionLabel(r)}
-            </option>
-          ))}
-        </select>
-      </label>
+      {form.place ? (
+        <div className="find-field" data-testid="find-place">
+          <span>Place</span>
+          <div className="find-place">
+            <strong>{form.place}</strong> <span className="muted">({form.country})</span>
+          </div>
+          <button type="button" className="link-button" onClick={() => onChange({ ...form, place: "", country: "" })}>
+            Use a region instead
+          </button>
+        </div>
+      ) : (
+        <label className="find-field">
+          <span>Region</span>
+          <select value={form.region} onChange={(e) => onChange({ ...form, region: e.target.value })}>
+            {options.regions.map((r) => (
+              <option key={r} value={r}>
+                {regionLabel(r)}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       <fieldset className="find-field find-items">
         <legend>Items to look for</legend>
@@ -95,11 +172,44 @@ export function FindStoresFields({
         Active sources:{" "}
         {active.length
           ? active
-              .map(([s]) => (s === "ai_agent" ? `${discoverySourceLabel(s)} (${options.agent_model})` : discoverySourceLabel(s)))
+              .map(([s]) => (s === "ai_agent" ? `${discoverySourceLabel(s)} (${agentModels})` : discoverySourceLabel(s)))
               .join(", ")
           : "none"}
         {missing.length > 0 && <> · no API key: {missing.map(([s]) => discoverySourceLabel(s)).join(", ")}</>}
       </p>
+
+      {options.reuse_days > 0 && (
+        <label className="menu-check find-rescrape">
+          <input
+            type="checkbox"
+            checked={form.rescrape}
+            onChange={(e) => onChange({ ...form, rescrape: e.target.checked })}
+          />
+          <span>
+            Include stores already scraped in the last {formatNumber(options.reuse_days)} days, and scrape them again
+            <span className="muted small">
+              {" "}
+              (otherwise the search is for new stores only: those are skipped and not counted)
+            </span>
+          </span>
+        </label>
+      )}
+
+      {estimate && estimate.lines.length > 0 && (
+        <div className="notice info find-estimate" role="status" data-testid="find-estimate">
+          <strong>
+            Estimated cost for {plural(estimate.count, "store")}: up to {formatUsd(estimate.max_usd)}
+          </strong>{" "}
+          {estimate.lines
+            .map((l) => `${costLine(l.name)} up to ${formatUsd(l.max_usd)}${l.note ? ` (${l.note})` : ""}`)
+            .join(" · ")}
+          <small className="muted">
+            {" "}
+            List prices and caps, not a bill: answers already cached cost nothing, and free allowances are not
+            subtracted.
+          </small>
+        </div>
+      )}
     </div>
   );
 }
@@ -115,7 +225,7 @@ export function DiscoveryCard({ discovery }: { discovery: Discovery }) {
         </h2>
         <span className="spacer" />
         <span className="small">
-          <strong>{plural(discovery.found, "store")} found</strong>
+          <strong>{plural(discovery.found, "new store")} found</strong>
           <span className="muted"> / target {formatNumber(discovery.count)}</span>
         </span>
       </div>
@@ -127,7 +237,12 @@ export function DiscoveryCard({ discovery }: { discovery: Discovery }) {
           </p>
         )}
         {discovery.state === "starting_run" && (
-          <p className="muted">{plural(discovery.stores_to_visit, "store")} handed to the run…</p>
+          <p className="muted">{plural(discovery.stores_to_visit, "new store")} handed to the run…</p>
+        )}
+        {discovery.read_before > 0 && (
+          <p className="muted small" data-testid="discovery-read-before">
+            {plural(discovery.read_before, "store")} found had been scraped before: left out, not counted.
+          </p>
         )}
         {failed && (
           <div className="notice bad" role="alert">
@@ -141,6 +256,7 @@ export function DiscoveryCard({ discovery }: { discovery: Discovery }) {
                 <th>Source</th>
                 <th>Status</th>
                 <th className="end">Found</th>
+                <th className="end">Est. cost</th>
               </tr>
             </thead>
             <tbody>
@@ -149,12 +265,29 @@ export function DiscoveryCard({ discovery }: { discovery: Discovery }) {
                   <td>{discoverySourceLabel(s.name)}</td>
                   <td title={s.error}>{sourceStatus(s.status)}</td>
                   <td className="end">{formatNumber(s.found)}</td>
+                  <td className="end">{s.cost_usd > 0 ? formatUsd(s.cost_usd) : "—"}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
-        {discovery.cost_usd > 0 && <p className="muted small">AI agent cost: US${discovery.cost_usd.toFixed(3)}</p>}
+        {discovery.sources.some((s) => s.notes.length > 0) && (
+          <ul className="muted small" data-testid="discovery-notes">
+            {discovery.sources.flatMap((s) =>
+              s.notes.map((note) => (
+                <li key={`${s.name}-${note}`}>
+                  {discoverySourceLabel(s.name)}: {note}
+                </li>
+              )),
+            )}
+          </ul>
+        )}
+        {discovery.cost_usd > 0 && (
+          <p className="muted small" data-testid="discovery-cost">
+            Estimated API cost of this search: <strong>{formatUsd(discovery.cost_usd)}</strong> (list prices; the website
+            lookup is included).
+          </p>
+        )}
       </div>
     </section>
   );

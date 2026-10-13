@@ -164,9 +164,11 @@ flowchart LR
 | Paid API client | `discover/paid.py` | Disk cache keyed on URL and body (never the key), written atomically; hard request cap, retries on 408/429/5xx, error text redacted |
 | Google Places | `discover/places.py` | Text Search (New); field mask: id, name, address parts, website, phone, business status |
 | Web and social search | `discover/search.py` | Tavily; `site:` becomes `include_domains`; profiles read from result titles and snippets only |
-| Agent | `discover/agent.py` | `litellm.completion(..., web_search_options=...)`; JSON store list; per-discovery cost cap; answers cached |
+| Agent | `discover/agent.py` | `litellm.completion(..., web_search_options=...)`; JSON store list; per-discovery cost cap; answers cached. When `ai_agent.model` fails (once more after 3 s for a failure that may pass), the next of `ai_agent.fallbacks` takes over for the rest of the search and a note says so; with none left the agent stops after two failed tasks. The interface uses Gemini, then OpenAI, by the keys that are set. Gemini's thinking is limited so the store list is not cut off; a cut-off answer is noted |
 | Merge | `discover/merge.py` | One row per store; drops other countries, closed places, excluded domains, bare names; stores the lookup gives one website are folded into one row |
 | Orchestration | `discover/run.py` | Sources in order; one failing or missing a key never stops the others |
+| Quality | `analysis/discovery.py` | The scorecard of a discovery: known stockists found (the operator's list is ground truth; matched by website, then by name where the state agrees), stores found by two or more sources, and, from the run that visited them, stores read, on the final list, and with no website at that address. `scrapebot score`, `GET /api/runs/{id}/quality`; reads files only |
+| Cost | `discover/costs.py` | List price per search request; `estimate()` gives the most a discovery can cost (request caps, the agent's cost cap) for `GET /api/discover/estimate`; the report costs the requests actually sent. Estimates, never bills |
 
 From the web app, `POST /api/discover` takes a store count, a region and the items
 (`discover/regions.py` turns them into countries, agent areas, Maps cities and request
@@ -175,6 +177,23 @@ the model which stores it already has, until the count is reached, a round finds
 nothing new, or a cap is hit. The stores with a website (the ones most sources agree on
 first) become `to_visit.csv`, and a run starts on all of them; `GET /api/discover/{id}`
 reports progress until then. One discovery runs at a time, in its own thread.
+
+A search is for new stores: `POST /api/discover` asks the ledger (`ledger.settled`) for
+the stores a run visited in the last `fetch.reuse_days` days and passes their domains
+to `run_discover(known=...)`. They do not count toward the number asked for, the agent
+is told their websites, and `stores_to_visit` leaves them out; `rescrape: true` turns
+this off and scrapes them again (ADR 0013).
+
+The search can also be written in words ("cashmere and knitwear boutiques in Las
+Vegas"). `POST /api/discover/interpret` (`discover/request.py`) asks the run's LLM once
+to turn it into the form's settings: items, keywords, a region or one named place with
+its country, and a count. Nothing is searched: the interface fills in the form and the
+operator starts the search as before. A named place becomes a region of its own (one
+agent area, one Maps city). The bot only finds stores, so anything else is refused with
+one fixed message. An empty, overlong or plainly unrelated request (asking to drop the
+rules, asking about a person) is refused without a model call; the model reads the
+request as quoted data under fixed instructions and may only answer in a fixed shape,
+from which unknown values are dropped. Answers are kept by a hash of the request.
 
 The items chosen also go into the run's config (`focus`): each product gets the items
 it matches in `products.matched_items` (`extract/focus.py`), each store a
@@ -218,6 +237,14 @@ every failure, and cached pages expire after `fetch.cache_max_age_hours` (defaul
 a monthly run reads fresh pages; expired pages are deleted at the start of a run, never the
 paid discovery answers in `data/.cache/discover`. A challenge page is matched on the
 challenge itself: Cloudflare's bot script also sits on ordinary pages.
+
+Before any store is fetched, `ledger.py` is asked which stores of the input a run read
+in the last `fetch.reuse_days` days (default 30; ADR 0013). Those are loaded from that
+run's tables and written under the new run's id with `stores.reused_from`; only the rest
+are visited. The ledger is `data/runs/ledger.sqlite`, one row per store per run, rebuilt
+from the run folders when it is missing. `--rescrape` or `fetch.reuse_days: 0` visits
+every store. The LLM stage keeps its answers in `data/.cache/llm` by a hash of the model,
+prompt version and messages, so text it has read before costs nothing.
 
 Rate limits are told apart from blocks. A 429, or two different sites on one server network
 refusing us within 10 minutes, means the network (Shopify's shared edge, for one) is limiting

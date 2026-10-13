@@ -8,7 +8,7 @@ import json
 
 import litellm
 import pytest
-from litellm.exceptions import AuthenticationError
+from litellm.exceptions import AuthenticationError, RateLimitError, ServiceUnavailableError
 from pydantic import SecretStr
 
 from scrapebot.cli import main
@@ -369,6 +369,214 @@ def test_a_refused_agent_key_stops_the_agent(tmp_path):
         agent.run()
 
 
+def fallback_config(tmp_path, **agent):
+    return config(
+        tmp_path,
+        ai_agent={
+            "model": "gemini/gemini-2.5-flash",
+            "fallbacks": ["openai/gpt-5-search-api"],
+            "areas": ["Colorado", "Utah"],
+            "budget_usd": 1,
+            **agent,
+        },
+    )
+
+
+def gemini_fails(error, seen):
+    """A completion where Gemini raises `error` and every other model answers."""
+
+    def completion(**kwargs):
+        seen.append(kwargs)
+        if kwargs["model"].startswith("gemini/"):
+            raise error
+        return litellm.completion(mock_response=AGENT_ANSWER, **kwargs)
+
+    return completion
+
+
+def out_of_quota():
+    return RateLimitError("quota", llm_provider="gemini", model="gemini-2.5-flash")
+
+
+BOTH_KEYS = {"gemini": "gm-key-123456", "openai": "sk-key-123456"}
+
+
+def busy_server():
+    return ServiceUnavailableError("overloaded", llm_provider="gemini", model="gemini-2.5-flash")
+
+
+def test_the_next_model_takes_over_when_the_first_keeps_failing(tmp_path):
+    seen, waits = [], []
+    agent = AgentSource(
+        fallback_config(tmp_path),
+        keys(**BOTH_KEYS),
+        tmp_path / "cache",
+        gemini_fails(busy_server(), seen),
+        sleep=waits.append,
+    )
+    agent.run()
+    assert [k["model"].split("/")[0] for k in seen] == ["gemini", "gemini", "openai", "openai"], (
+        "one more try, then OpenAI for this task and the rest of the search"
+    )
+    assert waits == [3.0]
+    assert seen[2]["api_key"] == "sk-key-123456"
+    assert [c.status for c in agent.calls] == ["error", "error", "ok", "ok"]
+    assert len(agent.found) == 2, "no task was lost"
+    assert agent.notes == [
+        "gemini/gemini-2.5-flash: The provider is busy (server overloaded). Try again later "
+        "or set a fallback model. Continued with openai/gpt-5-search-api."
+    ]
+
+
+def test_a_rate_limit_is_waited_out_for_as_long_as_the_provider_asks(tmp_path):
+    """Measured 2026-10-13: the search model allows about two asks a minute."""
+    limited = RateLimitError(
+        "Rate limit reached for gpt-5-search-api on tokens per min (TPM): Limit 45000, "
+        "Used 40000, Requested 9000. Please try again in 5.333s.",
+        llm_provider="openai",
+        model="gpt-5-search-api",
+    )
+    failures = iter([limited, None, limited, limited, None])
+    waits = []
+
+    def completion(**kwargs):
+        if error := next(failures):
+            raise error
+        return litellm.completion(mock_response=AGENT_ANSWER, **kwargs)
+
+    cfg = config(
+        tmp_path, ai_agent={"model": "openai/gpt-5-search-api", "areas": ["Colorado", "Utah"]}
+    )
+    agent = AgentSource(
+        cfg, keys(openai="sk-key-123456"), tmp_path / "cache", completion, sleep=waits.append
+    )
+    agent.run()
+    assert waits == [6.333, 6.333, 20.0], (
+        "the provider's own figure and a second more; a second wait in one task is longer, "
+        "because that figure proved too short"
+    )
+    assert [c.status for c in agent.calls] == ["error", "ok", "error", "error", "ok"]
+    assert len(agent.found) == 2, "both areas were answered: no task was skipped"
+    assert agent.notes == ["openai/gpt-5-search-api: rate limit reached; waited and asked again."]
+
+
+def test_a_spent_quota_is_not_waited_for(tmp_path):
+    spent = RateLimitError(
+        "You exceeded your current quota, please check your plan and billing details.",
+        llm_provider="gemini",
+        model="gemini-2.5-flash",
+    )
+    seen, waits = [], []
+    agent = AgentSource(
+        fallback_config(tmp_path),
+        keys(**BOTH_KEYS),
+        tmp_path / "cache",
+        gemini_fails(spent, seen),
+        sleep=waits.append,
+    )
+    agent.run()
+    assert [k["model"].split("/")[0] for k in seen] == ["gemini", "openai", "openai"]
+    assert waits == [], "waiting cannot refill a quota: the next model answers at once"
+    assert len(agent.found) == 2
+
+
+def test_a_failure_that_cannot_pass_hands_over_at_once(tmp_path):
+    seen, waits = [], []
+    refused = AuthenticationError("bad key", llm_provider="gemini", model="gemini-2.5-flash")
+    agent = AgentSource(
+        fallback_config(tmp_path),
+        keys(**BOTH_KEYS),
+        tmp_path / "cache",
+        gemini_fails(refused, seen),
+        sleep=waits.append,
+    )
+    agent.run()
+    assert [k["model"].split("/")[0] for k in seen] == ["gemini", "openai", "openai"]
+    assert waits == []
+    assert len(agent.found) == 2
+
+
+def test_a_model_without_its_key_is_passed_over(tmp_path):
+    seen = []
+    agent = AgentSource(
+        fallback_config(tmp_path),
+        keys(openai="sk-key-123456"),
+        tmp_path / "cache",
+        gemini_fails(out_of_quota(), seen),
+    )
+    agent.run()
+    assert agent.models == ["openai/gpt-5-search-api"]
+    assert {k["model"] for k in seen} == {"openai/gpt-5-search-api"}
+
+
+def test_with_no_model_left_the_agent_stops_and_says_why(tmp_path):
+    seen = []
+
+    def completion(**kwargs):
+        seen.append(kwargs["model"])
+        raise out_of_quota()
+
+    cfg = fallback_config(tmp_path, areas=["A", "B", "C", "D"])
+    agent = AgentSource(
+        cfg, keys(**BOTH_KEYS), tmp_path / "cache", completion, sleep=lambda s: None
+    )
+    with pytest.raises(ApiError, match="usage limit was reached"):
+        agent.run()
+    assert seen.count("openai/gpt-5-search-api") == 8, (
+        "two tasks, each asked four times (three waits), not all four tasks"
+    )
+
+
+def test_an_answer_another_model_gave_before_is_reused(tmp_path):
+    seen = []
+    cfg = fallback_config(tmp_path, areas=["Colorado"])
+    first = AgentSource(
+        cfg, keys(**BOTH_KEYS), tmp_path / "cache", gemini_fails(out_of_quota(), seen),
+        sleep=lambda s: None,
+    )  # fmt: skip
+    first.run()
+    paid = len(seen)
+    again = AgentSource(
+        cfg, keys(**BOTH_KEYS), tmp_path / "cache", gemini_fails(out_of_quota(), seen)
+    )
+    again.run()
+    assert (len(seen), again.cached, len(again.found)) == (paid, 1, 1)
+
+
+def test_a_cut_off_answer_is_noted_and_gemini_s_thinking_is_limited(tmp_path):
+    seen = []
+
+    def completion(**kwargs):
+        seen.append(kwargs)
+        answer = litellm.completion(
+            mock_response='[{"name": "A", "city": "Boulder"}, {"na', **kwargs
+        )
+        answer.choices[0].finish_reason = "length"  # type: ignore[attr-defined]
+        return answer
+
+    agent = AgentSource(
+        fallback_config(tmp_path, areas=["Colorado"]),
+        keys(**BOTH_KEYS),
+        tmp_path / "cache",
+        completion,
+    )
+    agent.run()
+    assert [c.name for c in agent.found] == ["A"]
+    assert seen[0]["reasoning_effort"] == "low"
+    assert agent.notes == [
+        "gemini/gemini-2.5-flash: an answer was cut off at max_tokens (8000); only the "
+        "complete stores in it are kept."
+    ]
+    openai_only = AgentSource(
+        fallback_config(tmp_path, areas=["Utah"]),
+        keys(openai="sk-key-123456"),
+        tmp_path / "cache",
+        completion,
+    )
+    openai_only.run()
+    assert "reasoning_effort" not in seen[-1], "the OpenAI search model refuses that setting"
+
+
 # --- website lookup ---------------------------------------------------------------
 
 
@@ -474,6 +682,10 @@ def test_a_discovery_writes_a_links_file_scrapebot_run_reads(tmp_path):
     report = json.loads(got.report_path.read_text())
     assert report["stores_with_website"] == 3
     assert report["sources"][0]["requests_sent"] == 1
+    assert report["sources"][0]["cost_usd"] == 0.035, "one Google Maps request at list price"
+    sent = sum(s["requests_sent"] for s in report["sources"][1:3])
+    sent += report["website_lookup"]["requests_sent"]
+    assert report["cost_usd"] == got.cost_usd == round(0.035 + sent * 0.008, 6)
 
 
 def test_a_source_without_its_key_is_skipped_and_the_rest_run(tmp_path):
@@ -669,8 +881,15 @@ def test_a_region_request_becomes_a_capped_discovery():
     from scrapebot.discover.regions import discover_config
 
     cfg = discover_config(
-        50, "europe", ["knitwear", "other"], ["ponchos"], "openai/gpt-5-search-api"
+        50,
+        "europe",
+        ["knitwear", "other"],
+        ["ponchos"],
+        "gemini/gemini-2.5-flash",
+        agent_fallbacks=["openai/gpt-5-search-api"],
     )
+    assert cfg.ai_agent.model == "gemini/gemini-2.5-flash"
+    assert cfg.ai_agent.fallbacks == ["openai/gpt-5-search-api"]
     assert "FR" in cfg.countries
     assert "Paris, France" in cfg.locations
     assert cfg.target_stores == 50
@@ -721,6 +940,50 @@ def test_the_agent_stops_when_a_round_finds_nothing_new(tmp_path):
     agent = AgentSource(cfg, keys(gemini="gm-key-123456"), tmp_path / "cache", completion)
     agent.run()
     assert (len(agent.calls), agent.cached) == (3, 1), "two rounds of two areas, then stop"
+
+
+def test_a_search_for_new_stores_does_not_count_the_ones_read_before(tmp_path):
+    answers = iter(
+        [
+            json.dumps([{"name": f"S{i}", "website": f"https://www.s{i}.com"} for i in range(4)]),
+            json.dumps([{"name": f"S{i}", "website": f"https://s{i}.com"} for i in range(4, 7)]),
+        ]
+    )
+    prompts = []
+
+    def completion(**kwargs):
+        prompts.append(kwargs["messages"][0]["content"])
+        return litellm.completion(mock_response=next(answers), **kwargs)
+
+    cfg = config(
+        tmp_path,
+        target_stores=4,
+        ai_agent={"model": "gemini/gemini-2.5-flash", "areas": ["Colorado"], "max_runs": 10},
+    )
+    agent = AgentSource(
+        cfg,
+        keys(gemini="gm-key-123456"),
+        tmp_path / "cache",
+        completion,
+        known=["s0.com", "s1.com", "s2.com"],
+    )
+    seen = []
+    agent.run(seen.append)
+    assert seen == [1, 4], "three of the first four were read before: the agent asks again"
+    assert (
+        "These websites are already known; do not report their stores: s0.com; s1.com; s2.com"
+        in (prompts[0])
+    )
+
+
+def test_stores_read_before_are_left_out_of_the_visit_list():
+    from scrapebot.discover.run import stores_to_visit
+
+    a = FoundStore(name="A", website="https://www.a.com", sources=["ai_agent"])
+    b = FoundStore(name="B", website="https://b.com", sources=["ai_agent", "google_places"])
+    c = FoundStore(name="C", website="https://c.com", sources=["ai_agent"])
+    assert [s.name for s in stores_to_visit([a, b, c], 2, known=["b.com"])] == ["A", "C"]
+    assert [s.name for s in stores_to_visit([a, b, c], 2)] == ["B", "A"]
 
 
 def test_stores_to_visit_prefer_websites_and_agreement():

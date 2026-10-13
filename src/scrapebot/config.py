@@ -30,6 +30,9 @@ class FetchConfig(_Section):
     # Cached pages older than this are fetched again, and deleted at the start of a run, so
     # a monthly run sees this month's prices (roadmap issue 17). 0 keeps them forever.
     cache_max_age_hours: float = Field(default=168, ge=0)
+    # A store read in the last N days is loaded from that run instead of visited again:
+    # no requests, no LLM tokens (ADR 0013). 0 visits every store.
+    reuse_days: float = Field(default=30, ge=0)
     delay_seconds: float = Field(default=1.5, ge=0)  # per domain
     timeout_seconds: float = Field(default=20, gt=0)
     retries: int = Field(default=2, ge=0)
@@ -51,6 +54,8 @@ class RenderConfig(_Section):
 
 
 DEFAULT_LLM_MODEL = "openai/gpt-4o-mini"
+# What the LLM stage came to per store on real runs with the default model (ADR 0010).
+LLM_USD_PER_STORE = 0.001
 
 
 class LLMConfig(_Section):

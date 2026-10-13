@@ -30,10 +30,11 @@ from .fetch import Fetcher, HttpFetcher, prune_cache
 from .final import build_final, build_knit, judge_store
 from .inputs.readers import InputError, InputRecord, read_file, read_text
 from .inputs.resolve import Resolution, ResolvedInput, resolve
+from .ledger import Ledger, Loaded, Visit, load_stores
 from .models import Acquired, Target
 from .outputs import export
 from .report import build_manifest, build_report, collect_stats, reconcile, write_manifest
-from .store import JsonlRows, RunStore
+from .store import SUMMARY_ROWS_FILE, JsonlRows, RunStore
 from .summary import summary_row, write_summary_csv
 from .tables import (
     ContactRow,
@@ -57,7 +58,6 @@ Progress = Callable[[int, int, Acquired], None]
 REPORT_FILE = "report.md"  # written last: its presence marks a finished run
 CONFIG_FILE = "config.json"  # written first, so an unfinished run can still be described
 STOPPED_FILE = "stopped.json"  # present while a stopped run waits to be resumed
-SUMMARY_ROWS_FILE = "summary.jsonl"  # summary rows, kept as stores finish, for resume
 
 
 @dataclass(frozen=True)
@@ -115,8 +115,10 @@ def store_rows(
     got: Acquired,
     fetched_at: str,
     focus: FocusConfig | None = None,
+    reused_from: str = "",
 ) -> Iterable[Row]:
-    """Every table row one visited store produces."""
+    """Every table row one store produces: visited now, or loaded from the run
+    `reused_from`, whose `fetched_at` it then keeps."""
     focus = focus or FocusConfig()
     matches = [matched_items(p, focus.items, focus.terms) for p in got.products]
     kinds = [knit_kind(p) for p in got.products]
@@ -148,6 +150,7 @@ def store_rows(
         identity=got.identity,
         input_ids=target.input_ids,
         fetched_at=fetched_at,
+        reused_from=reused_from,
     )
     for call in got.llm_calls:
         yield LLMCallRow(run_id=run_id, domain=got.domain, **call.model_dump())
@@ -196,7 +199,8 @@ class PreparedRun:
 
     Nothing has been fetched yet. Splitting this from `execute` lets a caller (the
     web API) report input errors and the run id before the slow part starts.
-    `done` holds the stores an earlier, stopped attempt already finished.
+    `done` holds the stores an earlier, stopped attempt already finished; `reusable`
+    the stores read recently by another run, which are loaded instead of visited.
     """
 
     config: RunConfig
@@ -205,10 +209,22 @@ class PreparedRun:
     resolution: Resolution
     store: RunStore
     done: set[str] = field(default_factory=set)
+    reusable: dict[str, Visit] = field(default_factory=dict)
 
     @property
     def root(self) -> Path:
         return self.store.root
+
+
+def read_before(
+    config: RunConfig, resolution: Resolution, done: Iterable[str] = ()
+) -> dict[str, Visit]:
+    """The stores of this input that a run read in the last `fetch.reuse_days` days
+    (ADR 0013): domain -> that visit. Empty when reuse is off."""
+    if not config.fetch.reuse_days:
+        return {}
+    domains = {t.domain for t in resolution.targets} - set(done)
+    return Ledger(config.output.runs_dir).recent(domains, config.fetch.reuse_days)
 
 
 def prepare(config: RunConfig) -> PreparedRun:
@@ -218,6 +234,7 @@ def prepare(config: RunConfig) -> PreparedRun:
     """
     started = _now()
     resolution = resolve(read_records(config.input), limit=config.limit)
+    reusable = read_before(config, resolution)
     run_id = new_run_id(started)
     store = RunStore(config.output.runs_dir / run_id)
     store.append(_input_row(run_id, item) for item in resolution.inputs)
@@ -226,10 +243,17 @@ def prepare(config: RunConfig) -> PreparedRun:
         "Run %s: %d links, %d stores to visit, %d skipped",
         run_id,
         len(resolution.inputs),
-        len(resolution.targets),
+        len(resolution.targets) - len(reusable),
         len(resolution.skipped),
     )
-    return PreparedRun(config, run_id, started, resolution, store)
+    if reusable:
+        log.info(
+            "%d stores were read in the last %g days: loaded from those runs, not visited "
+            "again (--rescrape visits them)",
+            len(reusable),
+            config.fetch.reuse_days,
+        )
+    return PreparedRun(config, run_id, started, resolution, store, reusable=reusable)
 
 
 def resume(root: Path) -> PreparedRun:
@@ -251,7 +275,8 @@ def resume(root: Path) -> PreparedRun:
     (root / STOPPED_FILE).unlink(missing_ok=True)
     started = _started_of(root.name)
     log.info("Resuming run %s: %d of %d stores done", root.name, len(done), len(resolution.targets))
-    return PreparedRun(config, root.name, started, resolution, store, done)
+    reusable = read_before(config, resolution, done)
+    return PreparedRun(config, root.name, started, resolution, store, done, reusable)
 
 
 def _started_of(run_id: str) -> datetime:
@@ -331,6 +356,7 @@ def build_llm(config: RunConfig, keys: Mapping[str, SecretStr]) -> "tuple[LLMExt
         budget,
         fallbacks=config.llm.fallbacks,
         api_base=config.llm.api_base,
+        cache_dir=config.fetch.cache_dir / "llm",
     )
     return extractor, budget
 
@@ -421,11 +447,27 @@ def _visit_and_write(
     summary_file = store.root / SUMMARY_ROWS_FILE
     todo = [t for t in resolution.targets if t.domain not in prepared.done]
     total, finished = len(resolution.targets), len(prepared.done)
+    ledger = Ledger(config.output.runs_dir)
 
-    def record(target: Target, got: Acquired) -> None:
+    def record(target: Target, got: Acquired, old: tuple[Visit, Loaded] | None = None) -> None:
         nonlocal finished
-        store.append(store_rows(run_id, target, got, _iso(_now()), config.focus))
-        _append_json_lines(summary_file, [summary_row(by_id[i], got) for i in target.input_ids])
+        if old:  # loaded from an earlier run: its rows, under this run's id and focus
+            visit, loaded = old
+            rows = store_rows(run_id, target, got, visit.fetched_at, config.focus, visit.run_id)
+            kept = loaded.summary
+        else:
+            fetched_at, kept = _iso(_now()), None
+            rows = store_rows(run_id, target, got, fetched_at, config.focus)
+        store.append(rows)
+        _append_json_lines(
+            summary_file,
+            [
+                {**kept, "input_id": i} if kept else summary_row(by_id[i], got)
+                for i in target.input_ids
+            ],
+        )
+        if not old:
+            _remember(ledger, Visit(got.domain, run_id, fetched_at, got.status, len(got.products)))
         finished += 1
         log.info(
             "[%d/%d] %s: %s, %d products via %s",
@@ -468,6 +510,14 @@ def _visit_and_write(
                         record(target, got)
                 fill()
         return held
+
+    by_domain = {t.domain: t for t in todo}
+    wanted = [prepared.reusable[d] for d in by_domain if d in prepared.reusable]
+    for visit, loaded in load_stores(config.output.runs_dir, wanted):
+        if stop and stop.is_set():
+            break
+        record(by_domain.pop(visit.domain), loaded.acquired, (visit, loaded))
+    todo = [t for t in todo if t.domain in by_domain]  # a store whose rows are gone is visited
 
     held = visit_all(todo, final=False)
     retry = [t for t, got in held if _rate_limited(got, fetcher)]
@@ -557,6 +607,15 @@ def _visit_and_write(
         stores=total,
         exports=exports,
     )
+
+
+def _remember(ledger: Ledger, visit: Visit) -> None:
+    """Note a visit in the ledger. It is derived from the run folders, so failing to
+    write it never fails the run: deleting the file rebuilds it."""
+    try:
+        ledger.record([visit])
+    except Exception:
+        log.exception("Could not note %s in the ledger", visit.domain)
 
 
 def _append_json_lines(path: Path, rows: list[dict[str, Any]]) -> None:

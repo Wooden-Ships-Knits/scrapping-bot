@@ -121,6 +121,22 @@ def _final_section(stats: RunStats) -> list[str]:
     return lines
 
 
+def _reused_section(stats: RunStats, run: RunRow) -> list[str]:
+    """ADR 0013: which stores were loaded from an earlier run instead of visited."""
+    reused = [s for s in stats.stores if s.get("reused_from")]
+    if not reused:
+        return []
+    days = (run.config.get("fetch") or {}).get("reuse_days", 0)
+    oldest = min(s["fetched_at"] for s in reused)
+    return [
+        f"**{len(reused)} of {len(stats.stores)} stores were loaded, not visited:** a run "
+        f"read them in the last {days:g} days (the oldest on {oldest[:10]}), so their rows come "
+        "from that run (`stores.reused_from`, with its `fetched_at`). No requests were sent "
+        "to them and no LLM call was made. Run again with `--rescrape` to visit them.",
+        "",
+    ]
+
+
 def _llm_section(stats: RunStats, run: RunRow) -> list[str]:
     """PRD LM-06, LM-09, LM-11: who used the LLM, what it cost, where the budget stopped."""
     calls = stats.llm_calls
@@ -137,6 +153,7 @@ def _llm_section(stats: RunStats, run: RunRow) -> list[str]:
     dropped = sum(s.get("llm_products_dropped", 0) for s in used)
     cost = sum(c["cost_usd"] for c in calls)
     estimated = any(c["cost_estimated"] for c in calls)
+    cached = sum(1 for c in ok if c.get("cached"))
     lines = [
         "## LLM",
         "",
@@ -144,7 +161,9 @@ def _llm_section(stats: RunStats, run: RunRow) -> list[str]:
         f"- Stores the LLM found products for: {len(with_products)}",
         f"- Stores whose type the LLM judged (vendors unclear, knitwear found): {len(judged)}",
         f"- Products dropped by the evidence rule: {dropped}",
-        f"- Calls: {len(ok)} answered, {len(failed)} failed, {len(skipped)} skipped for budget",
+        f"- Calls: {len(ok)} answered"
+        + (f" ({cached} from the answer cache: same text as before, no cost)" if cached else "")
+        + f", {len(failed)} failed, {len(skipped)} skipped for budget",
         f"- Tokens: {sum(c['input_tokens'] for c in calls)} in, "
         f"{sum(c['output_tokens'] for c in calls)} out",
         f"- Cost: ${cost:.4f}"
@@ -205,6 +224,7 @@ def build_report(
         "",
         *_table(("Status", "Stores"), by_status),
         "",
+        *_reused_section(stats, run),
         *_final_section(stats),
         "## Data collected",
         "",

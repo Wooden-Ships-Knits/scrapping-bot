@@ -7,15 +7,18 @@ prompt version (LM-11). Keys are passed per call and never stored or logged.
 """
 
 import bisect
+import hashlib
+import json
 import logging
 import re
 import threading
 import time
 from collections.abc import Callable, Mapping
 from importlib import resources
+from pathlib import Path
 from typing import Any, Protocol, TypeVar
 
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel, SecretStr, ValidationError
 
 from ..models import LLMCall, Page
 from .schemas import StoreExtraction, StoreTypeJudgement
@@ -211,6 +214,35 @@ def is_transient(exc: BaseException) -> bool:
     return isinstance(_root_cause(exc), passing)
 
 
+# "Please try again in 5.333s", "Please retry in 1m12s": what a provider says with a 429.
+_TRY_AGAIN = re.compile(r"(?:try again|retry) in\s+(?:(\d+)\s*m\s*)?([\d.]+)\s*(ms|s)", re.I)
+# A 429 that waiting cannot cure: the account has nothing left to spend.
+_SPENT = ("insufficient_quota", "exceeded your current quota", "check your plan and billing")
+DEFAULT_RATE_LIMIT_WAIT = 20.0
+MAX_RATE_LIMIT_WAIT = 65.0  # per-minute limits clear within a minute
+
+
+def is_rate_limit(exc: BaseException) -> bool:
+    from litellm import exceptions as errors
+
+    return isinstance(_root_cause(exc), errors.RateLimitError)
+
+
+def rate_limit_wait(exc: BaseException) -> float | None:
+    """How long to wait before asking again after a rate limit, in seconds: the
+    provider's own figure when it gives one. None when waiting cannot help, because the
+    account's quota is spent."""
+    text = str(_root_cause(exc))
+    if any(mark in text.lower() for mark in _SPENT):
+        return None
+    found = _TRY_AGAIN.search(text)
+    if not found:
+        return DEFAULT_RATE_LIMIT_WAIT
+    minutes, amount, unit = found.groups()
+    seconds = int(minutes or 0) * 60 + float(amount) / (1000 if unit.lower() == "ms" else 1)
+    return min(seconds + 1, MAX_RATE_LIMIT_WAIT)  # a second more: clocks differ
+
+
 def explain_error(exc: BaseException) -> str:
     """A provider error in plain words for the operator (PRD LM-05), never the key."""
     from litellm import exceptions as errors
@@ -272,6 +304,7 @@ class LiteLLMExtractor:
         max_retries: int = 1,
         retry_delays: tuple[float, ...] = RETRY_DELAYS_SECONDS,
         sleep: Callable[[float], None] = time.sleep,
+        cache_dir: Path | None = None,
     ):
         import instructor
         import litellm
@@ -284,6 +317,9 @@ class LiteLLMExtractor:
         self.max_retries = max_retries
         self.retry_delays = retry_delays
         self._sleep = sleep
+        # Answers by the hash of what was asked (ADR 0013): the same page text is never
+        # paid for twice. None keeps no cache.
+        self.cache_dir = cache_dir
         self._client = instructor.from_litellm(
             completion or litellm.completion, mode=instructor.Mode.JSON
         )
@@ -348,11 +384,26 @@ class LiteLLMExtractor:
         messages = build_judge_messages(domain, pages, vendors, titles)
         return self._ask(domain, messages, StoreTypeJudgement, JUDGE_PROMPT_VERSION)
 
+    def ask(
+        self, label: str, messages: list[dict[str, str]], answer: type[Answer], version: str
+    ) -> tuple[Answer | None, list[CallRecord]]:
+        """One question outside a store visit, answered in the shape of `answer`: the
+        same models, retries, budget and answer cache. `label` names it in the log."""
+        return self._ask(label, messages, answer, version)
+
     def _ask(
         self, domain: str, messages: list[dict[str, str]], answer: type[Answer], version: str
     ) -> tuple[Answer | None, list[CallRecord]]:
-        """Try each model in order until one answers; record every attempt."""
+        """Try each model in order until one answers; record every attempt. An answer
+        any of the models gave to the same messages before is used again, for nothing."""
         records: list[CallRecord] = []
+        for model in self.models:
+            known = self._cached(model, version, messages, answer)
+            if known is not None:
+                records.append(
+                    CallRecord(model=model, prompt_version=version, status="ok", cached=True)
+                )
+                return known, records
         if self.budget.exhausted():
             records.append(
                 CallRecord(model=self.models[0], prompt_version=version, status="skipped_budget")
@@ -379,8 +430,42 @@ class LiteLLMExtractor:
                     duration_seconds=round(time.monotonic() - started, 2),
                 )
             )
+            self._remember(model, version, messages, result)
             return result, records
         return None, records
+
+    def _cache_file(self, model: str, version: str, messages: list[dict[str, str]]) -> Path | None:
+        if self.cache_dir is None:
+            return None
+        asked = json.dumps(messages, sort_keys=True, ensure_ascii=False)
+        digest = hashlib.sha256(f"{model}\n{version}\n{asked}".encode()).hexdigest()
+        return self.cache_dir / f"{digest[:32]}.json"
+
+    def _cached(
+        self, model: str, version: str, messages: list[dict[str, str]], answer: type[Answer]
+    ) -> Answer | None:
+        path = self._cache_file(model, version, messages)
+        if path is None or not path.exists():
+            return None
+        try:
+            return answer.model_validate_json(path.read_text(encoding="utf-8"))
+        except (OSError, ValidationError):
+            path.unlink(missing_ok=True)  # unreadable: ask again
+            return None
+
+    def _remember(
+        self, model: str, version: str, messages: list[dict[str, str]], result: BaseModel
+    ) -> None:
+        path = self._cache_file(model, version, messages)
+        if path is None:
+            return
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            partial = path.with_suffix(".partial")
+            partial.write_text(result.model_dump_json(), encoding="utf-8")
+            partial.replace(path)  # atomic: a reader never sees half an answer
+        except OSError:
+            log.warning("Could not keep the LLM answer in %s", path.parent)
 
 
 def check_connection(

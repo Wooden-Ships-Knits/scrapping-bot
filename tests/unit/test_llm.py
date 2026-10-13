@@ -3,6 +3,9 @@
 import functools
 import json
 import logging
+import os
+import subprocess
+import sys
 
 import litellm
 import pytest
@@ -194,6 +197,54 @@ def test_fallback_order_is_used_when_the_first_model_fails():
         ("openai/gpt-4o-mini", "ok"),
     ]
     assert calls[0].error == "The provider rejected the API key. Check the key and the provider."
+
+
+def test_the_same_text_is_never_paid_for_twice(tmp_path):
+    asked = []
+
+    def completion(**kwargs):
+        asked.append(kwargs["model"])
+        return mocked(ANSWER)(**kwargs)
+
+    def extractor():
+        return LiteLLMExtractor(
+            "openai/gpt-4o-mini", {}, Budget(1.0), completion=completion, cache_dir=tmp_path / "llm"
+        )
+
+    pages = [Page(url="https://rose.com/c", text="Cable Knit Cardigan $129.00")]
+    first, [paid] = extractor().extract("rose.com", pages)
+    again, [free] = extractor().extract("rose.com", pages)
+    assert first is not None
+    assert again is not None
+    assert first.model_dump() == again.model_dump()  # instructor adds the raw reply to `first`
+    assert (paid.cached, paid.cost_usd > 0) == (False, True)
+    assert (free.status, free.cached, free.cost_usd, free.input_tokens) == ("ok", True, 0.0, 0)
+    assert len(asked) == 1
+
+    changed = [Page(url="https://rose.com/c", text="Cable Knit Cardigan $99.00, on sale")]
+    _, [fresh] = extractor().extract("rose.com", changed)
+    assert (fresh.cached, len(asked)) == (False, 2), "other text is another question"
+
+    spent = Budget(0.0)
+    broke = LiteLLMExtractor(
+        "openai/gpt-4o-mini", {}, spent, completion=completion, cache_dir=tmp_path / "llm"
+    )
+    known, [call] = broke.extract("rose.com", pages)
+    assert known is not None
+    assert (known.model_dump() == first.model_dump(), call.cached) == (True, True), (
+        "a kept answer needs no budget"
+    )
+
+
+def test_importing_the_llm_stage_never_copies_dotenv_into_the_environment(tmp_path):
+    """LiteLLM does that by default; the environment then hides a key corrected in .env."""
+    (tmp_path / ".env").write_text("SCRAPEBOT_TEST_ONLY_KEY=from-dotenv\n")
+    code = "import os, scrapebot.llm, litellm; print('SCRAPEBOT_TEST_ONLY_KEY' in os.environ)"
+    env = {k: v for k, v in os.environ.items() if k != "LITELLM_MODE"}
+    done = subprocess.run(
+        [sys.executable, "-c", code], cwd=tmp_path, env=env, capture_output=True, text=True
+    )
+    assert done.stdout.strip() == "False", done.stderr[-300:]
 
 
 def busy(model):

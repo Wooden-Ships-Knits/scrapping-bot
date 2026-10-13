@@ -32,8 +32,8 @@ function run(overrides: Partial<Run> = {}): Run {
     final_products: 12,
     knit_products: 20,
     stores: [
-      { domain: "monkees.com", url: "https://monkees.com", status: "ok", error: "", platform: "shopify", currency: "USD", source_used: "shopify_feed", product_count: 780, page_count: 1, contact_count: 8, ssl_bypassed: false },
-      { domain: "blocked.com", url: "https://blocked.com", status: "blocked", error: "HTTP 403", platform: "", currency: "", source_used: "none", product_count: 0, page_count: 0, contact_count: 0, ssl_bypassed: false },
+      { domain: "monkees.com", url: "https://monkees.com", status: "ok", error: "", platform: "shopify", currency: "USD", source_used: "shopify_feed", product_count: 780, page_count: 1, contact_count: 8, ssl_bypassed: false, reused_from: "" },
+      { domain: "blocked.com", url: "https://blocked.com", status: "blocked", error: "HTTP 403", platform: "", currency: "", source_used: "none", product_count: 0, page_count: 0, contact_count: 0, ssl_bypassed: false, reused_from: "" },
     ],
     downloads: [
       { key: "report", label: "Run report (.md)", filename: "report.md" },
@@ -45,6 +45,8 @@ function run(overrides: Partial<Run> = {}): Run {
     llm_model: "",
     llm_cost_usd: 0,
     llm_stores: 0,
+    reused_stores: 0,
+    reuse_days: 30,
     ...overrides,
   };
 }
@@ -105,6 +107,64 @@ describe("RunDetail", () => {
     expect(within(result).getByTestId("json-view")).toHaveTextContent('"title": "Cher Sweater"');
     await user.click(within(result).getByRole("tab", { name: "PARAMETERS" }));
     expect(within(result).getByText("uv run scrapebot run links.txt --limit 2 -f xlsx")).toBeInTheDocument();
+  });
+
+  it("says how many stores were loaded from an earlier run", () => {
+    const { unmount } = render(<RunDetail run={run()} />);
+    expect(screen.queryByTestId("reused")).not.toBeInTheDocument();
+    unmount();
+    render(<RunDetail run={run({ reused_stores: 2 })} />);
+    expect(screen.getByTestId("reused")).toHaveTextContent("2 of 2 stores loaded, not scraped again");
+  });
+
+  it("shows how far to trust the search that found the stores", () => {
+    const { unmount } = render(<RunDetail run={run()} />);
+    expect(screen.queryByTestId("quality")).not.toBeInTheDocument();
+    unmount();
+    const quality = {
+      discovery_id: "D1",
+      stores: 26,
+      with_website: 24,
+      confirmed: 5,
+      read_before: 0,
+      cost_usd: 0.4,
+      countries: ["US"],
+      stockists_known: 499,
+      stockists_found: 4,
+      recall: 0.008,
+      stockist_share: 0.1538,
+      stockist_examples: ["Monkees"],
+      sources: [],
+      run_id: RUN_ID,
+      visited: 24,
+      read: 20,
+      failed: 3,
+      missing: 2,
+      blocked: 1,
+      final: 8,
+      precision: 0.4,
+      cost_per_final_store: 0.05,
+      missing_examples: ["inventedknits.example", "gone.example"],
+    };
+    render(<RunDetail run={run()} quality={quality} />);
+    const card = screen.getByTestId("quality");
+    expect(card).toHaveTextContent("Known stockists found4of 499 in US (1%)");
+    expect(card).toHaveTextContent("Found twice5of 26 stores, by two or more sources");
+    expect(card).toHaveTextContent("On the final list840% of the 20 stores read");
+    expect(card).toHaveTextContent("No such website2invented or closed");
+    expect(card).toHaveTextContent("15% of the stores found already carry Wooden Ships");
+    expect(card).toHaveTextContent("No website at: inventedknits.example, gone.example.");
+    expect(card).toHaveTextContent("Search cost per final store: US$0.050.");
+  });
+
+  it("says what the LLM stage came to", () => {
+    const { unmount } = render(<RunDetail run={run()} />);
+    expect(screen.queryByTestId("llm-cost")).not.toBeInTheDocument();
+    unmount();
+    render(<RunDetail run={run({ llm_model: "openai/gpt-4o-mini", llm_stores: 12, llm_cost_usd: 0.0123 })} />);
+    expect(screen.getByTestId("llm-cost")).toHaveTextContent(
+      "LLM: openai/gpt-4o-mini read 12 stores for about US$0.012",
+    );
   });
 
   it("offers every download once a run is done", () => {

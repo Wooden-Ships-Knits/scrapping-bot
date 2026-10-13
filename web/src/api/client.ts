@@ -17,6 +17,9 @@ export type Overview = Schemas["OverviewOut"];
 export type DiscoverOptions = Schemas["DiscoverOptionsOut"];
 export type Discovery = Schemas["DiscoveryOut"];
 export type DiscoverRequest = Schemas["DiscoverIn"];
+export type DiscoverEstimate = Schemas["DiscoverEstimateOut"];
+export type Interpreted = Schemas["InterpretOut"];
+export type Scorecard = Schemas["Scorecard"];
 export type Detection = Schemas["DetectionOut"];
 export type Traffic = Schemas["TrafficSnapshot"];
 export type TrafficPeriod = Traffic["period"];
@@ -80,12 +83,20 @@ export const api = {
   },
   startRun: (body: RunRequest) => request<Run>("/api/runs", json(body)),
   discoverOptions: () => request<DiscoverOptions>("/api/discover/options"),
+  discoverEstimate: (count: number, region: string, place = "", rescrape = false) =>
+    request<DiscoverEstimate>(
+      `/api/discover/estimate?count=${count}&region=${encodeURIComponent(region)}` +
+        (place ? `&place=${encodeURIComponent(place)}` : "") +
+        (rescrape ? "&rescrape=true" : ""),
+    ),
+  interpret: (prompt: string) => request<Interpreted>("/api/discover/interpret", json({ prompt })),
   startDiscovery: (body: DiscoverRequest) => request<Discovery>("/api/discover", json(body)),
   discovery: (discoveryId: string) => request<Discovery>(`/api/discover/${discoveryId}`),
   stopRun: (runId: string) => request<Run>(`/api/runs/${runId}/stop`, { method: "POST" }),
   resumeRun: (runId: string) => request<Run>(`/api/runs/${runId}/resume`, { method: "POST" }),
   runs: () => request<RunListItem[]>("/api/runs"),
   run: (runId: string) => request<Run>(`/api/runs/${runId}`),
+  runQuality: (runId: string) => request<Scorecard>(`/api/runs/${runId}/quality`),
   overview: () => request<Overview>("/api/overview"),
   detection: () => request<Detection>("/api/detection"),
   retailerMap: () => request<RetailerMap>("/api/retailer-map"),

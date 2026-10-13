@@ -77,6 +77,7 @@ class Customer:
     city: str = ""
     state: str = ""
     postal: str = ""
+    country: str = ""  # as the list writes it: "United States", "US"; "" when it has none
     lat: float | None = None
     lng: float | None = None
     rep: str = ""  # accounts: the owner in Salesforce
@@ -138,6 +139,7 @@ def load_stockists(path: Path) -> list[Customer]:
                 city=_pick(r, "city"),
                 state=state_code(_pick(r, "prov_state", "state", "province")),
                 postal=normalize_postal(_pick(r, "postal_zip", "zip", "postal_code")),
+                country=_pick(r, "country"),
                 lat=_number(_pick(r, "lat", "latitude")),
                 lng=_number(_pick(r, "lng", "lon", "longitude")),
             )

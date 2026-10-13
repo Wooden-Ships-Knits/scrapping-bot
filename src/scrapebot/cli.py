@@ -50,6 +50,12 @@ def _parser() -> argparse.ArgumentParser:
     r.add_argument("--runs-dir", type=Path, help="where run folders go (default data/runs)")
     r.add_argument("--cache-dir", type=Path, help="HTTP cache (default data/.cache)")
     r.add_argument(
+        "--rescrape",
+        action="store_true",
+        help="visit every store, also those a run read in the last 30 days "
+        "(by default their data is loaded from that run: no requests, no LLM cost)",
+    )
+    r.add_argument(
         "--llm",
         metavar="PROVIDER/MODEL",
         help="the model that reads stores nothing else could and judges unclear store types "
@@ -123,6 +129,18 @@ def _parser() -> argparse.ArgumentParser:
     an.add_argument("-f", "--format", default="xlsx,csv", help="output formats (default xlsx,csv)")
     an.add_argument("-v", "--verbose", action="store_true", help="debug logging")
 
+    sc = sub.add_parser(
+        "score",
+        help="check a discovery against the stockist list and the run that visited its stores",
+    )
+    sc.add_argument("discovery", type=Path, help="the discovery folder, e.g. data/discover/<id>")
+    sc.add_argument("--run", type=Path, help="the run that visited its stores (data/runs/<id>)")
+    sc.add_argument(
+        "--stockists",
+        type=Path,
+        help="stockist list, .json or .csv (default: data/inputs/stockists.json or .csv)",
+    )
+
     sub.add_parser("init-inputs", help="write templates for the analysis inputs in data/inputs")
     bk = sub.add_parser("backup", help="zip runs, inputs and discovery results to a folder")
     bk.add_argument(
@@ -165,6 +183,8 @@ def build_config(args: argparse.Namespace) -> RunConfig:
         data["fetch"]["cache_dir"] = args.cache_dir
     if args.limit is not None:
         data["limit"] = args.limit
+    if getattr(args, "rescrape", False):
+        data["fetch"]["reuse_days"] = 0
     if getattr(args, "llm", None):
         data["llm"].update(enabled=True, model=args.llm)
     if getattr(args, "llm_fallback", None):
@@ -308,6 +328,26 @@ def analyze(args: argparse.Namespace) -> int:
     return 0
 
 
+def score(args: argparse.Namespace) -> int:
+    """How good a discovery was: known stockists found, agreement between sources and,
+    with --run, what the run made of its stores. Written to quality.json beside it."""
+    from .analysis import inputs as analysis_inputs
+    from .analysis.discovery import as_text
+    from .analysis.discovery import score as build_score
+
+    if not (args.discovery / "stores.json").exists():
+        print(f"scrapebot: {args.discovery} is not a discovery folder", file=sys.stderr)
+        return 2
+    if args.run and not (args.run / "tables" / "stores.jsonl").exists():
+        print(f"scrapebot: {args.run} is not a run folder", file=sys.stderr)
+        return 2
+    stockists = analysis_inputs.load(stockists=args.stockists).stockists
+    card = build_score(args.discovery, stockists, args.run)
+    (args.discovery / "quality.json").write_text(card.model_dump_json(indent=2), encoding="utf-8")
+    print(as_text(card))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     logging.basicConfig(
@@ -324,6 +364,8 @@ def main(argv: list[str] | None = None) -> int:
         return discover(args)
     if args.command == "analyze":
         return analyze(args)
+    if args.command == "score":
+        return score(args)
     if args.command == "init-inputs":
         from .housekeeping import init_inputs
 

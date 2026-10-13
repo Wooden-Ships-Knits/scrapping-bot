@@ -71,6 +71,38 @@ def test_preview_counts_links_before_anything_is_fetched(client):
     assert body["skipped"] == {"social_only": 1}
 
 
+def test_stores_read_before_are_announced_loaded_and_visited_again_on_request(client):
+    """ADR 0013: the preview says how many stores a run read recently; a new run loads
+    them unless it is told to rescrape."""
+    before = client.post("/api/preview", json={"source": {"text": LINKS}}).json()
+    assert (before["read_before"], before["read_before_latest"], before["reuse_days"]) == (
+        0,
+        "",
+        30,
+    )
+
+    first = wait_until_finished(client, start(client).json()["run_id"])
+    assert (first["reused_stores"], first["reuse_days"]) == (0, 30)
+    after = client.post("/api/preview", json={"source": {"text": LINKS}}).json()
+    assert after["read_before"] == 2, "monkees.com and boutique.com; blocked.com is tried again"
+    assert after["read_before_latest"].startswith("20")
+
+    second = wait_until_finished(client, start(client).json()["run_id"])
+    assert (second["state"], second["stores_done"], second["reused_stores"]) == ("done", 3, 2)
+    assert second["products"] == first["products"]
+    loaded = {s["domain"]: s["reused_from"] for s in second["stores"]}
+    assert loaded == {
+        "monkees.com": first["run_id"],
+        "boutique.com": first["run_id"],
+        "blocked.com": "",
+    }
+    assert "--rescrape" not in second["cli"]
+
+    third = wait_until_finished(client, start(client, rescrape=True).json()["run_id"])
+    assert (third["reused_stores"], third["reuse_days"]) == (0, 0)
+    assert "--rescrape" in third["cli"]
+
+
 def test_main_scenario_run_check_download(client):
     """PRD section 4: paste, run every store, check the data, download."""
     resp = start(client)

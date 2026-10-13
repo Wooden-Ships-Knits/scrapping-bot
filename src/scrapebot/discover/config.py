@@ -55,6 +55,7 @@ class AgentConfig(_Section):
 
     enabled: bool = True
     model: str = ""  # provider/model with web search, e.g. gemini/gemini-2.5-flash; "" = skipped
+    fallbacks: list[str] = Field(default_factory=list)  # take over in order when `model` fails
     areas: list[str] = Field(default_factory=list)  # one agent run per area
     brand_tasks: bool = False  # also one run per brand: "who stocks X?"
     max_runs: int = Field(default=11, ge=0)
@@ -68,6 +69,14 @@ class AgentConfig(_Section):
         if model and "/" not in model:
             raise ValueError("write the model as provider/model, e.g. gemini/gemini-2.5-flash")
         return model
+
+    @field_validator("fallbacks")
+    @classmethod
+    def _fallback_prefixes(cls, models: list[str]) -> list[str]:
+        models = [m.strip() for m in models if m.strip()]
+        if any("/" not in m for m in models):
+            raise ValueError("write each fallback as provider/model, e.g. openai/gpt-5-search-api")
+        return models
 
 
 class ResolveConfig(_Section):

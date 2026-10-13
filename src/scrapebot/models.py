@@ -103,6 +103,7 @@ class LLMCall(_Record):
     output_tokens: int = 0
     cost_usd: float = 0.0
     cost_estimated: bool = False  # LiteLLM had no price; estimated at pessimistic rates
+    cached: bool = False  # the same text was answered before: no call was made (ADR 0013)
     duration_seconds: float = 0.0
     error: str = ""
 

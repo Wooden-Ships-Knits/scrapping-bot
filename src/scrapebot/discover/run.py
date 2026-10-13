@@ -3,7 +3,8 @@
     data/discover/<discovery_id>/
       stores.csv     one row per store; `scrapebot run` reads it as its input
       stores.json    the same stores with every location, query and note
-      report.json    per source: status, stores found, paid and cached requests, cost
+      report.json    per source: status, stores found, paid and cached requests, and
+                     what they came to (an estimate: see `costs.py`)
 
 A source without its key is skipped and the others still run (PRD section 9).
 """
@@ -11,7 +12,7 @@ A source without its key is skipped and the others still run (PRD section 9).
 import csv
 import json
 import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -22,7 +23,16 @@ from pydantic import BaseModel, Field, SecretStr
 from .. import __version__
 from .agent import AgentSource, Completion
 from .config import DiscoverConfig
-from .merge import EXPORT_COLUMNS, Candidate, FoundStore, export_row, fold_by_website, merge
+from .costs import request_cost
+from .merge import (
+    EXPORT_COLUMNS,
+    Candidate,
+    FoundStore,
+    export_row,
+    fold_by_website,
+    merge,
+    store_website,
+)
 from .paid import ApiError, BudgetReached, PaidApi, Transport
 from .places import PlacesSource
 from .search import SocialSearchSource, WebSearchSource, WebsiteLookup
@@ -41,7 +51,7 @@ class SourceReport(BaseModel):
     candidates: int = 0
     requests_sent: int = 0
     requests_cached: int = 0
-    cost_usd: float = 0.0  # the agent only; search APIs bill per request, see their pricing
+    cost_usd: float = 0.0  # an estimate: the agent by token prices, search APIs by list price
     error: str = ""
     notes: list[str] = Field(default_factory=list)
 
@@ -55,10 +65,17 @@ class DiscoverResult:
     stores: list[FoundStore]
     sources: list[SourceReport]
     websites_looked_up: int
+    lookup_cost_usd: float = 0.0  # the website lookup's requests, at list price
+    known: int = 0  # stores found that a run read before: left out of a new-stores search
 
     @property
     def with_website(self) -> int:
         return sum(bool(s.website) for s in self.stores)
+
+    @property
+    def cost_usd(self) -> float:
+        """Everything this discovery spent, estimated."""
+        return round(sum(r.cost_usd for r in self.sources) + self.lookup_cost_usd, 6)
 
 
 class _Source(Protocol):
@@ -74,8 +91,15 @@ def _secret(keys: Mapping[str, SecretStr], name: str) -> str:
     return value.get_secret_value() if value else ""
 
 
-# (step name, how many stores or sightings so far): for a live progress display.
+# (step name, how many new stores with a website so far): for a live progress display.
 Progress = Callable[[str, int], None]
+
+
+def new_so_far(candidates: list[Candidate], known: Collection[str]) -> int:
+    """Stores with a website seen so far that no run read before: what a target counts.
+    A live figure for the progress display; the merge decides the final one."""
+    sites = {store_website(c.website) for c in candidates if c.website}
+    return len(sites - set(known) - {""})
 
 
 def _run_source(
@@ -101,8 +125,9 @@ def _run_agent(
     report: SourceReport,
     progress: Progress | None,
     found_before: int,
+    known: Collection[str] = (),
 ) -> list[Candidate]:
-    agent = AgentSource(config, keys, config.cache_dir, completion=completion)
+    agent = AgentSource(config, keys, config.cache_dir, completion=completion, known=known)
     if not agent.model:
         report.status = "disabled"
         report.notes = ["ai_agent.model is empty"]
@@ -157,8 +182,13 @@ def run_discover(
     transport: Transport | None = None,
     completion: Completion | None = None,
     progress: Progress | None = None,
+    known: Collection[str] = (),
 ) -> DiscoverResult:
+    """`known` holds the domains of stores read before. Given, the search is for new
+    stores: those do not count toward `target_stores` and are left out of the visit
+    list (`stores_to_visit`), though they stay in stores.csv with the rest."""
     started = datetime.now(UTC)
+    known_set = frozenset(known)
     discovery_id = started.strftime("%Y%m%dT%H%M%SZ")
     root = config.out_dir / discovery_id
     root.mkdir(parents=True, exist_ok=True)
@@ -175,7 +205,9 @@ def run_discover(
             report.status = "disabled"
             continue
         if name == "ai_agent":
-            candidates += _run_agent(config, keys, completion, report, progress, len(candidates))
+            candidates += _run_agent(
+                config, keys, completion, report, progress, new_so_far(candidates, known_set), known
+            )
             continue
         key = _secret(keys, SOURCE_KEYS[name])
         if not key:
@@ -190,8 +222,9 @@ def run_discover(
         }[name]
         candidates += _run_source(source_class(config, key, api), report)
         report.requests_sent, report.requests_cached = api.sent, api.cached
+        report.cost_usd = request_cost(name, api.sent)
         if progress:
-            progress(name, len(candidates))
+            progress(name, new_so_far(candidates, known_set))
 
     stores = merge(candidates, config.countries, config.exclude_domains)
 
@@ -220,10 +253,15 @@ def run_discover(
             "found": looked_up,
             "requests_sent": lookup_api.sent,
             "requests_cached": lookup_api.cached,
+            "cost_usd": request_cost("resolve", lookup_api.sent),
             "error": lookup_error,
         },
+        "cost_usd": round(
+            sum(r.cost_usd for r in reports) + request_cost("resolve", lookup_api.sent), 6
+        ),
         "candidates": len(candidates),
         "stores": len(stores),
+        "stores_read_before": sum(is_known(s, known_set) for s in stores),
         "stores_with_website": sum(bool(s.website) for s in stores),
     }
     report_path = root / "report.json"
@@ -236,13 +274,24 @@ def run_discover(
         stores=stores,
         sources=reports,
         websites_looked_up=looked_up,
+        lookup_cost_usd=request_cost("resolve", lookup_api.sent),
+        known=sum(is_known(s, known_set) for s in stores),
     )
 
 
-def stores_to_visit(stores: list[FoundStore], count: int | None) -> list[FoundStore]:
-    """The stores a run should visit: those with a website, at most `count`, in the order
-    the sources found them most often (stores several sources agree on first)."""
-    with_site = [s for s in stores if s.website]
+def is_known(store: FoundStore, known: Collection[str]) -> bool:
+    """Whether a found store is one a run read before, by its website's domain."""
+    return bool(store.website) and store_website(store.website) in known
+
+
+def stores_to_visit(
+    stores: list[FoundStore], count: int | None, known: Collection[str] = ()
+) -> list[FoundStore]:
+    """The stores a run should visit: those with a website and not read before, at most
+    `count`, in the order the sources found them most often (stores several sources
+    agree on first)."""
+    known = frozenset(known)
+    with_site = [s for s in stores if s.website and not is_known(s, known)]
     with_site.sort(key=lambda s: -len(s.sources))
     return with_site[:count] if count else with_site
 

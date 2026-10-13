@@ -14,6 +14,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   api,
   ApiError,
+  type DiscoverEstimate,
   type DiscoverOptions,
   type Discovery,
   type Options,
@@ -22,9 +23,17 @@ import {
   type Upload,
 } from "../api/client";
 import { Menu } from "../components/ui/Menu";
-import { formatNumber, plural, skipReason, writerLabel } from "../labels";
+import { formatNumber, formatTime, itemLabel, plural, regionLabel, skipReason, writerLabel } from "../labels";
 import { navigate } from "../router";
-import { DiscoveryCard, FindStoresFields, OTHER, parseCount, parseTerms, type FindForm } from "./FindStores";
+import {
+  DiscoveryCard,
+  FindStoresFields,
+  OTHER,
+  parseCount,
+  parseTerms,
+  type FindForm,
+  type PromptNote,
+} from "./FindStores";
 
 const PREVIEW_DELAY_MS = 400;
 const DISCOVERY_POLL_MS = 1000;
@@ -44,8 +53,20 @@ export function Scrape() {
   const fileInput = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<Mode>("links");
   const [findOptions, setFindOptions] = useState<DiscoverOptions | null>(null);
-  const [form, setForm] = useState<FindForm>({ count: "20", region: "", items: [], terms: "" });
+  const [form, setForm] = useState<FindForm>({
+    count: "20",
+    region: "",
+    items: [],
+    terms: "",
+    rescrape: false,
+    prompt: "",
+    place: "",
+    country: "",
+  });
+  const [interpreting, setInterpreting] = useState(false);
+  const [promptNote, setPromptNote] = useState<PromptNote | null>(null);
   const [discovery, setDiscovery] = useState<Discovery | null>(null);
+  const [estimate, setEstimate] = useState<DiscoverEstimate | null>(null);
 
   // Finding stores is the default when at least one search source has a key.
   useEffect(() => {
@@ -58,6 +79,26 @@ export function Scrape() {
       })
       .catch(() => setFindOptions(null));
   }, []);
+
+  // What the search can cost, asked again as the count or the region changes.
+  const estimateCount = findOptions ? parseCount(form.count, findOptions.max_count) : null;
+  useEffect(() => {
+    if (mode !== "find" || estimateCount === null || !form.region) {
+      setEstimate(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      api
+        .discoverEstimate(estimateCount, form.region, form.place, form.rescrape)
+        .then((e) => !cancelled && setEstimate(e))
+        .catch(() => !cancelled && setEstimate(null));
+    }, PREVIEW_DELAY_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [mode, estimateCount, form.region, form.place, form.rescrape]);
 
   // Follow a discovery until its run starts, then open that run.
   const discoveryId = discovery?.discovery_id;
@@ -145,6 +186,37 @@ export function Scrape() {
     !busy &&
     !discovering;
 
+  // Read the described search and fill in the form. Nothing is searched here: the
+  // operator checks the fields, then starts.
+  async function onInterpret() {
+    if (!findOptions || !form.prompt.trim()) return;
+    setInterpreting(true);
+    setPromptNote(null);
+    try {
+      const got = await api.interpret(form.prompt);
+      const count = got.count ? Math.min(got.count, findOptions.max_count) : null;
+      setForm((f) => ({
+        ...f,
+        count: count ? String(count) : f.count,
+        items: got.items.length ? got.items : f.items,
+        terms: got.terms.length ? got.terms.join(", ") : f.terms,
+        region: got.region || f.region,
+        place: got.region ? "" : got.place || f.place,
+        country: got.region ? "" : got.place ? got.country : f.country,
+      }));
+      const parts = [
+        got.items.map((i) => (i === OTHER ? got.terms.join(", ") : itemLabel(i))).join(", "),
+        got.place ? `${got.place} (${got.country})` : got.region ? regionLabel(got.region) : "",
+        count ? plural(count, "store") : "",
+      ].filter(Boolean);
+      setPromptNote({ ok: true, text: `Understood: ${parts.join(" · ")}. Check the fields below, then start.` });
+    } catch (e) {
+      setPromptNote({ ok: false, text: message(e) });
+    } finally {
+      setInterpreting(false);
+    }
+  }
+
   async function onFind() {
     if (!canFind || findCount === null) return;
     setBusy(true);
@@ -157,6 +229,9 @@ export function Scrape() {
           items: form.items,
           terms: form.items.includes(OTHER) ? findTerms : [],
           writers,
+          rescrape: form.rescrape,
+          place: form.place,
+          country: form.country,
         }),
       );
     } catch (e) {
@@ -177,6 +252,7 @@ export function Scrape() {
         source,
         url_column: urlColumn.trim() || "auto",
         writers,
+        rescrape: form.rescrape,
       });
       navigate(`/runs/${run.run_id}`);
     } catch (e) {
@@ -193,6 +269,7 @@ export function Scrape() {
     upload ? upload.filename : "links.txt",
     writers.length ? `-f ${writers.join(",")}` : "",
     urlColumn.trim() ? `--url-column ${urlColumn.trim()}` : "",
+    form.rescrape ? "--rescrape" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -224,7 +301,15 @@ export function Scrape() {
           </div>
         )}
         {mode === "find" && findOptions ? (
-          <FindStoresFields options={findOptions} form={form} onChange={setForm} />
+          <FindStoresFields
+            options={findOptions}
+            form={form}
+            estimate={estimate}
+            onChange={setForm}
+            onInterpret={onInterpret}
+            interpreting={interpreting}
+            promptNote={promptNote}
+          />
         ) : (
           <>
             <div className="card-head">
@@ -343,7 +428,12 @@ export function Scrape() {
       {mode === "find" ? (
         discovery && <DiscoveryCard discovery={discovery} />
       ) : (
-        <PreviewCard preview={preview} loading={previewing} />
+        <PreviewCard
+          preview={preview}
+          loading={previewing}
+          rescrape={form.rescrape}
+          onRescrape={(rescrape) => setForm((f) => ({ ...f, rescrape }))}
+        />
       )}
 
       {mode === "links" && (
@@ -359,7 +449,17 @@ export function Scrape() {
   );
 }
 
-function PreviewCard({ preview, loading }: { preview: Preview | null; loading: boolean }) {
+function PreviewCard({
+  preview,
+  loading,
+  rescrape,
+  onRescrape,
+}: {
+  preview: Preview | null;
+  loading: boolean;
+  rescrape: boolean;
+  onRescrape: (rescrape: boolean) => void;
+}) {
   if (!preview) {
     return (
       <section className="card empty-card">
@@ -383,6 +483,21 @@ function PreviewCard({ preview, loading }: { preview: Preview | null; loading: b
       </div>
       {preview.too_many && (
         <div className="notice bad">Too many: at most {formatNumber(preview.max_links)} links per run. Split the list.</div>
+      )}
+      {preview.read_before > 0 && (
+        <div className="notice info" role="status" data-testid="read-before">
+          <strong>
+            {formatNumber(preview.read_before)} of {plural(preview.stores, "store")} already scraped
+          </strong>{" "}
+          in the last {formatNumber(preview.reuse_days)} days (latest {formatTime(preview.read_before_latest)}).{" "}
+          {rescrape
+            ? "They will be scraped again."
+            : "Their data will be loaded from that run, not scraped again: no requests, no LLM cost."}
+          <label className="menu-check">
+            <input type="checkbox" checked={rescrape} onChange={(e) => onRescrape(e.target.checked)} />
+            Scrape them again anyway
+          </label>
+        </div>
       )}
       <div className="table-wrap">
         <table className="data-table">

@@ -65,6 +65,7 @@ class RunIn(_In):
     url_column: str = "auto"
     writers: list[str] = Field(min_length=1)
     llm: LLMIn | None = None
+    rescrape: bool = False  # visit stores a run read recently too (ADR 0013)
 
 
 class UploadOut(BaseModel):
@@ -87,6 +88,11 @@ class PreviewOut(BaseModel):
     store_examples: list[str]
     max_links: int
     too_many: bool
+    # Stores of this input a run read in the last `reuse_days` days: a new run loads
+    # their data instead of visiting them again, unless it is told to rescrape (ADR 0013).
+    read_before: int
+    read_before_latest: str  # when the newest of those was read; "" when there is none
+    reuse_days: float
 
 
 class StoreOut(BaseModel):
@@ -101,6 +107,7 @@ class StoreOut(BaseModel):
     page_count: int
     contact_count: int
     ssl_bypassed: bool
+    reused_from: str = ""  # the run this store was loaded from; "" when it was visited
 
 
 class DownloadOut(BaseModel):
@@ -140,6 +147,8 @@ class RunOut(BaseModel):
     llm_model: str  # "" when the run did not use the LLM stage
     llm_cost_usd: float
     llm_stores: int  # stores sent to the LLM
+    reused_stores: int  # stores loaded from an earlier run, not visited (ADR 0013)
+    reuse_days: float  # how recent a visit must be to be loaded; 0: every store was visited
 
 
 class RunListItem(BaseModel):
@@ -191,11 +200,35 @@ class ErrorOut(BaseModel):
 class DiscoverIn(_In):
     """Find stores, then start a run on them (ADR 0008)."""
 
-    count: int = Field(ge=1, le=500)  # how many stores to find and visit
+    count: int = Field(ge=1, le=1000)  # how many stores to find and visit
     region: str
     items: list[str] = Field(min_length=1)
     terms: list[str] = Field(default_factory=list)  # the operator's own words, item "other"
     writers: list[str] = Field(min_length=1)
+    # False: the search is for new stores; those a run read recently are not counted and
+    # not visited. True: they count, and are scraped again (ADR 0013).
+    rescrape: bool = False
+    # One named place instead of a region ("Las Vegas, NV"), with its country code: what a
+    # request in the operator's own words gives. `region` is then not used.
+    place: str = Field(default="", max_length=60)
+    country: str = ""
+
+
+class InterpretIn(_In):
+    prompt: str  # a search in the operator's own words
+
+
+class InterpretOut(BaseModel):
+    """A request as form settings; the operator sees them before anything is searched."""
+
+    items: list[str]
+    terms: list[str]
+    region: str  # "" when a place was named, or none at all
+    place: str
+    country: str
+    count: int | None
+    cost_usd: float  # what reading the request came to (estimated)
+    cached: bool  # the same request was read before: no call was made
 
 
 class DiscoverySourceOut(BaseModel):
@@ -203,6 +236,8 @@ class DiscoverySourceOut(BaseModel):
     status: str  # ok | disabled | no_api_key | budget_reached | error
     found: int
     error: str
+    notes: list[str]  # e.g. a model that took over from another
+    cost_usd: float  # an estimate, like every cost here
 
 
 class DiscoveryOut(BaseModel):
@@ -210,10 +245,11 @@ class DiscoveryOut(BaseModel):
     state: DiscoveryState
     count: int  # stores asked for
     step: str  # the source being searched now; "" when none
-    found: int  # stores or sightings so far
-    stores_to_visit: int  # stores with a website handed to the run
+    found: int  # new stores with a website so far: what `count` is compared with
+    stores_to_visit: int  # new stores with a website handed to the run
+    read_before: int  # stores found that a run read recently: left out, not counted
     sources: list[DiscoverySourceOut]
-    cost_usd: float  # the agent's spend; search APIs bill per request
+    cost_usd: float  # every source and the website lookup, estimated at list prices
     run_id: str | None
     error: str
 
@@ -225,7 +261,25 @@ class DiscoverOptionsOut(BaseModel):
     default_items: list[str]
     max_count: int
     agent_model: str  # "" when no LLM key is set
+    agent_fallbacks: list[str]  # take over in order when `agent_model` fails
     sources: dict[str, bool]  # source -> its key is set
+    reuse_days: float  # a store read this recently is loaded, not visited again; 0: off
+    prompt_model: str  # reads a search written in words; "" when its key is not set
+    max_prompt_chars: int
+
+
+class CostLineOut(BaseModel):
+    name: str  # google_places | web_search | social_search | ai_agent | resolve | llm
+    max_usd: float
+    note: str  # e.g. "nothing while Gemini's free tier lasts"
+
+
+class DiscoverEstimateOut(BaseModel):
+    """The most finding `count` stores and reading them can cost, at list prices."""
+
+    count: int
+    lines: list[CostLineOut]
+    max_usd: float
 
 
 BlockState = Literal["always", "sometimes", "recovered"]

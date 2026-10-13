@@ -56,10 +56,17 @@ always block, so they can be left out of the next list. The interface is local o
 
 **In the interface**, the *Find stores automatically* tab of the Scrape page does it in one
 click: type how many stores, pick a region or continent, tick the items (knitwear,
-cashmere/wool, fall/winter, spring/summer, or *Lainnya* with your own words) and press
-**Cari toko & mulai scrape**. It finds the stores, then scrapes all of them and opens
+cashmere/wool, fall/winter, spring/summer, or *Other* with your own words) and press
+**Find stores & start scraping**. It finds the stores, then scrapes all of them and opens
 the run page. The tab is the default when `.env` has at least one search key. To try a
 few stores first, use the command line: `scrapebot run <input> --limit 2`.
+
+You can also **describe the search in words**, for example "cashmere and knitwear
+boutiques in Las Vegas", and press **Fill in the form**. The run's LLM reads it once (a
+fraction of a cent) and fills in the items, the place and the count; nothing is searched
+until you start. A place that is not in the region list is searched on its own. The box
+only takes store, brand, product or wholesale research: anything else gets "This request
+is outside the scope of Scrapebot." and costs nothing or next to nothing.
 
 **From the command line**, `scrapebot discover` finds knitwear stores and writes them as
 a links file for a run ([ADR 0008](docs/decisions/0008-store-discovery-paid-search.md)):
@@ -76,7 +83,7 @@ uv run scrapebot run data/discover/<id>/stores.csv --limit 2   # then scrape the
 | `google_places` | `GOOGLE_MAPS_API_KEY` (Places API (New)) | Physical shops: name, address, phone, usually the website |
 | `web_search` | `TAVILY_API_KEY` | Online stores; retailers of the `brands` you list |
 | `social_search` | `TAVILY_API_KEY` | Boutiques known mainly by an Instagram or Facebook profile, read from search results only |
-| `ai_agent` | the key of `ai_agent.model`'s provider, e.g. `GEMINI_API_KEY` | Reading "best boutiques in ..." articles; one run per area |
+| `ai_agent` | the key of `ai_agent.model`'s provider, e.g. `GEMINI_API_KEY`; `ai_agent.fallbacks` take over when it fails | Reading "best boutiques in ..." articles; one run per area |
 | `resolve` | `TAVILY_API_KEY` | The website of a store found only by name or profile |
 
 A source without its key is skipped; the others run. Every source is **paid per
@@ -89,6 +96,26 @@ first, then name, address, phone, profiles, which sources and searches found it)
 `stores.json` (every location and note) and `report.json` (per source: status, stores,
 paid and cached requests, cost). Discovery never opens a store's website: what a store
 sells is read by the run.
+
+**How far to trust a search.** The stores a search returns are leads: a language model
+can invent one. A run on stores the bot found shows a *Search quality* card, and
+`scrapebot score data/discover/<id> --run data/runs/<run_id>` prints the same and keeps
+it as `quality.json`. Three checks, none of which opens a website:
+
+| Check | What it says |
+|---|---|
+| Known stockists found | Of the stockists in `data/inputs/stockists.json` in the countries searched, how many the search found, and what share of the stores found already carry Wooden Ships. A store that is not a stockist is not wrong: it is the prospect the search is for |
+| Found twice | Stores two or more sources found independently |
+| What the run made of them | Stores read, stores on the final list (multi-brand, sells knitwear), and stores with no website at that address: invented or closed |
+
+Run the same search with two models and compare the scorecards to choose between them.
+
+**Cost is shown, as an estimate.** Before a search the Find stores page says the most it
+can cost: each source's request cap at list price (Google Maps US$0.035 a request,
+Tavily US$0.008; `discover/costs.py`), the agent's cost cap and the run's LLM stage.
+Afterwards it shows what the requests sent came to, per source, and the run page shows
+the LLM stage's cost. These are not bills: free monthly allowances and Gemini's free
+tier are not subtracted, and cached answers cost nothing.
 
 ## Command line
 
@@ -225,7 +252,7 @@ overwritten:
 |---|---|---|
 | `runs` | run | config, version, mode |
 | `inputs` | input link | link as supplied, status or skip reason, the whole input row in `meta` |
-| `stores` | store | `status`, `platform`, `currency` and its source, `layers_tried`, `product_count`, `knit_count`, `focus_count`, `ssl_bypassed` |
+| `stores` | store | `status`, `platform`, `currency` and its source, `layers_tried`, `product_count`, `knit_count`, `focus_count`, `ssl_bypassed`, `fetched_at`, `reused_from` (the run it was loaded from, when it was not visited) |
 | `products` | product | `title`, `price_raw` exactly as the source wrote it, `currency`, `vendor`, `url`, `source`, `evidence_url`, `is_knitwear`, `matched_items` (the items ticked that it matches), full source object in `raw` |
 | `pages` | fetched page | `page_kind` (home, about, contact, wholesale, stockist, product, ...), full `text`. Never HTML |
 | `contacts` | contact | `email`, `phone`, `instagram`, `facebook`, `tiktok`, `linkedin`, `pinterest`, with the `source_url` it was found on |
@@ -259,6 +286,22 @@ in `raw`).
 Successful responses are cached in `data/.cache`, so re-runs are near-instant.
 Failures (timeouts, 429, 5xx) are never cached, so a re-run retries them. Delete the
 cache to force fresh fetches.
+
+**A search finds new stores.** Ask *Find stores* for 100 and it looks for 100 stores no
+run has visited in the last 30 days: the ones already scraped are left out and not
+counted, and the search says how many. Tick "Include stores already scraped in the last
+30 days, and scrape them again" to count them and visit them again. If fewer new stores
+exist than you asked for, the run starts with the ones found.
+
+**In a run on your own links, a store read in the last 30 days is loaded, not visited
+again** (ADR 0013). Its rows
+come from the run that read it, marked with `stores.reused_from` and that run's
+`fetched_at`: no requests to the store, no LLM cost. The preview says how many stores
+were read before, the run page and the report how many were loaded. Stores that were
+blocked or failed are always tried again. To visit everything, tick "Scrape them again
+anyway", pass `--rescrape`, or set `fetch.reuse_days: 0`. When a store is visited again
+and its text has not changed, the LLM's earlier answer is reused from
+`data/.cache/llm` (`llm_calls.cached`).
 
 Every input link is accounted for: the report checks that links in = processed +
 skipped. A site that fails is recorded with a status, never dropped — one dead site
