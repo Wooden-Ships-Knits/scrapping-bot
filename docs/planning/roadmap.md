@@ -115,14 +115,21 @@ hotel, resort, club or museum shops).
 
 ## Next phase (separate PRD)
 
-**Drafted on 2026-10-12, not built:**
+**Drafted on 2026-10-12, replanned on 2026-10-13, not built:**
 [PRD — Competitive and Retailer Analysis](../product/prd-competitive-retailer-analysis.md)
-and [ADR 0012](../decisions/0012-brand-store-map-from-the-retailer-side.md) (proposed). The
-check behind them: none of the four brands named in the proposal (White + Warren, Lilla P,
-Rails, Z Supply) publishes a retailer list the bot may read, while `vendor` in run
-`20261009T073717823Z-e4d60c` already shows 67 stores selling at least one of them. Stages
-C0 to C5 are in the PRD; C0 waits on `brands.csv`, `accounts.csv`, `price_points.csv` and a
-hand-labelled brand list.
+(version 0.2) and [ADR 0014](../decisions/0014-vendor-store-graph-locators-first.md)
+(proposed; it supersedes ADR 0012). The phase is six layers: data acquisition (built),
+goals and method, preprocessing and normalisation, entity resolution, reverse engineering,
+insight. The method is to learn where each vendor's goods go, from store locators and the
+pages like them first, and from the vendors named in each store's catalogue where a site
+has none or the bot may not read it; then to find the vendors that overlap with Wooden
+Ships. The checks behind it: none of the four brands named in the proposal (White +
+Warren, Lilla P, Rails, Z Supply) publishes a retailer list the bot may read, while
+`vendor` in run `20261009T073717823Z-e4d60c` shows 67 stores selling at least one of them;
+in the same run a locator-like page was already read for up to 27 stores and a brands page
+for 101. Stages R0 to R5 are in the PRD. R0 waits on `brands.csv`, `accounts.csv` and
+`price_points.csv`; R1 adds a locator pass to the run. The PRD's open questions are with the
+product owner.
 
 **A first version is in the web app** (same day): the *Retailer map* page, under a new
 *Process* group in the menu, shows the stores to approach, brands, regions and published
