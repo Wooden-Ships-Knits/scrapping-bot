@@ -44,6 +44,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/discover/estimate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Discover Estimate
+         * @description What finding `count` stores and reading them can cost at most, before any of
+         *     it is spent: each source's cap at list price, plus the run's LLM stage.
+         */
+        get: operations["discover_estimate_api_discover_estimate_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/discover/options": {
         parameters: {
             query?: never;
@@ -422,6 +443,15 @@ export interface components {
             /** Watched */
             watched: boolean;
         };
+        /** CostLineOut */
+        CostLineOut: {
+            /** Max Usd */
+            max_usd: number;
+            /** Name */
+            name: string;
+            /** Note */
+            note: string;
+        };
         /**
          * DetectionOut
          * @description How often stores detect and block the bot, across every run on disk.
@@ -454,6 +484,18 @@ export interface components {
             started_at: string;
             /** Visits */
             visits: number;
+        };
+        /**
+         * DiscoverEstimateOut
+         * @description The most finding `count` stores and reading them can cost, at list prices.
+         */
+        DiscoverEstimateOut: {
+            /** Count */
+            count: number;
+            /** Lines */
+            lines: components["schemas"]["CostLineOut"][];
+            /** Max Usd */
+            max_usd: number;
         };
         /**
          * DiscoverIn
@@ -520,6 +562,8 @@ export interface components {
         };
         /** DiscoverySourceOut */
         DiscoverySourceOut: {
+            /** Cost Usd */
+            cost_usd: number;
             /** Error */
             error: string;
             /** Found */
@@ -1150,6 +1194,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DiscoveryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    discover_estimate_api_discover_estimate_get: {
+        parameters: {
+            query: {
+                count: number;
+                region?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoverEstimateOut"];
                 };
             };
             /** @description Validation Error */

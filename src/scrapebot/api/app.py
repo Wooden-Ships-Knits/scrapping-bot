@@ -15,8 +15,9 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError
 
-from ..config import FocusConfig, InputConfig, RunConfig
+from ..config import LLM_USD_PER_STORE, FocusConfig, InputConfig, RunConfig
 from ..discover.agent import Completion, agent_models, pick_agent_model
+from ..discover.costs import estimate
 from ..discover.paid import Transport
 from ..discover.regions import DEFAULT_REGION, REGIONS, discover_config
 from ..extract.focus import DEFAULT_ITEMS, OTHER
@@ -34,7 +35,9 @@ from .discovery import DiscoveryManager
 from .manager import FetcherFactory, RunManager
 from .retailer_map import RetailerMapError, retailer_map
 from .schemas import (
+    CostLineOut,
     DetectionOut,
+    DiscoverEstimateOut,
     DiscoverIn,
     DiscoverOptionsOut,
     DiscoveryOut,
@@ -303,6 +306,34 @@ def create_app(
             agent_model=pick_agent_model(keys),
             agent_fallbacks=agent_models(keys)[1:],
             sources=discovery_sources(keys),
+        )
+
+    @app.get("/api/discover/estimate")
+    def discover_estimate(
+        count: Annotated[int, Query(ge=1, le=MAX_DISCOVER_COUNT)],
+        region: str = DEFAULT_REGION,
+    ) -> DiscoverEstimateOut:
+        """What finding `count` stores and reading them can cost at most, before any of
+        it is spent: each source's cap at list price, plus the run's LLM stage."""
+        if region not in REGIONS:
+            raise ApiError(422, "bad_region", f"Region {region} is not known.")
+        keys = load_keys(settings.env_file)
+        models = agent_models(keys)
+        config = discover_config(
+            count,
+            region,
+            list(DEFAULT_ITEMS),
+            [],
+            pick_agent_model(keys),
+            agent_fallbacks=models[1:],
+        )
+        lines = [CostLineOut(**line.model_dump()) for line in estimate(config, keys)]
+        llm = settings.base.llm
+        if llm.enabled and key_for(llm.model, keys):
+            reading = min(llm.budget_usd, count * LLM_USD_PER_STORE)
+            lines.append(CostLineOut(name="llm", max_usd=round(reading, 6), note=""))
+        return DiscoverEstimateOut(
+            count=count, lines=lines, max_usd=round(sum(line.max_usd for line in lines), 6)
         )
 
     @app.post("/api/discover", status_code=202)

@@ -1517,7 +1517,8 @@ input:not([type]) {
   gap: 0.15rem 0.75rem;
 }
 
-.find-sources {
+.find-sources,
+.find-estimate {
   grid-column: 1 / -1;
   margin: 0;
 }

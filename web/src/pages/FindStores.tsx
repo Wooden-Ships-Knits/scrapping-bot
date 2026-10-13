@@ -1,7 +1,17 @@
 import { AlertTriangle, Search } from "lucide-react";
 
-import type { DiscoverOptions, Discovery } from "../api/client";
-import { discoverySourceLabel, discoveryState, formatNumber, itemLabel, plural, regionLabel, sourceStatus } from "../labels";
+import type { DiscoverEstimate, DiscoverOptions, Discovery } from "../api/client";
+import {
+  costLine,
+  discoverySourceLabel,
+  discoveryState,
+  formatNumber,
+  formatUsd,
+  itemLabel,
+  plural,
+  regionLabel,
+  sourceStatus,
+} from "../labels";
 
 export type FindForm = {
   count: string; // typed by hand; checked on submit
@@ -28,10 +38,12 @@ export function parseTerms(text: string): string[] {
 export function FindStoresFields({
   options,
   form,
+  estimate,
   onChange,
 }: {
   options: DiscoverOptions;
   form: FindForm;
+  estimate?: DiscoverEstimate | null; // what this search can cost; absent while it is unknown
   onChange: (form: FindForm) => void;
 }) {
   const countOk = parseCount(form.count, options.max_count) !== null;
@@ -102,6 +114,20 @@ export function FindStoresFields({
           : "none"}
         {missing.length > 0 && <> · no API key: {missing.map(([s]) => discoverySourceLabel(s)).join(", ")}</>}
       </p>
+
+      {estimate && estimate.lines.length > 0 && (
+        <div className="notice info find-estimate" role="status" data-testid="find-estimate">
+          <strong>Estimated cost: up to {formatUsd(estimate.max_usd)}</strong> for {plural(estimate.count, "store")}.{" "}
+          {estimate.lines
+            .map((l) => `${costLine(l.name)} up to ${formatUsd(l.max_usd)}${l.note ? ` (${l.note})` : ""}`)
+            .join(" · ")}
+          <small className="muted">
+            {" "}
+            List prices and caps, not a bill: answers already cached cost nothing, and free allowances are not
+            subtracted.
+          </small>
+        </div>
+      )}
     </div>
   );
 }
@@ -143,6 +169,7 @@ export function DiscoveryCard({ discovery }: { discovery: Discovery }) {
                 <th>Source</th>
                 <th>Status</th>
                 <th className="end">Found</th>
+                <th className="end">Est. cost</th>
               </tr>
             </thead>
             <tbody>
@@ -151,6 +178,7 @@ export function DiscoveryCard({ discovery }: { discovery: Discovery }) {
                   <td>{discoverySourceLabel(s.name)}</td>
                   <td title={s.error}>{sourceStatus(s.status)}</td>
                   <td className="end">{formatNumber(s.found)}</td>
+                  <td className="end">{s.cost_usd > 0 ? formatUsd(s.cost_usd) : "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -167,7 +195,12 @@ export function DiscoveryCard({ discovery }: { discovery: Discovery }) {
             )}
           </ul>
         )}
-        {discovery.cost_usd > 0 && <p className="muted small">AI agent cost: US${discovery.cost_usd.toFixed(3)}</p>}
+        {discovery.cost_usd > 0 && (
+          <p className="muted small" data-testid="discovery-cost">
+            Estimated API cost of this search: <strong>{formatUsd(discovery.cost_usd)}</strong> (list prices; the website
+            lookup is included).
+          </p>
+        )}
       </div>
     </section>
   );

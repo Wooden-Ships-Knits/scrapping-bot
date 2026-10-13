@@ -115,6 +115,7 @@ def test_one_click_finds_stores_then_runs_all_of_them(client):
     assert found["stores_to_visit"] == 2, "the count caps the stores handed to the run"
     agent = next(s for s in found["sources"] if s["name"] == "ai_agent")
     assert agent["status"] == "ok"
+    assert found["cost_usd"] == agent["cost_usd"] > 0, "only the agent was paid for"
     prompt = client.agent_calls[0]["messages"][0]["content"]  # type: ignore[attr-defined]
     assert "sweaters and knitwear, fall and winter collections" in prompt
     assert client.agent_calls[0]["web_search_options"]  # type: ignore[attr-defined]
@@ -185,6 +186,35 @@ def test_an_anthropic_key_alone_does_not_switch_the_agent_on(tmp_path):
     with TestClient(app) as c:
         options = c.get("/api/discover/options").json()
         assert (options["agent_model"], options["sources"]["ai_agent"]) == ("", False)
+
+
+def test_the_estimate_caps_every_paid_step_before_anything_is_spent(tmp_path):
+    env = "OPENAI_API_KEY=sk-test-0123456789abcdef\nTAVILY_API_KEY=tvly-test-0123456789abcd\n"
+    app, calls = make_client(tmp_path, env)
+    with TestClient(app) as c:
+        body = c.get("/api/discover/estimate", params={"count": 50}).json()
+        assert {line["name"]: line["max_usd"] for line in body["lines"]} == {
+            "web_search": 0.096,  # 12 requests at US$0.008
+            "social_search": 0.04,
+            "ai_agent": 0.96,  # the agent's cost cap
+            "resolve": 0.4,
+        }, "no Google Maps key: not in the estimate; the LLM stage is off here"
+        assert body["max_usd"] == 1.496
+        assert c.get("/api/discover/estimate", params={"count": 0}).status_code == 422
+        bad = c.get("/api/discover/estimate", params={"count": 5, "region": "mars"})
+        assert bad.json()["detail"]["code"] == "bad_region"
+    assert calls == [], "an estimate asks nobody"
+
+
+def test_the_estimate_says_when_the_agent_starts_on_a_free_tier(tmp_path):
+    app, _ = make_client(tmp_path, "GEMINI_API_KEY=gm-test-0123456789abcdef\n")
+    with TestClient(app) as c:
+        [agent] = c.get("/api/discover/estimate", params={"count": 20}).json()["lines"]
+        assert agent == {
+            "name": "ai_agent",
+            "max_usd": 0.48,
+            "note": "nothing while Gemini's free tier lasts",
+        }
 
 
 def test_an_unknown_discovery_is_404(client):

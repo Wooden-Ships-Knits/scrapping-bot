@@ -90,6 +90,13 @@ first, then name, address, phone, profiles, which sources and searches found it)
 paid and cached requests, cost). Discovery never opens a store's website: what a store
 sells is read by the run.
 
+**Cost is shown, as an estimate.** Before a search the Find stores page says the most it
+can cost: each source's request cap at list price (Google Maps US$0.035 a request,
+Tavily US$0.008; `discover/costs.py`), the agent's cost cap and the run's LLM stage.
+Afterwards it shows what the requests sent came to, per source, and the run page shows
+the LLM stage's cost. These are not bills: free monthly allowances and Gemini's free
+tier are not subtracted, and cached answers cost nothing.
+
 ## Command line
 
 ```bash

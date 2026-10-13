@@ -624,6 +624,10 @@ def test_a_discovery_writes_a_links_file_scrapebot_run_reads(tmp_path):
     report = json.loads(got.report_path.read_text())
     assert report["stores_with_website"] == 3
     assert report["sources"][0]["requests_sent"] == 1
+    assert report["sources"][0]["cost_usd"] == 0.035, "one Google Maps request at list price"
+    sent = sum(s["requests_sent"] for s in report["sources"][1:3])
+    sent += report["website_lookup"]["requests_sent"]
+    assert report["cost_usd"] == got.cost_usd == round(0.035 + sent * 0.008, 6)
 
 
 def test_a_source_without_its_key_is_skipped_and_the_rest_run(tmp_path):

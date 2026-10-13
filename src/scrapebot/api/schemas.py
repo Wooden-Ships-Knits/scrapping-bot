@@ -204,6 +204,7 @@ class DiscoverySourceOut(BaseModel):
     found: int
     error: str
     notes: list[str]  # e.g. a model that took over from another
+    cost_usd: float  # an estimate, like every cost here
 
 
 class DiscoveryOut(BaseModel):
@@ -214,7 +215,7 @@ class DiscoveryOut(BaseModel):
     found: int  # stores or sightings so far
     stores_to_visit: int  # stores with a website handed to the run
     sources: list[DiscoverySourceOut]
-    cost_usd: float  # the agent's spend; search APIs bill per request
+    cost_usd: float  # every source and the website lookup, estimated at list prices
     run_id: str | None
     error: str
 
@@ -228,6 +229,20 @@ class DiscoverOptionsOut(BaseModel):
     agent_model: str  # "" when no LLM key is set
     agent_fallbacks: list[str]  # take over in order when `agent_model` fails
     sources: dict[str, bool]  # source -> its key is set
+
+
+class CostLineOut(BaseModel):
+    name: str  # google_places | web_search | social_search | ai_agent | resolve | llm
+    max_usd: float
+    note: str  # e.g. "nothing while Gemini's free tier lasts"
+
+
+class DiscoverEstimateOut(BaseModel):
+    """The most finding `count` stores and reading them can cost, at list prices."""
+
+    count: int
+    lines: list[CostLineOut]
+    max_usd: float
 
 
 BlockState = Literal["always", "sometimes", "recovered"]

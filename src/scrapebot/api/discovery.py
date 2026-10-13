@@ -101,10 +101,11 @@ class DiscoveryManager:
                     found=r.candidates,
                     error=r.error,
                     notes=[redact(note) for note in r.notes],
+                    cost_usd=r.cost_usd,
                 )
                 for r in result.sources
             ]
-            job.cost_usd = round(sum(r.cost_usd for r in result.sources), 6)
+            job.cost_usd = result.cost_usd
             job.step, job.found = "", len(result.stores)
             chosen = stores_to_visit(result.stores, config.target_stores)
             job.stores_to_visit = len(chosen)

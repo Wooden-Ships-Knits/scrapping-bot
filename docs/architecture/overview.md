@@ -167,6 +167,7 @@ flowchart LR
 | Agent | `discover/agent.py` | `litellm.completion(..., web_search_options=...)`; JSON store list; per-discovery cost cap; answers cached. When `ai_agent.model` fails (once more after 3 s for a failure that may pass), the next of `ai_agent.fallbacks` takes over for the rest of the search and a note says so; with none left the agent stops after two failed tasks. The interface uses Gemini, then OpenAI, by the keys that are set. Gemini's thinking is limited so the store list is not cut off; a cut-off answer is noted |
 | Merge | `discover/merge.py` | One row per store; drops other countries, closed places, excluded domains, bare names; stores the lookup gives one website are folded into one row |
 | Orchestration | `discover/run.py` | Sources in order; one failing or missing a key never stops the others |
+| Cost | `discover/costs.py` | List price per search request; `estimate()` gives the most a discovery can cost (request caps, the agent's cost cap) for `GET /api/discover/estimate`; the report costs the requests actually sent. Estimates, never bills |
 
 From the web app, `POST /api/discover` takes a store count, a region and the items
 (`discover/regions.py` turns them into countries, agent areas, Maps cities and request

@@ -18,6 +18,7 @@ import { JsonView } from "../components/ui/JsonView";
 import {
   formatNumber,
   formatTime,
+  formatUsd,
   knitKind,
   plural,
   runState,
@@ -170,6 +171,13 @@ export function RunDetail({
         <Stat label="Blocked" value={count("blocked")} sub="stores refused access" alert={count("blocked") > 0} />
         <Stat label="Failed" value={count("error")} sub="errors while fetching" alert={count("error") > 0} />
       </dl>
+
+      {run.llm_model && (
+        <p className="muted small" data-testid="llm-cost">
+          LLM: {run.llm_model} read {plural(run.llm_stores, "store")} for about{" "}
+          <strong>{formatUsd(run.llm_cost_usd)}</strong> (estimated from token prices).
+        </p>
+      )}
 
       {needsLook.length > 0 && (
         <section className="card" aria-label="Needs a look">

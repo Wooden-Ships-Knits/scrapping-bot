@@ -3,7 +3,8 @@
     data/discover/<discovery_id>/
       stores.csv     one row per store; `scrapebot run` reads it as its input
       stores.json    the same stores with every location, query and note
-      report.json    per source: status, stores found, paid and cached requests, cost
+      report.json    per source: status, stores found, paid and cached requests, and
+                     what they came to (an estimate: see `costs.py`)
 
 A source without its key is skipped and the others still run (PRD section 9).
 """
@@ -22,6 +23,7 @@ from pydantic import BaseModel, Field, SecretStr
 from .. import __version__
 from .agent import AgentSource, Completion
 from .config import DiscoverConfig
+from .costs import request_cost
 from .merge import EXPORT_COLUMNS, Candidate, FoundStore, export_row, fold_by_website, merge
 from .paid import ApiError, BudgetReached, PaidApi, Transport
 from .places import PlacesSource
@@ -41,7 +43,7 @@ class SourceReport(BaseModel):
     candidates: int = 0
     requests_sent: int = 0
     requests_cached: int = 0
-    cost_usd: float = 0.0  # the agent only; search APIs bill per request, see their pricing
+    cost_usd: float = 0.0  # an estimate: the agent by token prices, search APIs by list price
     error: str = ""
     notes: list[str] = Field(default_factory=list)
 
@@ -55,10 +57,16 @@ class DiscoverResult:
     stores: list[FoundStore]
     sources: list[SourceReport]
     websites_looked_up: int
+    lookup_cost_usd: float = 0.0  # the website lookup's requests, at list price
 
     @property
     def with_website(self) -> int:
         return sum(bool(s.website) for s in self.stores)
+
+    @property
+    def cost_usd(self) -> float:
+        """Everything this discovery spent, estimated."""
+        return round(sum(r.cost_usd for r in self.sources) + self.lookup_cost_usd, 6)
 
 
 class _Source(Protocol):
@@ -190,6 +198,7 @@ def run_discover(
         }[name]
         candidates += _run_source(source_class(config, key, api), report)
         report.requests_sent, report.requests_cached = api.sent, api.cached
+        report.cost_usd = request_cost(name, api.sent)
         if progress:
             progress(name, len(candidates))
 
@@ -220,8 +229,12 @@ def run_discover(
             "found": looked_up,
             "requests_sent": lookup_api.sent,
             "requests_cached": lookup_api.cached,
+            "cost_usd": request_cost("resolve", lookup_api.sent),
             "error": lookup_error,
         },
+        "cost_usd": round(
+            sum(r.cost_usd for r in reports) + request_cost("resolve", lookup_api.sent), 6
+        ),
         "candidates": len(candidates),
         "stores": len(stores),
         "stores_with_website": sum(bool(s.website) for s in stores),
@@ -236,6 +249,7 @@ def run_discover(
         stores=stores,
         sources=reports,
         websites_looked_up=looked_up,
+        lookup_cost_usd=request_cost("resolve", lookup_api.sent),
     )
 
 

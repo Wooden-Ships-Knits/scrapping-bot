@@ -51,6 +51,8 @@ class RenderConfig(_Section):
 
 
 DEFAULT_LLM_MODEL = "openai/gpt-4o-mini"
+# What the LLM stage came to per store on real runs with the default model (ADR 0010).
+LLM_USD_PER_STORE = 0.001
 
 
 class LLMConfig(_Section):

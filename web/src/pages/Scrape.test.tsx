@@ -127,6 +127,16 @@ const FIND_OPTIONS = {
   sources: { google_places: false, web_search: false, social_search: false, ai_agent: true },
 };
 
+const ESTIMATE = {
+  count: 20,
+  lines: [
+    { name: "ai_agent", max_usd: 0.48, note: "nothing while Gemini's free tier lasts" },
+    { name: "resolve", max_usd: 0.16, note: "" },
+    { name: "llm", max_usd: 0.02, note: "" },
+  ],
+  max_usd: 0.66,
+};
+
 function discovery(overrides = {}) {
   return {
     discovery_id: "D1",
@@ -152,6 +162,7 @@ function mockFind(findOptions = FIND_OPTIONS) {
       calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
       if (url === "/api/options") return reply(OPTIONS);
       if (url === "/api/discover/options") return reply(findOptions);
+      if (url.startsWith("/api/discover/estimate")) return reply(ESTIMATE);
       if (url === "/api/discover") return reply(discovery(), 202);
       if (url === "/api/discover/D1") {
         polls += 1;
@@ -208,12 +219,24 @@ describe("Scrape: find stores", () => {
         discovery={
           discovery({
             state: "done",
-            sources: [{ name: "ai_agent", status: "ok", found: 12, error: "", notes: [note] }],
+            sources: [{ name: "ai_agent", status: "ok", found: 12, error: "", notes: [note], cost_usd: 0.31 }],
+            cost_usd: 0.326,
           }) as Discovery
         }
       />,
     );
     expect(screen.getByTestId("discovery-notes")).toHaveTextContent(`AI agent: ${note}`);
+    expect(screen.getByTestId("discovery-cost")).toHaveTextContent("Estimated API cost of this search: US$0.33");
+  });
+
+  it("says what a search can cost before it starts", async () => {
+    mockFind();
+    render(<Scrape />);
+    const estimate = await screen.findByTestId("find-estimate");
+    expect(estimate).toHaveTextContent("Estimated cost: up to US$0.66 for 20 stores.");
+    expect(estimate).toHaveTextContent("AI agent up to US$0.48 (nothing while Gemini's free tier lasts)");
+    expect(estimate).toHaveTextContent("Website lookup up to US$0.16 · Reading stores (LLM) up to US$0.020");
+    expect(calls.some((c) => c.url === "/api/discover/estimate?count=20&region=north_america")).toBe(true);
   });
 
   it("refuses a count that is not a whole number in range", async () => {

@@ -107,6 +107,16 @@ describe("RunDetail", () => {
     expect(within(result).getByText("uv run scrapebot run links.txt --limit 2 -f xlsx")).toBeInTheDocument();
   });
 
+  it("says what the LLM stage came to", () => {
+    const { unmount } = render(<RunDetail run={run()} />);
+    expect(screen.queryByTestId("llm-cost")).not.toBeInTheDocument();
+    unmount();
+    render(<RunDetail run={run({ llm_model: "openai/gpt-4o-mini", llm_stores: 12, llm_cost_usd: 0.0123 })} />);
+    expect(screen.getByTestId("llm-cost")).toHaveTextContent(
+      "LLM: openai/gpt-4o-mini read 12 stores for about US$0.012",
+    );
+  });
+
   it("offers every download once a run is done", () => {
     render(<RunDetail run={run()} />);
     expect(screen.getByRole("region", { name: "Download results" })).toBeInTheDocument();

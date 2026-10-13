@@ -77,6 +77,13 @@ const DISCOVERY_SOURCE: Record<string, string> = {
   ai_agent: "AI agent",
 };
 
+// What a discovery pays for: its sources, the website lookup and the run's LLM stage.
+const COST_LINE: Record<string, string> = {
+  ...DISCOVERY_SOURCE,
+  resolve: "Website lookup",
+  llm: "Reading stores (LLM)",
+};
+
 const DISCOVERY_STATE: Record<string, string> = {
   searching: "Finding stores",
   starting_run: "Starting the run",
@@ -205,6 +212,7 @@ export const writerLabel = pick(WRITER);
 export const regionLabel = pick(REGION);
 export const itemLabel = pick(ITEM);
 export const discoverySourceLabel = pick(DISCOVERY_SOURCE);
+export const costLine = pick(COST_LINE);
 export const discoveryState = pick(DISCOVERY_STATE);
 export const sourceStatus = pick(SOURCE_STATUS);
 export const blockMethod = pick(BLOCK_METHOD);
@@ -234,6 +242,9 @@ export const LOCALE = "en-US";
 
 const numberFormat = new Intl.NumberFormat(LOCALE);
 export const formatNumber = (n: number) => numberFormat.format(n);
+
+/** A cost in US dollars: "US$1.55", and three decimals below ten cents ("US$0.016"). */
+export const formatUsd = (usd: number) => `US$${usd.toFixed(usd > 0 && usd < 0.1 ? 3 : 2)}`;
 
 /** A count with its noun: "1 store", "2 stores". */
 export const plural = (n: number, one: string, many = `${one}s`) => `${formatNumber(n)} ${n === 1 ? one : many}`;

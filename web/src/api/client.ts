@@ -17,6 +17,7 @@ export type Overview = Schemas["OverviewOut"];
 export type DiscoverOptions = Schemas["DiscoverOptionsOut"];
 export type Discovery = Schemas["DiscoveryOut"];
 export type DiscoverRequest = Schemas["DiscoverIn"];
+export type DiscoverEstimate = Schemas["DiscoverEstimateOut"];
 export type Detection = Schemas["DetectionOut"];
 export type Traffic = Schemas["TrafficSnapshot"];
 export type TrafficPeriod = Traffic["period"];
@@ -80,6 +81,8 @@ export const api = {
   },
   startRun: (body: RunRequest) => request<Run>("/api/runs", json(body)),
   discoverOptions: () => request<DiscoverOptions>("/api/discover/options"),
+  discoverEstimate: (count: number, region: string) =>
+    request<DiscoverEstimate>(`/api/discover/estimate?count=${count}&region=${encodeURIComponent(region)}`),
   startDiscovery: (body: DiscoverRequest) => request<Discovery>("/api/discover", json(body)),
   discovery: (discoveryId: string) => request<Discovery>(`/api/discover/${discoveryId}`),
   stopRun: (runId: string) => request<Run>(`/api/runs/${runId}/stop`, { method: "POST" }),

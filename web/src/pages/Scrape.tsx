@@ -14,6 +14,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   api,
   ApiError,
+  type DiscoverEstimate,
   type DiscoverOptions,
   type Discovery,
   type Options,
@@ -46,6 +47,7 @@ export function Scrape() {
   const [findOptions, setFindOptions] = useState<DiscoverOptions | null>(null);
   const [form, setForm] = useState<FindForm>({ count: "20", region: "", items: [], terms: "" });
   const [discovery, setDiscovery] = useState<Discovery | null>(null);
+  const [estimate, setEstimate] = useState<DiscoverEstimate | null>(null);
 
   // Finding stores is the default when at least one search source has a key.
   useEffect(() => {
@@ -58,6 +60,26 @@ export function Scrape() {
       })
       .catch(() => setFindOptions(null));
   }, []);
+
+  // What the search can cost, asked again as the count or the region changes.
+  const estimateCount = findOptions ? parseCount(form.count, findOptions.max_count) : null;
+  useEffect(() => {
+    if (mode !== "find" || estimateCount === null || !form.region) {
+      setEstimate(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      api
+        .discoverEstimate(estimateCount, form.region)
+        .then((e) => !cancelled && setEstimate(e))
+        .catch(() => !cancelled && setEstimate(null));
+    }, PREVIEW_DELAY_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [mode, estimateCount, form.region]);
 
   // Follow a discovery until its run starts, then open that run.
   const discoveryId = discovery?.discovery_id;
@@ -224,7 +246,7 @@ export function Scrape() {
           </div>
         )}
         {mode === "find" && findOptions ? (
-          <FindStoresFields options={findOptions} form={form} onChange={setForm} />
+          <FindStoresFields options={findOptions} form={form} estimate={estimate} onChange={setForm} />
         ) : (
           <>
             <div className="card-head">
