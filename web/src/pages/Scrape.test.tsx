@@ -24,6 +24,9 @@ function preview(overrides = {}) {
     store_examples: ["a.com", "b.com"],
     max_links: 1000,
     too_many: false,
+    read_before: 0,
+    read_before_latest: "",
+    reuse_days: 30,
     ...overrides,
   };
 }
@@ -78,7 +81,28 @@ describe("Scrape", () => {
       source: { text: "a.com b.com" },
       url_column: "auto",
       writers: ["xlsx", "csv"],
+      rescrape: false,
     });
+    expect(screen.queryByTestId("read-before")).not.toBeInTheDocument();
+  });
+
+  it("says which stores were scraped before, and scrapes them again when asked", async () => {
+    mockApi(preview({ read_before: 1, read_before_latest: "2026-10-09T03:00:00+00:00" }));
+    const user = userEvent.setup();
+    render(<Scrape />);
+    await user.type(await screen.findByRole("textbox", { name: "Store links" }), "a.com b.com");
+
+    const notice = await screen.findByTestId("read-before");
+    expect(notice).toHaveTextContent("1 of 2 stores already scraped in the last 30 days (latest Oct 9, 2026");
+    expect(notice).toHaveTextContent("Their data will be loaded from that run, not scraped again");
+
+    await user.click(screen.getByRole("checkbox", { name: "Scrape them again anyway" }));
+    expect(notice).toHaveTextContent("They will be scraped again.");
+    expect(screen.getByText(/uv run scrapebot run/)).toHaveTextContent("--rescrape");
+    const run = screen.getByRole("button", { name: "Start scraping" });
+    await waitFor(() => expect(run).toBeEnabled());
+    await user.click(run);
+    await waitFor(() => expect(calls.find((c) => c.url === "/api/runs")?.body).toMatchObject({ rescrape: true }));
   });
 
   it("blocks lists over the limit and needs at least one format", async () => {
@@ -124,6 +148,7 @@ const FIND_OPTIONS = {
   max_count: 500,
   agent_model: "openai/gpt-5-search-api",
   agent_fallbacks: [] as string[],
+  reuse_days: 30,
   sources: { google_places: false, web_search: false, social_search: false, ai_agent: true },
 };
 
@@ -201,6 +226,7 @@ describe("Scrape: find stores", () => {
       items: ["knitwear", "fall_winter", "other"],
       terms: ["poncho", "cape"],
       writers: ["xlsx", "csv"],
+      rescrape: false,
     });
     await waitFor(() => expect(window.location.hash).toBe("#/runs/R9"), { timeout: 4000 });
   });
@@ -237,6 +263,17 @@ describe("Scrape: find stores", () => {
     expect(estimate).toHaveTextContent("AI agent up to US$0.48 (nothing while Gemini's free tier lasts)");
     expect(estimate).toHaveTextContent("Website lookup up to US$0.16 · Reading stores (LLM) up to US$0.020");
     expect(calls.some((c) => c.url === "/api/discover/estimate?count=20&region=north_america")).toBe(true);
+  });
+
+  it("can scrape again the stores a run read recently", async () => {
+    mockFind();
+    const user = userEvent.setup();
+    render(<Scrape />);
+    const find = await screen.findByRole("button", { name: "Find stores & start scraping" });
+    await user.click(screen.getByRole("checkbox", { name: /Scrape again stores already read in the last 30 days/ }));
+    await waitFor(() => expect(find).toBeEnabled());
+    await user.click(find);
+    await waitFor(() => expect(calls.find((c) => c.url === "/api/discover")?.body).toMatchObject({ rescrape: true }));
   });
 
   it("refuses a count that is not a whole number in range", async () => {

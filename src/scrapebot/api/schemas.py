@@ -65,6 +65,7 @@ class RunIn(_In):
     url_column: str = "auto"
     writers: list[str] = Field(min_length=1)
     llm: LLMIn | None = None
+    rescrape: bool = False  # visit stores a run read recently too (ADR 0013)
 
 
 class UploadOut(BaseModel):
@@ -87,6 +88,11 @@ class PreviewOut(BaseModel):
     store_examples: list[str]
     max_links: int
     too_many: bool
+    # Stores of this input a run read in the last `reuse_days` days: a new run loads
+    # their data instead of visiting them again, unless it is told to rescrape (ADR 0013).
+    read_before: int
+    read_before_latest: str  # when the newest of those was read; "" when there is none
+    reuse_days: float
 
 
 class StoreOut(BaseModel):
@@ -101,6 +107,7 @@ class StoreOut(BaseModel):
     page_count: int
     contact_count: int
     ssl_bypassed: bool
+    reused_from: str = ""  # the run this store was loaded from; "" when it was visited
 
 
 class DownloadOut(BaseModel):
@@ -140,6 +147,8 @@ class RunOut(BaseModel):
     llm_model: str  # "" when the run did not use the LLM stage
     llm_cost_usd: float
     llm_stores: int  # stores sent to the LLM
+    reused_stores: int  # stores loaded from an earlier run, not visited (ADR 0013)
+    reuse_days: float  # how recent a visit must be to be loaded; 0: every store was visited
 
 
 class RunListItem(BaseModel):
@@ -196,6 +205,7 @@ class DiscoverIn(_In):
     items: list[str] = Field(min_length=1)
     terms: list[str] = Field(default_factory=list)  # the operator's own words, item "other"
     writers: list[str] = Field(min_length=1)
+    rescrape: bool = False  # visit stores a run read recently too (ADR 0013)
 
 
 class DiscoverySourceOut(BaseModel):
@@ -229,6 +239,7 @@ class DiscoverOptionsOut(BaseModel):
     agent_model: str  # "" when no LLM key is set
     agent_fallbacks: list[str]  # take over in order when `agent_model` fails
     sources: dict[str, bool]  # source -> its key is set
+    reuse_days: float  # a store read this recently is loaded, not visited again; 0: off
 
 
 class CostLineOut(BaseModel):

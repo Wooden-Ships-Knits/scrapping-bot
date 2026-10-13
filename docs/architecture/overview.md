@@ -220,6 +220,14 @@ a monthly run reads fresh pages; expired pages are deleted at the start of a run
 paid discovery answers in `data/.cache/discover`. A challenge page is matched on the
 challenge itself: Cloudflare's bot script also sits on ordinary pages.
 
+Before any store is fetched, `ledger.py` is asked which stores of the input a run read
+in the last `fetch.reuse_days` days (default 30; ADR 0013). Those are loaded from that
+run's tables and written under the new run's id with `stores.reused_from`; only the rest
+are visited. The ledger is `data/runs/ledger.sqlite`, one row per store per run, rebuilt
+from the run folders when it is missing. `--rescrape` or `fetch.reuse_days: 0` visits
+every store. The LLM stage keeps its answers in `data/.cache/llm` by a hash of the model,
+prompt version and messages, so text it has read before costs nothing.
+
 Rate limits are told apart from blocks. A 429, or two different sites on one server network
 refusing us within 10 minutes, means the network (Shopify's shared edge, for one) is limiting
 our address: that network is paused for 5 minutes (doubling to at most 30), its delay is

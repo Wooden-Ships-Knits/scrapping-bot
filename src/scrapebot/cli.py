@@ -50,6 +50,12 @@ def _parser() -> argparse.ArgumentParser:
     r.add_argument("--runs-dir", type=Path, help="where run folders go (default data/runs)")
     r.add_argument("--cache-dir", type=Path, help="HTTP cache (default data/.cache)")
     r.add_argument(
+        "--rescrape",
+        action="store_true",
+        help="visit every store, also those a run read in the last 30 days "
+        "(by default their data is loaded from that run: no requests, no LLM cost)",
+    )
+    r.add_argument(
         "--llm",
         metavar="PROVIDER/MODEL",
         help="the model that reads stores nothing else could and judges unclear store types "
@@ -165,6 +171,8 @@ def build_config(args: argparse.Namespace) -> RunConfig:
         data["fetch"]["cache_dir"] = args.cache_dir
     if args.limit is not None:
         data["limit"] = args.limit
+    if getattr(args, "rescrape", False):
+        data["fetch"]["reuse_days"] = 0
     if getattr(args, "llm", None):
         data["llm"].update(enabled=True, model=args.llm)
     if getattr(args, "llm_fallback", None):

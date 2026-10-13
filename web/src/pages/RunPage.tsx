@@ -172,6 +172,16 @@ export function RunDetail({
         <Stat label="Failed" value={count("error")} sub="errors while fetching" alert={count("error") > 0} />
       </dl>
 
+      {run.reused_stores > 0 && (
+        <div className="notice info" role="status" data-testid="reused">
+          <strong>
+            {formatNumber(run.reused_stores)} of {plural(run.stores_total, "store")} loaded, not scraped again:
+          </strong>{" "}
+          a run read them in the last {formatNumber(run.reuse_days)} days, so their data comes from that run (no
+          requests, no LLM cost). To refresh them, start a new run with "Scrape them again anyway".
+        </div>
+      )}
+
       {run.llm_model && (
         <p className="muted small" data-testid="llm-cost">
           LLM: {run.llm_model} read {plural(run.llm_stores, "store")} for about{" "}

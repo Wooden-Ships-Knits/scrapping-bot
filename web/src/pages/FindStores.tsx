@@ -18,6 +18,7 @@ export type FindForm = {
   region: string;
   items: string[];
   terms: string;
+  rescrape: boolean; // visit stores a run read recently too, instead of loading their data
 };
 
 export const OTHER = "other";
@@ -114,6 +115,18 @@ export function FindStoresFields({
           : "none"}
         {missing.length > 0 && <> · no API key: {missing.map(([s]) => discoverySourceLabel(s)).join(", ")}</>}
       </p>
+
+      {options.reuse_days > 0 && (
+        <label className="menu-check find-rescrape">
+          <input
+            type="checkbox"
+            checked={form.rescrape}
+            onChange={(e) => onChange({ ...form, rescrape: e.target.checked })}
+          />
+          Scrape again stores already read in the last {formatNumber(options.reuse_days)} days
+          <span className="muted small"> (otherwise their data is loaded: no requests, no LLM cost)</span>
+        </label>
+      )}
 
       {estimate && estimate.lines.length > 0 && (
         <div className="notice info find-estimate" role="status" data-testid="find-estimate">

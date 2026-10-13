@@ -46,6 +46,15 @@ def test_flags_build_the_run_config(captured, tmp_path):
     assert cfg.output.runs_dir == tmp_path / "r"
 
 
+def test_rescrape_turns_off_loading_stores_read_before(captured, tmp_path):
+    src = tmp_path / "in.csv"
+    src.write_text("website\nhttps://a.com\n")
+    assert cli.main(["run", str(src)]) == 0
+    assert captured["config"].fetch.reuse_days == 30
+    assert cli.main(["run", str(src), "--rescrape"]) == 0
+    assert captured["config"].fetch.reuse_days == 0
+
+
 def test_flags_override_the_config_file(captured, tmp_path):
     conf = tmp_path / "c.yaml"
     conf.write_text("limit: 5\noutput:\n  writers: [json]\n")

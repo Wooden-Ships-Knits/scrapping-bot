@@ -1518,6 +1518,7 @@ input:not([type]) {
 }
 
 .find-sources,
+.find-rescrape,
 .find-estimate {
   grid-column: 1 / -1;
   margin: 0;

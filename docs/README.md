@@ -41,6 +41,7 @@ docs/
 | [0011](decisions/0011-wholesale-analysis-stage.md) | Wholesale analysis as its own stage over a finished run: segments, scores with reasons, inputs from the operator | Accepted |
 | [0010](decisions/0010-final-list-multi-brand-knitwear.md) | Final list of multi-brand stores that sell knitwear, with strict knitwear; store type from vendors, then the LLM; LLM on by default | Accepted |
 | [0012](decisions/0012-brand-store-map-from-the-retailer-side.md) | Brand and store map built from the retailer side; brand locators read only where the list is open; one bounded expansion round | Proposed |
+| [0013](decisions/0013-stores-read-before-are-loaded-not-visited.md) | A store read in the last 30 days is loaded from that run, not visited again; a ledger of visits; LLM answers kept by content hash | Accepted |
 
 ## Exports and archive
 

@@ -232,7 +232,7 @@ overwritten:
 |---|---|---|
 | `runs` | run | config, version, mode |
 | `inputs` | input link | link as supplied, status or skip reason, the whole input row in `meta` |
-| `stores` | store | `status`, `platform`, `currency` and its source, `layers_tried`, `product_count`, `knit_count`, `focus_count`, `ssl_bypassed` |
+| `stores` | store | `status`, `platform`, `currency` and its source, `layers_tried`, `product_count`, `knit_count`, `focus_count`, `ssl_bypassed`, `fetched_at`, `reused_from` (the run it was loaded from, when it was not visited) |
 | `products` | product | `title`, `price_raw` exactly as the source wrote it, `currency`, `vendor`, `url`, `source`, `evidence_url`, `is_knitwear`, `matched_items` (the items ticked that it matches), full source object in `raw` |
 | `pages` | fetched page | `page_kind` (home, about, contact, wholesale, stockist, product, ...), full `text`. Never HTML |
 | `contacts` | contact | `email`, `phone`, `instagram`, `facebook`, `tiktok`, `linkedin`, `pinterest`, with the `source_url` it was found on |
@@ -266,6 +266,15 @@ in `raw`).
 Successful responses are cached in `data/.cache`, so re-runs are near-instant.
 Failures (timeouts, 429, 5xx) are never cached, so a re-run retries them. Delete the
 cache to force fresh fetches.
+
+**A store read in the last 30 days is loaded, not visited again** (ADR 0013). Its rows
+come from the run that read it, marked with `stores.reused_from` and that run's
+`fetched_at`: no requests to the store, no LLM cost. The preview says how many stores
+were read before, the run page and the report how many were loaded. Stores that were
+blocked or failed are always tried again. To visit everything, tick "Scrape them again
+anyway", pass `--rescrape`, or set `fetch.reuse_days: 0`. When a store is visited again
+and its text has not changed, the LLM's earlier answer is reused from
+`data/.cache/llm` (`llm_calls.cached`).
 
 Every input link is accounted for: the report checks that links in = processed +
 skipped. A site that fails is recorded with a status, never dropped — one dead site

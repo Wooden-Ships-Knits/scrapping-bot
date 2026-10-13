@@ -27,7 +27,7 @@ from ..inputs.resolve import DUPLICATE, resolve
 from ..keys import load_keys
 from ..llm.gateway import KEY_VARIABLES, check_connection, key_for, provider_of
 from ..outputs import available_writers
-from ..pipeline import load_records, prepare, resume
+from ..pipeline import load_records, prepare, read_before, resume
 from ..traffic import Period, TrafficError, TrafficService, TrafficSnapshot
 from . import library
 from .detection import detection
@@ -201,6 +201,7 @@ def create_app(
             raise ApiError(422, "bad_input", str(exc)) from exc
         resolution = resolve(records)
         skipped = [i for i in resolution.inputs if i.status not in ("processed", DUPLICATE)]
+        known = read_before(settings.base, resolution)
         return PreviewOut(
             links=len(records),
             stores=len(resolution.targets),
@@ -210,6 +211,9 @@ def create_app(
             store_examples=[t.domain for t in resolution.targets[:EXAMPLES]],
             max_links=cfg.max_links,
             too_many=len(records) > cfg.max_links,
+            read_before=len(known),
+            read_before_latest=max((v.fetched_at for v in known.values()), default=""),
+            reuse_days=settings.base.fetch.reuse_days,
         )
 
     @app.post("/api/runs", status_code=202)
@@ -217,6 +221,8 @@ def create_app(
         data = settings.base.model_dump()
         data["input"] = input_config(body.source, body.url_column).model_dump()
         data["output"]["writers"] = body.writers
+        if body.rescrape:
+            data["fetch"]["reuse_days"] = 0
         keys: dict[str, SecretStr] = {}
         if body.llm and body.llm.enabled:
             data["llm"] = body.llm.model_dump(exclude={"api_key"})
@@ -306,6 +312,7 @@ def create_app(
             agent_model=pick_agent_model(keys),
             agent_fallbacks=agent_models(keys)[1:],
             sources=discovery_sources(keys),
+            reuse_days=settings.base.fetch.reuse_days,
         )
 
     @app.get("/api/discover/estimate")
@@ -366,6 +373,8 @@ def create_app(
             base = settings.base.model_dump()
             base["output"]["writers"] = body.writers
             base["focus"] = focus.model_dump()
+            if body.rescrape:
+                base["fetch"]["reuse_days"] = 0
             RunConfig.model_validate(base)  # fail now, not after paying for the search
         except ValidationError as exc:
             raise ApiError(422, "bad_settings", exc.errors()[0]["msg"]) from exc

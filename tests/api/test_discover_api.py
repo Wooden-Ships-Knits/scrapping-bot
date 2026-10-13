@@ -131,6 +131,17 @@ def test_one_click_finds_stores_then_runs_all_of_them(client):
     assert cher["matched_items"] == ["knitwear"]
 
 
+def test_a_search_can_ask_to_scrape_again_stores_read_before(client):
+    assert client.get("/api/discover/options").json()["reuse_days"] == 30
+    for rescrape, days in ((False, 30), (True, 0)):
+        found = wait_for_discovery(
+            client, discover(client, rescrape=rescrape).json()["discovery_id"]
+        )
+        run = wait_until_finished(client, found["run_id"])
+        assert run["config"]["fetch"]["reuse_days"] == days
+    assert run["reused_stores"] == 0, "asked to scrape again: nothing was loaded"
+
+
 def test_other_needs_its_words(client):
     resp = discover(client, items=["other"], terms=["  "])
     assert resp.status_code == 422

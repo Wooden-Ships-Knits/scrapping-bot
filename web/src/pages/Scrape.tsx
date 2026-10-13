@@ -23,7 +23,7 @@ import {
   type Upload,
 } from "../api/client";
 import { Menu } from "../components/ui/Menu";
-import { formatNumber, plural, skipReason, writerLabel } from "../labels";
+import { formatNumber, formatTime, plural, skipReason, writerLabel } from "../labels";
 import { navigate } from "../router";
 import { DiscoveryCard, FindStoresFields, OTHER, parseCount, parseTerms, type FindForm } from "./FindStores";
 
@@ -45,7 +45,7 @@ export function Scrape() {
   const fileInput = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<Mode>("links");
   const [findOptions, setFindOptions] = useState<DiscoverOptions | null>(null);
-  const [form, setForm] = useState<FindForm>({ count: "20", region: "", items: [], terms: "" });
+  const [form, setForm] = useState<FindForm>({ count: "20", region: "", items: [], terms: "", rescrape: false });
   const [discovery, setDiscovery] = useState<Discovery | null>(null);
   const [estimate, setEstimate] = useState<DiscoverEstimate | null>(null);
 
@@ -179,6 +179,7 @@ export function Scrape() {
           items: form.items,
           terms: form.items.includes(OTHER) ? findTerms : [],
           writers,
+          rescrape: form.rescrape,
         }),
       );
     } catch (e) {
@@ -199,6 +200,7 @@ export function Scrape() {
         source,
         url_column: urlColumn.trim() || "auto",
         writers,
+        rescrape: form.rescrape,
       });
       navigate(`/runs/${run.run_id}`);
     } catch (e) {
@@ -215,6 +217,7 @@ export function Scrape() {
     upload ? upload.filename : "links.txt",
     writers.length ? `-f ${writers.join(",")}` : "",
     urlColumn.trim() ? `--url-column ${urlColumn.trim()}` : "",
+    form.rescrape ? "--rescrape" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -365,7 +368,12 @@ export function Scrape() {
       {mode === "find" ? (
         discovery && <DiscoveryCard discovery={discovery} />
       ) : (
-        <PreviewCard preview={preview} loading={previewing} />
+        <PreviewCard
+          preview={preview}
+          loading={previewing}
+          rescrape={form.rescrape}
+          onRescrape={(rescrape) => setForm((f) => ({ ...f, rescrape }))}
+        />
       )}
 
       {mode === "links" && (
@@ -381,7 +389,17 @@ export function Scrape() {
   );
 }
 
-function PreviewCard({ preview, loading }: { preview: Preview | null; loading: boolean }) {
+function PreviewCard({
+  preview,
+  loading,
+  rescrape,
+  onRescrape,
+}: {
+  preview: Preview | null;
+  loading: boolean;
+  rescrape: boolean;
+  onRescrape: (rescrape: boolean) => void;
+}) {
   if (!preview) {
     return (
       <section className="card empty-card">
@@ -405,6 +423,21 @@ function PreviewCard({ preview, loading }: { preview: Preview | null; loading: b
       </div>
       {preview.too_many && (
         <div className="notice bad">Too many: at most {formatNumber(preview.max_links)} links per run. Split the list.</div>
+      )}
+      {preview.read_before > 0 && (
+        <div className="notice info" role="status" data-testid="read-before">
+          <strong>
+            {formatNumber(preview.read_before)} of {plural(preview.stores, "store")} already scraped
+          </strong>{" "}
+          in the last {formatNumber(preview.reuse_days)} days (latest {formatTime(preview.read_before_latest)}).{" "}
+          {rescrape
+            ? "They will be scraped again."
+            : "Their data will be loaded from that run, not scraped again: no requests, no LLM cost."}
+          <label className="menu-check">
+            <input type="checkbox" checked={rescrape} onChange={(e) => onRescrape(e.target.checked)} />
+            Scrape them again anyway
+          </label>
+        </div>
       )}
       <div className="table-wrap">
         <table className="data-table">

@@ -40,7 +40,10 @@ def detection(runs_dir: Path) -> DetectionOut:
     # domain -> its visits, oldest first: (run_id, started_at, store row)
     visits: dict[str, list[tuple[str, str, dict[str, Any]]]] = defaultdict(list)
     for root in reversed(run_roots(runs_dir)):  # oldest first
-        stores = read_jsonl(root / "tables" / "stores.jsonl")
+        # A store loaded from an earlier run (ADR 0013) was not visited by this one.
+        stores = [
+            s for s in read_jsonl(root / "tables" / "stores.jsonl") if not s.get("reused_from")
+        ]
         if not stores:
             continue
         started = started_at(root)

@@ -508,6 +508,11 @@ export interface components {
             items: string[];
             /** Region */
             region: string;
+            /**
+             * Rescrape
+             * @default false
+             */
+            rescrape: boolean;
             /** Terms */
             terms?: string[];
             /** Writers */
@@ -529,6 +534,8 @@ export interface components {
             max_count: number;
             /** Regions */
             regions: string[];
+            /** Reuse Days */
+            reuse_days: number;
             /** Sources */
             sources: {
                 [key: string]: boolean;
@@ -736,6 +743,12 @@ export interface components {
             links: number;
             /** Max Links */
             max_links: number;
+            /** Read Before */
+            read_before: number;
+            /** Read Before Latest */
+            read_before_latest: string;
+            /** Reuse Days */
+            reuse_days: number;
             /** Skipped */
             skipped: {
                 [key: string]: number;
@@ -852,6 +865,11 @@ export interface components {
         /** RunIn */
         RunIn: {
             llm?: components["schemas"]["LLMIn"] | null;
+            /**
+             * Rescrape
+             * @default false
+             */
+            rescrape: boolean;
             source: components["schemas"]["SourceIn"];
             /**
              * Url Column
@@ -933,6 +951,10 @@ export interface components {
             processed: number;
             /** Products */
             products: number;
+            /** Reuse Days */
+            reuse_days: number;
+            /** Reused Stores */
+            reused_stores: number;
             /** Run Id */
             run_id: string;
             /** Skipped */
@@ -1001,6 +1023,11 @@ export interface components {
             platform: string;
             /** Product Count */
             product_count: number;
+            /**
+             * Reused From
+             * @default
+             */
+            reused_from: string;
             /** Source Used */
             source_used: string;
             /** Ssl Bypassed */

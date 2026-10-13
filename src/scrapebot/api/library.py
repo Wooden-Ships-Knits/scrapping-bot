@@ -186,6 +186,8 @@ def cli_command(config: dict[str, Any]) -> str:
     parts.append("-f " + ",".join(config["output"]["writers"]))
     if config["input"].get("url_column", "auto") != "auto":
         parts.append(f"--url-column {config['input']['url_column']}")
+    if not config.get("fetch", {}).get("reuse_days", 30):
+        parts.append("--rescrape")
     llm = config.get("llm") or {}
     if not (llm.get("enabled") and llm.get("model")):
         parts.append("--no-llm")
@@ -249,6 +251,8 @@ def load_run(
         llm_model=llm["model"] if llm.get("enabled") else "",
         llm_cost_usd=round(sum(c["cost_usd"] for c in llm_calls), 6),
         llm_stores=sum(1 for s in stores if s.get("llm_used")),
+        reused_stores=sum(1 for s in stores if s.get("reused_from")),
+        reuse_days=config.get("fetch", {}).get("reuse_days", 0),
     )
 
 

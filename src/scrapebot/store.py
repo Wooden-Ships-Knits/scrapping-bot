@@ -13,6 +13,8 @@ from typing import Any
 from .outputs.base import Table
 from .tables import TABLES, Row, columns
 
+SUMMARY_ROWS_FILE = "summary.jsonl"  # summary rows, kept as stores finish, for resume
+
 
 class JsonlRows:
     """A table's rows, read from its JSONL file each time it is iterated."""

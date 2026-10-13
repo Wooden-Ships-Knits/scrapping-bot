@@ -32,8 +32,8 @@ function run(overrides: Partial<Run> = {}): Run {
     final_products: 12,
     knit_products: 20,
     stores: [
-      { domain: "monkees.com", url: "https://monkees.com", status: "ok", error: "", platform: "shopify", currency: "USD", source_used: "shopify_feed", product_count: 780, page_count: 1, contact_count: 8, ssl_bypassed: false },
-      { domain: "blocked.com", url: "https://blocked.com", status: "blocked", error: "HTTP 403", platform: "", currency: "", source_used: "none", product_count: 0, page_count: 0, contact_count: 0, ssl_bypassed: false },
+      { domain: "monkees.com", url: "https://monkees.com", status: "ok", error: "", platform: "shopify", currency: "USD", source_used: "shopify_feed", product_count: 780, page_count: 1, contact_count: 8, ssl_bypassed: false, reused_from: "" },
+      { domain: "blocked.com", url: "https://blocked.com", status: "blocked", error: "HTTP 403", platform: "", currency: "", source_used: "none", product_count: 0, page_count: 0, contact_count: 0, ssl_bypassed: false, reused_from: "" },
     ],
     downloads: [
       { key: "report", label: "Run report (.md)", filename: "report.md" },
@@ -45,6 +45,8 @@ function run(overrides: Partial<Run> = {}): Run {
     llm_model: "",
     llm_cost_usd: 0,
     llm_stores: 0,
+    reused_stores: 0,
+    reuse_days: 30,
     ...overrides,
   };
 }
@@ -105,6 +107,14 @@ describe("RunDetail", () => {
     expect(within(result).getByTestId("json-view")).toHaveTextContent('"title": "Cher Sweater"');
     await user.click(within(result).getByRole("tab", { name: "PARAMETERS" }));
     expect(within(result).getByText("uv run scrapebot run links.txt --limit 2 -f xlsx")).toBeInTheDocument();
+  });
+
+  it("says how many stores were loaded from an earlier run", () => {
+    const { unmount } = render(<RunDetail run={run()} />);
+    expect(screen.queryByTestId("reused")).not.toBeInTheDocument();
+    unmount();
+    render(<RunDetail run={run({ reused_stores: 2 })} />);
+    expect(screen.getByTestId("reused")).toHaveTextContent("2 of 2 stores loaded, not scraped again");
   });
 
   it("says what the LLM stage came to", () => {

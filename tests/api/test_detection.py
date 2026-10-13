@@ -36,9 +36,14 @@ def test_block_method_reads_the_recorded_error(error, method):
     assert block_method(error) == method
 
 
-def run_once(tmp_path, responses, links):
+def run_once(tmp_path, responses, links, reuse_days=0):
+    """One run through the API. Every store is visited unless `reuse_days` says that a
+    store read recently is loaded instead."""
     base = RunConfig.model_validate(
-        {"output": {"runs_dir": tmp_path / "runs"}, "fetch": {"cache_dir": tmp_path / "cache"}}
+        {
+            "output": {"runs_dir": tmp_path / "runs"},
+            "fetch": {"cache_dir": tmp_path / "cache", "reuse_days": reuse_days},
+        }
     )
     settings = ApiSettings(base=base, uploads_dir=tmp_path / "uploads", poll_seconds=0.01)
     with TestClient(create_app(settings, fetcher_factory=lambda: ChallengeFetcher(responses))) as c:
@@ -89,3 +94,12 @@ def test_blocks_are_counted_per_run_method_and_store(tmp_path):
         "blocked.com": ("recovered", 2, 1, "http_403"),
     }
     assert [s["domain"] for s in second["blocked_stores"]] == ["boutique.com", "blocked.com"]
+
+
+def test_a_store_loaded_from_an_earlier_run_is_not_counted_as_a_visit(tmp_path):
+    run_once(tmp_path, RESPONSES, LINKS)
+    second = run_once(tmp_path, RESPONSES, LINKS, reuse_days=30)
+    assert [(r["visits"], r["blocked"]) for r in second["runs"]] == [(1, 1), (3, 1)], (
+        "the second run loaded the two stores it had read and visited the blocked one again"
+    )
+    assert second["visits"] == 4
