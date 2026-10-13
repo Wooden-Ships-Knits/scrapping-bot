@@ -1392,6 +1392,7 @@ export interface operations {
                 count: number;
                 region?: string;
                 place?: string;
+                rescrape?: boolean;
             };
             header?: never;
             path?: never;
