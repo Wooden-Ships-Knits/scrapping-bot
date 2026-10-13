@@ -113,6 +113,26 @@ describe("History: deleting runs", () => {
   });
 });
 
+describe("History: a server started before the code changed", () => {
+  it("says to restart it, once, instead of one error per run", async () => {
+    mockApi();
+    const methodNotAllowed = () => reply({ detail: "Method Not Allowed" }, 405);
+    const known = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) => (init?.method === "DELETE" ? methodNotAllowed() : known(url, init))),
+    );
+    const user = userEvent.setup();
+    render(<History />);
+    await user.click(await screen.findByRole("checkbox", { name: "Select all runs" }));
+    await user.click(screen.getByRole("button", { name: /Delete selected/ }));
+    await user.click(screen.getByRole("button", { name: "Delete 2 runs" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Not deleted: 2 runs: The server is running older code than this page. Stop it and start it again (make serve), then reload.",
+    );
+  });
+});
+
 describe("History: deleting caches", () => {
   it("shows what each cache holds and says what deleting it costs", async () => {
     mockApi();

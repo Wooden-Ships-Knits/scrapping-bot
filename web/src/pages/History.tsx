@@ -268,18 +268,25 @@ export function History() {
   async function remove(runIds: string[]) {
     setBusy(true);
     setError("");
-    const failed: string[] = [];
+    const failed = new Map<string, string[]>(); // the reason -> the runs it stopped
     for (const runId of runIds) {
       try {
         await api.deleteRun(runId);
       } catch (e) {
-        failed.push(`#${shortId(runId)}: ${message(e)}`);
+        failed.set(message(e), [...(failed.get(message(e)) ?? []), `#${shortId(runId)}`]);
+        // The server cannot delete anything: asking for the rest would fail the same way.
+        if (e instanceof ApiError && e.code === "server_outdated") {
+          failed.set(message(e), [plural(runIds.length, "run")]);
+          break;
+        }
       }
     }
     setBusy(false);
     setAsking(null);
     setSelected(new Set());
-    if (failed.length) setError(`Not deleted: ${failed.join("; ")}`);
+    if (failed.size) {
+      setError(`Not deleted: ${[...failed].map(([why, runs]) => `${runs.join(", ")}: ${why}`).join(" ")}`);
+    }
     await load();
   }
 

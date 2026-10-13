@@ -47,6 +47,11 @@ export class ApiError extends Error {
   }
 }
 
+/** The server answered, but does not know the request: it was started before the code
+ *  this page was built from. It loads its code once, so it has to be started again. */
+export const SERVER_OUTDATED =
+  "The server is running older code than this page. Stop it and start it again (make serve), then reload.";
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const resp = await fetch(path, init);
   if (resp.ok) return (await resp.json()) as T;
@@ -60,6 +65,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       message = detail.message;
     } else if (Array.isArray(detail) && detail[0]?.msg) {
       message = detail[0].msg;
+    } else if (resp.status === 405 || (resp.status === 404 && detail === "Not Found")) {
+      // The framework's own answer for a route or method it does not have. Every
+      // "not found" of the API itself carries a code.
+      code = "server_outdated";
+      message = SERVER_OUTDATED;
     }
   } catch {
     // keep the generic message
