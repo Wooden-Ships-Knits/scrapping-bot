@@ -200,7 +200,7 @@ class ErrorOut(BaseModel):
 class DiscoverIn(_In):
     """Find stores, then start a run on them (ADR 0008)."""
 
-    count: int = Field(ge=1, le=500)  # how many stores to find and visit
+    count: int = Field(ge=1, le=1000)  # how many stores to find and visit
     region: str
     items: list[str] = Field(min_length=1)
     terms: list[str] = Field(default_factory=list)  # the operator's own words, item "other"

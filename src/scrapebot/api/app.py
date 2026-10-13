@@ -94,7 +94,7 @@ PROVIDERS = (
 )
 SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 EXAMPLES = 8
-MAX_DISCOVER_COUNT = 500
+MAX_DISCOVER_COUNT = 1000
 REQUEST_BUDGET_USD = 0.05  # the most reading one search request may cost
 FINISHED = ("done", "failed", "interrupted", "stopped")
 
