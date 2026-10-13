@@ -67,6 +67,16 @@ def _config(root: Path) -> dict[str, Any]:
     return json.loads((root / CONFIG_FILE).read_text(encoding="utf-8"))
 
 
+def discovery_of(root: Path) -> Path | None:
+    """The discovery folder a run's links came from, or None when it was started from
+    pasted links or an upload."""
+    source = _config(root)["input"].get("source")
+    folder = Path(source).parent if source else None
+    if folder and (folder / "stores.json").exists() and (folder / "report.json").exists():
+        return folder
+    return None
+
+
 def _source(config: dict[str, Any]) -> tuple[Literal["text", "file"], str]:
     source = config["input"].get("source")
     if source:

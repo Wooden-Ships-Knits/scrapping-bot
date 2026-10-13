@@ -15,6 +15,8 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError
 
+from ..analysis import inputs as analysis_inputs
+from ..analysis.discovery import Scorecard, score
 from ..config import LLM_USD_PER_STORE, FocusConfig, InputConfig, RunConfig
 from ..discover.agent import Completion, agent_models, pick_agent_model
 from ..discover.costs import estimate
@@ -109,6 +111,7 @@ class ApiSettings(BaseModel):
     discover_dir: Path = Path("data/discover")  # stores found from the interface
     discover_cache_dir: Path = Path("data/.cache/discover")  # paid answers, without keys
     process_dir: Path = Path("data/process")  # what `process/` wrote per run; read, never written
+    inputs_dir: Path = Path("data/inputs")  # the operator's own files (stockists); read only
 
 
 class ApiError(Exception):
@@ -285,6 +288,17 @@ def create_app(
     @app.get("/api/runs/{run_id}")
     def run_detail(run_id: str) -> RunOut:
         return load(run_id)
+
+    @app.get("/api/runs/{run_id}/quality")
+    def run_quality(run_id: str) -> Scorecard:
+        """For a run on stores the bot found itself: how far to trust that search. Known
+        stockists found, agreement between sources, and what this run made of the stores."""
+        root = root_or_404(run_id)
+        found = library.discovery_of(root)
+        if found is None:
+            raise ApiError(404, "no_discovery", "This run did not start from a store search.")
+        stockists = analysis_inputs.load(folder=settings.inputs_dir).stockists
+        return score(found, stockists, root)
 
     @app.get("/api/runs/{run_id}/events")
     async def run_events(run_id: str, request: Request) -> StreamingResponse:

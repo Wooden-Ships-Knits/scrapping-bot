@@ -97,6 +97,19 @@ first, then name, address, phone, profiles, which sources and searches found it)
 paid and cached requests, cost). Discovery never opens a store's website: what a store
 sells is read by the run.
 
+**How far to trust a search.** The stores a search returns are leads: a language model
+can invent one. A run on stores the bot found shows a *Search quality* card, and
+`scrapebot score data/discover/<id> --run data/runs/<run_id>` prints the same and keeps
+it as `quality.json`. Three checks, none of which opens a website:
+
+| Check | What it says |
+|---|---|
+| Known stockists found | Of the stockists in `data/inputs/stockists.json` in the countries searched, how many the search found, and what share of the stores found already carry Wooden Ships. A store that is not a stockist is not wrong: it is the prospect the search is for |
+| Found twice | Stores two or more sources found independently |
+| What the run made of them | Stores read, stores on the final list (multi-brand, sells knitwear), and stores with no website at that address: invented or closed |
+
+Run the same search with two models and compare the scorecards to choose between them.
+
 **Cost is shown, as an estimate.** Before a search the Find stores page says the most it
 can cost: each source's request cap at list price (Google Maps US$0.035 a request,
 Tavily US$0.008; `discover/costs.py`), the agent's cost cap and the run's LLM stage.

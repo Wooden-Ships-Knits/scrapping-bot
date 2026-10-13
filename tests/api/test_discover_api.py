@@ -45,6 +45,7 @@ def make_client(tmp_path, env: str, answer=None, request_answer=None):
         env_file=env_file,
         discover_dir=tmp_path / "discover",
         discover_cache_dir=tmp_path / "discover-cache",
+        inputs_dir=tmp_path / "inputs",
     )
     calls = []
 
@@ -315,6 +316,38 @@ def test_describing_a_search_needs_the_llm_key(tmp_path):
         refused = c.post("/api/discover/interpret", json={"prompt": "knitwear in Denver"})
         assert refused.json()["detail"]["code"] == "no_llm_key"
     assert calls == []
+
+
+def test_a_run_on_found_stores_gets_a_quality_scorecard(client, tmp_path):
+    (tmp_path / "inputs").mkdir()
+    stockists = [
+        {"name": "Monkees", "website": "https://monkees.com", "country": "United States"},
+        {"name": "Elsewhere Knits", "website": "https://elsewhere.example", "country": "USA"},
+    ]
+    (tmp_path / "inputs" / "stockists.json").write_text(json.dumps(stockists))
+    found = wait_for_discovery(client, discover(client).json()["discovery_id"])
+    run = wait_until_finished(client, found["run_id"])
+
+    card = client.get(f"/api/runs/{run['run_id']}/quality").json()
+    assert (card["stores"], card["with_website"], card["confirmed"]) == (4, 3, 0)
+    assert (card["stockists_known"], card["stockists_found"], card["recall"]) == (2, 1, 0.5)
+    assert card["stockist_examples"] == ["Monkees"]
+    assert (card["run_id"], card["visited"], card["read"], card["missing"]) == (
+        run["run_id"],
+        2,
+        2,
+        0,
+    )
+    assert card["cost_usd"] == found["cost_usd"]
+
+
+def test_a_run_from_pasted_links_has_no_scorecard(client):
+    started = client.post(
+        "/api/runs", json={"source": {"text": "https://monkees.com"}, "writers": ["csv"]}
+    )
+    run = wait_until_finished(client, started.json()["run_id"])
+    refused = client.get(f"/api/runs/{run['run_id']}/quality")
+    assert (refused.status_code, refused.json()["detail"]["code"]) == (404, "no_discovery")
 
 
 def test_an_unknown_discovery_is_404(client):

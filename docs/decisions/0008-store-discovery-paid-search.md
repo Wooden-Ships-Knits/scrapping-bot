@@ -75,6 +75,11 @@ cares about knitwear.
   query, the agent per token. The caps in `discover.example.yaml` bound one discovery.
   The interface shows the most a search can cost before it starts and what its requests
   came to afterwards, at list prices (`discover/costs.py`): an estimate, not the bill.
+- A model's answer is a lead, not a fact. It is checked against things the bot did not
+  invent (`analysis/discovery.py`): the operator's stockist list, agreement between
+  sources, and what the run then finds at each website. A question-answering metric
+  suite such as RAGAS does not fit: the output is a list of stores, not an answer drawn
+  from retrieved text.
 - Search coverage follows the configured places and queries: Google returns at most
   60 places per search, so a town not listed is missed.
 - Google's terms for Places content limit how long it may be cached and where it may

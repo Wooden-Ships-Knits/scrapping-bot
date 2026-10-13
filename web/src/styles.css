@@ -758,6 +758,15 @@ input:not([type]) {
   padding: 1rem;
 }
 
+.card > .stats {
+  margin: 1rem;
+}
+
+.card-note {
+  margin: 0;
+  padding: 0 1rem 1rem;
+}
+
 .card-foot {
   display: flex;
   flex-wrap: wrap;

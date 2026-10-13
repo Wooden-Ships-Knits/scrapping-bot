@@ -309,6 +309,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{run_id}/quality": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run Quality
+         * @description For a run on stores the bot found itself: how far to trust that search. Known
+         *     stockists found, agreement between sources, and what this run made of the stores.
+         */
+        get: operations["run_quality_api_runs__run_id__quality_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{run_id}/resume": {
         parameters: {
             query?: never;
@@ -1053,6 +1074,56 @@ export interface components {
             /** Writers */
             writers: string[];
         };
+        /** Scorecard */
+        Scorecard: {
+            /** Blocked */
+            blocked?: number | null;
+            /** Confirmed */
+            confirmed: number;
+            /** Cost Per Final Store */
+            cost_per_final_store?: number | null;
+            /** Cost Usd */
+            cost_usd: number;
+            /** Countries */
+            countries: string[];
+            /** Discovery Id */
+            discovery_id: string;
+            /** Failed */
+            failed?: number | null;
+            /** Final */
+            final?: number | null;
+            /** Missing */
+            missing?: number | null;
+            /** Missing Examples */
+            missing_examples?: string[];
+            /** Precision */
+            precision?: number | null;
+            /** Read */
+            read?: number | null;
+            /** Recall */
+            recall: number | null;
+            /**
+             * Run Id
+             * @default
+             */
+            run_id: string;
+            /** Sources */
+            sources?: components["schemas"]["SourceScore"][];
+            /** Stockist Examples */
+            stockist_examples?: string[];
+            /** Stockist Share */
+            stockist_share: number | null;
+            /** Stockists Found */
+            stockists_found: number;
+            /** Stockists Known */
+            stockists_known: number;
+            /** Stores */
+            stores: number;
+            /** Visited */
+            visited?: number | null;
+            /** With Website */
+            with_website: number;
+        };
         /** SkippedLink */
         SkippedLink: {
             /** Raw */
@@ -1069,6 +1140,17 @@ export interface components {
             text?: string | null;
             /** Upload Id */
             upload_id?: string | null;
+        };
+        /** SourceScore */
+        SourceScore: {
+            /** Name */
+            name: string;
+            /** Stockists */
+            stockists: number;
+            /** Stores */
+            stores: number;
+            /** With Website */
+            with_website: number;
         };
         /** StoreOut */
         StoreOut: {
@@ -1694,6 +1776,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_quality_api_runs__run_id__quality_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Scorecard"];
                 };
             };
             /** @description Validation Error */

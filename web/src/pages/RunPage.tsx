@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
-import { api, ApiError, type PreviewTable, type Rows, type Run } from "../api/client";
+import { api, ApiError, FINISHED, type PreviewTable, type Rows, type Run, type Scorecard } from "../api/client";
 import { useRun } from "../api/useRun";
 import { DataTable, type Renderers } from "../components/ui/DataTable";
 import { JsonView } from "../components/ui/JsonView";
@@ -74,6 +74,22 @@ const RENDERERS: Partial<Record<PreviewTable, Renderers>> = {
 export function RunPage({ runId }: { runId: string }) {
   const [nonce, setNonce] = useState(0); // bumped to reconnect after a resume
   const { run, error } = useRun(runId, nonce);
+  const [quality, setQuality] = useState<Scorecard | null>(null);
+  // For a run on stores the bot found itself: how far to trust that search. Asked once
+  // the run has stopped; a run started from links has none (404), which is not an error.
+  const settled = run ? FINISHED.includes(run.state) : false;
+  useEffect(() => {
+    setQuality(null);
+    if (!settled) return;
+    let cancelled = false;
+    api
+      .runQuality(runId)
+      .then((q) => !cancelled && setQuality(q))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [runId, settled]);
   if (!run) {
     return (
       <div className="page">
@@ -81,15 +97,17 @@ export function RunPage({ runId }: { runId: string }) {
       </div>
     );
   }
-  return <RunDetail run={run} connectionError={error} onRestart={() => setNonce((n) => n + 1)} />;
+  return <RunDetail run={run} quality={quality} connectionError={error} onRestart={() => setNonce((n) => n + 1)} />;
 }
 
 export function RunDetail({
   run,
+  quality,
   connectionError,
   onRestart,
 }: {
   run: Run;
+  quality?: Scorecard | null; // only for a run whose stores came from a search
   connectionError?: string;
   onRestart?: () => void;
 }) {
@@ -209,10 +227,61 @@ export function RunDetail({
         </section>
       )}
 
+      {quality && <QualityCard quality={quality} />}
+
       <ResultCard run={run} />
 
       {finished && run.downloads.length > 0 && <Downloads run={run} />}
     </div>
+  );
+}
+
+const percent = (share: number | null | undefined) => (share == null ? "n/a" : `${Math.round(100 * share)}%`);
+
+/** How far to trust the search that found this run's stores: three checks against
+ *  things the bot did not invent. */
+function QualityCard({ quality: q }: { quality: Scorecard }) {
+  return (
+    <section className="card" data-testid="quality" aria-label="Search quality">
+      <div className="card-head">
+        <h2>Search quality</h2>
+        <span className="muted small">· how far to trust the stores this search found</span>
+      </div>
+      <dl className="stats">
+        <Stat
+          label="Known stockists found"
+          value={q.stockists_found}
+          sub={
+            q.stockists_known
+              ? `of ${formatNumber(q.stockists_known)} in ${q.countries.join(", ")} (${percent(q.recall)})`
+              : "no stockist list to check against"
+          }
+        />
+        <Stat
+          label="Found twice"
+          value={q.confirmed}
+          sub={`of ${formatNumber(q.stores)} stores, by two or more sources`}
+        />
+        <Stat
+          label="On the final list"
+          value={q.final ?? 0}
+          sub={`${percent(q.precision)} of the ${formatNumber(q.read ?? 0)} stores read`}
+        />
+        <Stat
+          label="No such website"
+          value={q.missing ?? 0}
+          sub="invented or closed"
+          alert={(q.missing ?? 0) > 0}
+        />
+      </dl>
+      <p className="muted small card-note">
+        {q.stockists_known > 0 &&
+          `${percent(q.stockist_share)} of the stores found already carry Wooden Ships: the higher, the closer the search came to stores like our stockists. `}
+        A store that is not a stockist is not wrong: it is the prospect the search is for.
+        {(q.missing_examples ?? []).length > 0 && ` No website at: ${(q.missing_examples ?? []).join(", ")}.`}
+        {q.cost_per_final_store != null && ` Search cost per final store: ${formatUsd(q.cost_per_final_store)}.`}
+      </p>
+    </section>
   );
 }
 
