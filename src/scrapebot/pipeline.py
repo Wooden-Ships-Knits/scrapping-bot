@@ -30,7 +30,7 @@ from .fetch import Fetcher, HttpFetcher, prune_cache
 from .final import build_final, build_knit, judge_store
 from .inputs.readers import InputError, InputRecord, read_file, read_text
 from .inputs.resolve import Resolution, ResolvedInput, resolve
-from .ledger import Ledger, Loaded, Visit, load_stores
+from .ledger import Ledger, Loaded, Visit, is_unfinished, load_stores
 from .models import Acquired, Target
 from .outputs import export
 from .report import build_manifest, build_report, collect_stats, reconcile, write_manifest
@@ -217,24 +217,34 @@ class PreparedRun:
 
 
 def read_before(
-    config: RunConfig, resolution: Resolution, done: Iterable[str] = ()
+    config: RunConfig,
+    resolution: Resolution,
+    done: Iterable[str] = (),
+    keys: Mapping[str, SecretStr] | None = None,
 ) -> dict[str, Visit]:
     """The stores of this input that a run read in the last `fetch.reuse_days` days
-    (ADR 0013): domain -> that visit. Empty when reuse is off."""
+    (ADR 0013): domain -> that visit. Empty when reuse is off. Left out, so visited:
+    a store the input names product or page links of, which that run may not have read,
+    and, when this run's LLM stage can work (`keys` hold its key), a store an earlier
+    run's LLM stage never got to."""
     if not config.fetch.reuse_days:
         return {}
-    domains = {t.domain for t in resolution.targets} - set(done)
-    return Ledger(config.output.runs_dir).recent(domains, config.fetch.reuse_days)
+    domains = {t.domain for t in resolution.targets if not t.deep_links} - set(done)
+    return Ledger(config.output.runs_dir).recent(
+        domains, config.fetch.reuse_days, with_unfinished=not llm_can_run(config, keys or {})
+    )
 
 
-def prepare(config: RunConfig) -> PreparedRun:
+def prepare(config: RunConfig, keys: Mapping[str, SecretStr] | None = None) -> PreparedRun:
     """Read and resolve the input, then create the run folder with its `inputs` table.
+    `keys` are the run's API keys: they say whether its LLM stage can work, which decides
+    whether a store an earlier LLM stage never got to is loaded or visited.
 
     Raises `InputError` before creating anything if the input cannot be used.
     """
     started = _now()
     resolution = resolve(read_records(config.input), limit=config.limit)
-    reusable = read_before(config, resolution)
+    reusable = read_before(config, resolution, keys=keys)
     run_id = new_run_id(started)
     store = RunStore(config.output.runs_dir / run_id)
     store.append(_input_row(run_id, item) for item in resolution.inputs)
@@ -256,7 +266,7 @@ def prepare(config: RunConfig) -> PreparedRun:
     return PreparedRun(config, run_id, started, resolution, store, reusable=reusable)
 
 
-def resume(root: Path) -> PreparedRun:
+def resume(root: Path, keys: Mapping[str, SecretStr] | None = None) -> PreparedRun:
     """Pick up a stopped or interrupted run where it left off (PRD OP-03).
 
     The input is read again and must give the same links; stores already in the
@@ -275,7 +285,7 @@ def resume(root: Path) -> PreparedRun:
     (root / STOPPED_FILE).unlink(missing_ok=True)
     started = _started_of(root.name)
     log.info("Resuming run %s: %d of %d stores done", root.name, len(done), len(resolution.targets))
-    reusable = read_before(config, resolution, done)
+    reusable = read_before(config, resolution, done, keys)
     return PreparedRun(config, root.name, started, resolution, store, done, reusable)
 
 
@@ -333,6 +343,11 @@ def _rate_limited(got: Acquired, fetcher: Fetcher) -> bool:
 def _cooldown_left(fetcher: Fetcher, targets: list[Target]) -> float:
     remaining = getattr(fetcher, "cooldown_remaining", None)
     return float(remaining([t.url for t in targets])) if remaining is not None else 0.0
+
+
+def llm_can_run(config: RunConfig, keys: Mapping[str, SecretStr]) -> bool:
+    """Whether a run with this config and these keys has a working LLM stage."""
+    return config.llm.enabled and not llm_missing_key(config, keys)
 
 
 def llm_missing_key(config: RunConfig, keys: Mapping[str, SecretStr]) -> str:
@@ -467,7 +482,19 @@ def _visit_and_write(
             ],
         )
         if not old:
-            _remember(ledger, Visit(got.domain, run_id, fetched_at, got.status, len(got.products)))
+            # Whether the LLM stage worked for this store: it ran, and its calls, if it
+            # made any, were answered.
+            answered = any(c.status == "ok" for c in got.llm_calls)
+            worked = llm is not None and (answered or not got.llm_calls)
+            visit = Visit(
+                got.domain,
+                run_id,
+                fetched_at,
+                got.status,
+                len(got.products),
+                is_unfinished(got.status, got.store_type, worked),
+            )
+            _remember(ledger, visit)
         finished += 1
         log.info(
             "[%d/%d] %s: %s, %d products via %s",
@@ -632,4 +659,4 @@ def run(
 ) -> RunResult:
     """Run the whole pipeline for one input. Raises `InputError` before fetching anything
     if the input cannot be read."""
-    return execute(prepare(config), fetcher=fetcher, progress=progress, keys=keys)
+    return execute(prepare(config, keys), fetcher=fetcher, progress=progress, keys=keys)

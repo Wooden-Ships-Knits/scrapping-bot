@@ -381,7 +381,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         keys = load_keys()
         if args.command == "resume":
-            result = execute(resume(args.run), keys=keys)
+            result = execute(resume(args.run, keys), keys=keys)
         else:
             result = run(build_config(args), keys=keys)
     except (InputError, ValidationError) as exc:

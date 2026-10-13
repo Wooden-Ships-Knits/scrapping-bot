@@ -164,6 +164,24 @@ class RunListItem(BaseModel):
     contacts: int
 
 
+class DeletedOut(BaseModel):
+    run_id: str
+
+
+class CacheKindOut(BaseModel):
+    name: str  # pages | search | llm
+    files: int
+    bytes: int
+
+
+class CacheOut(BaseModel):
+    """What the caches hold. Deleting one is refused while a run or a search is under
+    way (`busy`): it would be reading and writing them."""
+
+    kinds: list[CacheKindOut]
+    busy: bool
+
+
 class OptionsOut(BaseModel):
     writers: list[str]
     default_writers: list[str]

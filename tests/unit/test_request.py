@@ -161,6 +161,14 @@ def test_a_place_gets_its_country_or_is_not_searched():
     got = understand("knitwear in atlantis", unknown)
     assert (got.place, got.country, got.items) == ("", "", ["knitwear"])
 
+    in_europe = FakeAsker(
+        {"in_scope": True, "items": ["knitwear"], "region": "europe", "place": "Lyon"}
+    )
+    got = understand("knitwear in Lyon, Europe", in_europe)
+    assert (got.region, got.place) == ("europe", ""), (
+        "a place the bot cannot put in a country must not take the region down with it"
+    )
+
 
 def test_in_scope_with_nothing_to_search_for_is_refused():
     with pytest.raises(OutOfScope):

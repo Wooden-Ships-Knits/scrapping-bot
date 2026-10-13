@@ -84,6 +84,20 @@ const COST_LINE: Record<string, string> = {
   llm: "Reading stores (LLM)",
 };
 
+const CACHE_KIND: Record<string, string> = {
+  pages: "Saved store pages",
+  search: "Search answers",
+  llm: "LLM answers",
+};
+
+// What deleting each cache costs: said before the operator confirms.
+const CACHE_LOSS: Record<string, string> = {
+  pages: "The next run fetches these pages from the stores again.",
+  search: "Repeating a search asks the search services and the AI agent again, and is paid for again.",
+  llm: "Text the LLM has read before is sent, and paid for, again.",
+  all: "Pages are fetched again; search and LLM answers are asked, and paid for, again.",
+};
+
 const DISCOVERY_STATE: Record<string, string> = {
   searching: "Finding stores",
   starting_run: "Starting the run",
@@ -213,6 +227,8 @@ export const regionLabel = pick(REGION);
 export const itemLabel = pick(ITEM);
 export const discoverySourceLabel = pick(DISCOVERY_SOURCE);
 export const costLine = pick(COST_LINE);
+export const cacheKind = pick(CACHE_KIND);
+export const cacheLoss = pick(CACHE_LOSS);
 export const discoveryState = pick(DISCOVERY_STATE);
 export const sourceStatus = pick(SOURCE_STATUS);
 export const blockMethod = pick(BLOCK_METHOD);
@@ -245,6 +261,18 @@ export const formatNumber = (n: number) => numberFormat.format(n);
 
 /** A cost in US dollars: "US$1.55", and three decimals below ten cents ("US$0.016"). */
 export const formatUsd = (usd: number) => `US$${usd.toFixed(usd > 0 && usd < 0.1 ? 3 : 2)}`;
+
+/** A size on disk: "0 B", "840 KB", "1.2 GB". */
+export function formatBytes(bytes: number): string {
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${unit === 0 || value >= 100 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
+}
 
 /** A count with its noun: "1 store", "2 stores". */
 export const plural = (n: number, one: string, many = `${one}s`) => `${formatNumber(n)} ${n === 1 ? one : many}`;

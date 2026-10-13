@@ -262,6 +262,20 @@ def test_the_estimate_caps_every_paid_step_before_anything_is_spent(tmp_path):
     assert calls == [], "an estimate asks nobody"
 
 
+def test_the_llm_line_of_the_estimate_is_the_real_cap(tmp_path):
+    env_file = tmp_path / ".env"
+    env_file.write_text("OPENAI_API_KEY=sk-test-0123456789abcdef\n")
+    base = RunConfig.model_validate({"output": {"runs_dir": tmp_path / "runs"}})
+    settings = ApiSettings(base=base, env_file=env_file, inputs_dir=tmp_path / "inputs")
+    with TestClient(create_app(settings)) as c:
+        lines = c.get("/api/discover/estimate", params={"count": 100}).json()["lines"]
+    assert next(line for line in lines if line["name"] == "llm") == {
+        "name": "llm",
+        "max_usd": 1.0,  # the run's LLM budget: the only thing that stops it
+        "note": "about US$0.10 on past runs",
+    }
+
+
 def test_the_estimate_says_when_the_agent_starts_on_a_free_tier(tmp_path):
     app, _ = make_client(tmp_path, "GEMINI_API_KEY=gm-test-0123456789abcdef\n")
     with TestClient(app) as c:

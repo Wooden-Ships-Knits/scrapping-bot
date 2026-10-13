@@ -115,7 +115,9 @@ can cost: each source's request cap at list price (Google Maps US$0.035 a reques
 Tavily US$0.008; `discover/costs.py`), the agent's cost cap and the run's LLM stage.
 Afterwards it shows what the requests sent came to, per source, and the run page shows
 the LLM stage's cost. These are not bills: free monthly allowances and Gemini's free
-tier are not subtracted, and cached answers cost nothing.
+tier are not subtracted, and cached search answers cost nothing. A search for new stores
+asks the agent afresh each time. The LLM line is the run's LLM budget, the only thing
+that stops it; what past runs came to is shown beside it.
 
 ## Command line
 
@@ -286,6 +288,15 @@ in `raw`).
 Successful responses are cached in `data/.cache`, so re-runs are near-instant.
 Failures (timeouts, 429, 5xx) are never cached, so a re-run retries them. Delete the
 cache to force fresh fetches.
+
+**Deleting.** The *Run history* page deletes a run, several ticked runs, or all of them,
+after a confirmation that says what is lost: the run's tables, exports and report. Its
+stores then count as not read, so a later search can find them and a later run visits
+them. A run that is still going has to be stopped first. The same page lists the three
+caches with their size and deletes one or all of them: saved store pages (fetched again
+by the next run), search answers and LLM answers (asked, and paid for, again). Deleting a
+cache never touches a run, and is refused while a run or a search is under way. Nothing
+is moved to a bin: `scrapebot backup --to <folder>` first if the data may be wanted.
 
 **A search finds new stores.** Ask *Find stores* for 100 and it looks for 100 stores no
 run has visited in the last 30 days: the ones already scraped are left out and not

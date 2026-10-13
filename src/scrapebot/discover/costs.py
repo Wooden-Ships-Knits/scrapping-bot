@@ -10,7 +10,7 @@ from collections.abc import Mapping
 
 from pydantic import BaseModel, SecretStr
 
-from ..llm.gateway import is_local, key_for
+from .agent import usable_models
 from .config import DiscoverConfig
 
 # List prices in US$ per request, checked 2026-10-13.
@@ -50,7 +50,7 @@ def estimate(config: DiscoverConfig, keys: Mapping[str, SecretStr]) -> list[Cost
         if opts.enabled and key in keys:
             lines.append(CostLine(name=step, max_usd=request_cost(step, opts.max_requests)))
     agent = config.ai_agent
-    models = [m for m in (agent.model, *agent.fallbacks) if m and (is_local(m) or key_for(m, keys))]
+    models = usable_models([agent.model, *agent.fallbacks], keys)
     if agent.enabled and models:
         free_first = models[0].startswith("gemini/")
         lines.append(

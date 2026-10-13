@@ -205,8 +205,8 @@ export function FindStoresFields({
             .join(" · ")}
           <small className="muted">
             {" "}
-            List prices and caps, not a bill: answers already cached cost nothing, and free allowances are not
-            subtracted.
+            List prices and caps, not a bill: free allowances are not subtracted, and search answers already cached
+            cost nothing. A search for new stores asks the AI agent afresh each time.
           </small>
         </div>
       )}

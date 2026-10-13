@@ -46,15 +46,18 @@ from ..llm.gateway import (
     provider_of,
 )
 from ..outputs import available_writers
-from ..pipeline import load_records, prepare, read_before, resume
+from ..pipeline import llm_can_run, load_records, prepare, read_before, resume
 from ..traffic import Period, TrafficError, TrafficService, TrafficSnapshot
-from . import library
+from . import library, storage
 from .detection import detection
 from .discovery import DiscoveryManager
 from .manager import FetcherFactory, RunManager
 from .retailer_map import RetailerMapError, retailer_map
 from .schemas import (
+    CacheKindOut,
+    CacheOut,
     CostLineOut,
+    DeletedOut,
     DetectionOut,
     DiscoverEstimateOut,
     DiscoverIn,
@@ -179,7 +182,7 @@ def create_app(
 
     def start(cfg: RunConfig, keys: dict[str, SecretStr] | None = None) -> RunOut:
         try:
-            prepared = prepare(cfg)
+            prepared = prepare(cfg, keys)
         except InputError as exc:
             raise ApiError(422, "bad_input", str(exc)) from exc
         manager.submit(prepared, keys)
@@ -225,7 +228,7 @@ def create_app(
             raise ApiError(422, "bad_input", str(exc)) from exc
         resolution = resolve(records)
         skipped = [i for i in resolution.inputs if i.status not in ("processed", DUPLICATE)]
-        known = read_before(settings.base, resolution)
+        known = read_before(settings.base, resolution, keys=load_keys(settings.env_file))
         return PreviewOut(
             links=len(records),
             stores=len(resolution.targets),
@@ -274,7 +277,7 @@ def create_app(
         if load(run_id).state not in ("stopped", "interrupted"):
             raise ApiError(409, "not_resumable", "Only a run that has stopped can be resumed.")
         try:
-            prepared = resume(root)
+            prepared = resume(root, load_keys(settings.env_file))
         except InputError as exc:
             raise ApiError(422, "bad_input", str(exc)) from exc
         live = manager.get(run_id)
@@ -289,6 +292,44 @@ def create_app(
     @app.get("/api/runs/{run_id}")
     def run_detail(run_id: str) -> RunOut:
         return load(run_id)
+
+    @app.delete("/api/runs/{run_id}")
+    def delete_run(run_id: str) -> DeletedOut:
+        """Delete a run for good: its tables, exports and report. The ledger then
+        forgets its visits, so its stores count as not read (ADR 0013). A run that is
+        queued or running is refused: stop it first."""
+        root = root_or_404(run_id)
+        live = manager.get(run_id)
+        if live and live.state in ("queued", "running"):
+            raise ApiError(409, "run_active", "This run is still going. Stop it first.")
+        storage.delete_run(root, settings.process_dir)
+        manager.forget(run_id)
+        return DeletedOut(run_id=run_id)
+
+    def cache_out() -> CacheOut:
+        usage = storage.cache_usage(settings.base.fetch.cache_dir, settings.discover_cache_dir)
+        return CacheOut(
+            kinds=[CacheKindOut(name=k, files=n, bytes=size) for k, (n, size) in usage.items()],
+            busy=manager.busy() or finder.busy(),
+        )
+
+    @app.get("/api/cache")
+    def cache() -> CacheOut:
+        """What each cache holds: saved store pages, search answers, LLM answers."""
+        return cache_out()
+
+    @app.delete("/api/cache/{kind}")
+    def clear_cache(kind: str) -> CacheOut:
+        """Delete one kind of cache, or `all`. Nothing about a run is lost: pages are
+        fetched again, search and LLM answers are asked, and paid for, again."""
+        if kind not in (*storage.CACHE_KINDS, "all"):
+            raise ApiError(404, "cache_not_found", f"There is no cache called {kind}.")
+        if manager.busy() or finder.busy():
+            raise ApiError(
+                409, "busy", "A run or a search is under way. Delete the cache when it is done."
+            )
+        storage.clear_cache(kind, settings.base.fetch.cache_dir, settings.discover_cache_dir)
+        return cache_out()
 
     @app.get("/api/runs/{run_id}/quality")
     def run_quality(run_id: str) -> Scorecard:
@@ -333,12 +374,15 @@ def create_app(
             "ai_agent": bool(pick_agent_model(keys)),
         }
 
-    def left_out(rescrape: bool) -> list[str]:
+    def left_out(rescrape: bool, keys: dict[str, SecretStr]) -> list[str]:
         """The stores a search leaves out, newest first: those a run read in the last
         `fetch.reuse_days` days (ADR 0013). None when the operator asks for them to be
         scraped again: a search is for new stores unless told otherwise."""
         days = 0 if rescrape else settings.base.fetch.reuse_days
-        return Ledger(runs_dir).settled(days) if days else []
+        if not days:
+            return []
+        # A store an LLM stage never got to is still new, when this run's can work.
+        return Ledger(runs_dir).settled(days, with_unfinished=not llm_can_run(settings.base, keys))
 
     def prompt_model(keys: dict[str, SecretStr]) -> str:
         """The model that reads a search written in words: the run's own LLM, when its
@@ -420,13 +464,15 @@ def create_app(
             pick_agent_model(keys),
             agent_fallbacks=models[1:],
             place=place_region(place, "US") if place else None,  # the country costs nothing
-            new_only=bool(left_out(rescrape)),
+            new_only=bool(left_out(rescrape, keys)),
         )
         lines = [CostLineOut(**line.model_dump()) for line in estimate(config, keys)]
         llm = settings.base.llm
         if llm.enabled and key_for(llm.model, keys):
-            reading = min(llm.budget_usd, count * LLM_USD_PER_STORE)
-            lines.append(CostLineOut(name="llm", max_usd=round(reading, 6), note=""))
+            # The cap is the run's LLM budget; what past runs came to is a note, not a cap.
+            usual = min(llm.budget_usd, count * LLM_USD_PER_STORE)
+            note = f"about US${usual:.2f} on past runs"
+            lines.append(CostLineOut(name="llm", max_usd=round(llm.budget_usd, 6), note=note))
         return DiscoverEstimateOut(
             count=count, lines=lines, max_usd=round(sum(line.max_usd for line in lines), 6)
         )
@@ -443,7 +489,7 @@ def create_app(
         if OTHER in body.items and not any(t.strip() for t in body.terms):
             raise ApiError(422, "terms_required", "Give keywords for the item Other.")
         keys = load_keys(settings.env_file)
-        known = left_out(body.rescrape)
+        known = left_out(body.rescrape, keys)
         if not any(discovery_sources(keys).values()):
             raise ApiError(
                 422,
@@ -477,7 +523,7 @@ def create_app(
         def start_run(links: Path) -> str:
             data = {**base, "input": {**base["input"], "source": links, "text": None}}
             data["input"]["url_column"] = "website"
-            prepared = prepare(RunConfig.model_validate(data))
+            prepared = prepare(RunConfig.model_validate(data), keys)
             manager.submit(prepared, keys)
             return prepared.run_id
 
