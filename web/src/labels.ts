@@ -11,7 +11,7 @@ const STORE_STATUS: Record<string, string> = {
 
 const SKIP_REASON: Record<string, string> = {
   duplicate: "Duplicate domain",
-  over_limit: "Over the store limit",
+  over_limit: "Left out by the run's limit",
   no_website: "No website",
   invalid_url: "Invalid URL",
   social_only: "Social media",

@@ -79,7 +79,7 @@ describe("RunDetail", () => {
   it("shows the reconciliation, the progress and what needs a look", () => {
     render(<RunDetail run={run()} />);
     expect(screen.getByTestId("reconciliation")).toHaveTextContent("Links in 4 = processed 2 + skipped 2 ✓ balanced");
-    expect(screen.getByText("Over the store limit: 1")).toBeInTheDocument();
+    expect(screen.getByText("Left out by the run's limit: 1")).toBeInTheDocument();
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "2");
     expect(within(screen.getByRole("region", { name: "Needs a look" })).getByText("HTTP 403")).toBeInTheDocument();
   });
@@ -107,6 +107,31 @@ describe("RunDetail", () => {
     expect(within(result).getByTestId("json-view")).toHaveTextContent('"title": "Cher Sweater"');
     await user.click(within(result).getByRole("tab", { name: "PARAMETERS" }));
     expect(within(result).getByText("uv run scrapebot run links.txt --limit 2 -f xlsx")).toBeInTheDocument();
+  });
+
+  it("says a limited run left links out on purpose, so it is not read as a fault", () => {
+    const full = run({ mode: "full", limit: null, links_in: 3, processed: 2, skipped: 1, skipped_by_reason: { social_only: 1 } });
+    const { unmount } = render(<RunDetail run={full} />);
+    expect(screen.queryByTestId("limited"), "a link skipped for another reason is not a limit").not.toBeInTheDocument();
+    unmount();
+    render(
+      <RunDetail
+        run={run({
+          mode: "test",
+          limit: 20,
+          links_in: 100,
+          processed: 20,
+          skipped: 80,
+          skipped_by_reason: { over_limit: 80 },
+          stores_total: 20,
+          stores_done: 20,
+        })}
+      />,
+    );
+    const notice = screen.getByTestId("limited");
+    expect(notice).toHaveTextContent("Only the first 20 stores of this list were visited, on purpose.");
+    expect(notice).toHaveTextContent("the other 80 links were left out: nothing went wrong with them");
+    expect(screen.getByLabelText("Skipped links")).toHaveTextContent("Left out by the run's limit: 80");
   });
 
   it("says how many stores were loaded from an earlier run", () => {
