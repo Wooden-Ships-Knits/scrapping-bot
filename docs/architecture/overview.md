@@ -102,6 +102,10 @@ API routes: `GET /api/options`, `POST /api/uploads`, `POST /api/preview`,
 `POST /api/runs`, `GET /api/runs`, `GET /api/runs/{id}`,
 `GET /api/runs/{id}/events` (SSE), `GET /api/runs/{id}/download/{key}`,
 `GET /api/detection`, `GET /api/traffic?period=1h|24h|7d`, `GET /api/retailer-map`.
+`DELETE /api/runs/{id}` removes a finished or stopped run for good (`api/storage.py`); the
+ledger then forgets its visits (ADR 0013). `GET /api/cache` lists the three caches (saved
+pages, search answers, LLM answers) and `DELETE /api/cache/{kind}` deletes one or `all`;
+both deletes are refused while a run or a search is under way.
 The web app's
 TypeScript types are generated from the API's OpenAPI schema (`make api-types`); CI
 fails when they drift.

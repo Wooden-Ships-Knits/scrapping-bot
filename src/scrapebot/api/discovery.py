@@ -137,6 +137,11 @@ class DiscoveryManager:
             job.error = redact(f"{type(exc).__name__}: {exc}")
             job.state = "failed"
 
+    def busy(self) -> bool:
+        """Whether a search is under way."""
+        with self._lock:
+            return any(job.state in ("searching", "starting_run") for job in self._jobs.values())
+
     def get(self, discovery_id: str) -> LiveDiscovery | None:
         with self._lock:
             return self._jobs.get(discovery_id)

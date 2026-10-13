@@ -48,13 +48,16 @@ from ..llm.gateway import (
 from ..outputs import available_writers
 from ..pipeline import llm_can_run, load_records, prepare, read_before, resume
 from ..traffic import Period, TrafficError, TrafficService, TrafficSnapshot
-from . import library
+from . import library, storage
 from .detection import detection
 from .discovery import DiscoveryManager
 from .manager import FetcherFactory, RunManager
 from .retailer_map import RetailerMapError, retailer_map
 from .schemas import (
+    CacheKindOut,
+    CacheOut,
     CostLineOut,
+    DeletedOut,
     DetectionOut,
     DiscoverEstimateOut,
     DiscoverIn,
@@ -289,6 +292,44 @@ def create_app(
     @app.get("/api/runs/{run_id}")
     def run_detail(run_id: str) -> RunOut:
         return load(run_id)
+
+    @app.delete("/api/runs/{run_id}")
+    def delete_run(run_id: str) -> DeletedOut:
+        """Delete a run for good: its tables, exports and report. The ledger then
+        forgets its visits, so its stores count as not read (ADR 0013). A run that is
+        queued or running is refused: stop it first."""
+        root = root_or_404(run_id)
+        live = manager.get(run_id)
+        if live and live.state in ("queued", "running"):
+            raise ApiError(409, "run_active", "This run is still going. Stop it first.")
+        storage.delete_run(root, settings.process_dir)
+        manager.forget(run_id)
+        return DeletedOut(run_id=run_id)
+
+    def cache_out() -> CacheOut:
+        usage = storage.cache_usage(settings.base.fetch.cache_dir, settings.discover_cache_dir)
+        return CacheOut(
+            kinds=[CacheKindOut(name=k, files=n, bytes=size) for k, (n, size) in usage.items()],
+            busy=manager.busy() or finder.busy(),
+        )
+
+    @app.get("/api/cache")
+    def cache() -> CacheOut:
+        """What each cache holds: saved store pages, search answers, LLM answers."""
+        return cache_out()
+
+    @app.delete("/api/cache/{kind}")
+    def clear_cache(kind: str) -> CacheOut:
+        """Delete one kind of cache, or `all`. Nothing about a run is lost: pages are
+        fetched again, search and LLM answers are asked, and paid for, again."""
+        if kind not in (*storage.CACHE_KINDS, "all"):
+            raise ApiError(404, "cache_not_found", f"There is no cache called {kind}.")
+        if manager.busy() or finder.busy():
+            raise ApiError(
+                409, "busy", "A run or a search is under way. Delete the cache when it is done."
+            )
+        storage.clear_cache(kind, settings.base.fetch.cache_dir, settings.discover_cache_dir)
+        return cache_out()
 
     @app.get("/api/runs/{run_id}/quality")
     def run_quality(run_id: str) -> Scorecard:

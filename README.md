@@ -289,6 +289,15 @@ Successful responses are cached in `data/.cache`, so re-runs are near-instant.
 Failures (timeouts, 429, 5xx) are never cached, so a re-run retries them. Delete the
 cache to force fresh fetches.
 
+**Deleting.** The *Run history* page deletes a run, several ticked runs, or all of them,
+after a confirmation that says what is lost: the run's tables, exports and report. Its
+stores then count as not read, so a later search can find them and a later run visits
+them. A run that is still going has to be stopped first. The same page lists the three
+caches with their size and deletes one or all of them: saved store pages (fetched again
+by the next run), search answers and LLM answers (asked, and paid for, again). Deleting a
+cache never touches a run, and is refused while a run or a search is under way. Nothing
+is moved to a bin: `scrapebot backup --to <folder>` first if the data may be wanted.
+
 **A search finds new stores.** Ask *Find stores* for 100 and it looks for 100 stores no
 run has visited in the last 30 days: the ones already scraped are left out and not
 counted, and the search says how many. Tick "Include stores already scraped in the last

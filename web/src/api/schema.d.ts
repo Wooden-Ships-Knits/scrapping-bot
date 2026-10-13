@@ -4,6 +4,47 @@
  */
 
 export interface paths {
+    "/api/cache": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cache
+         * @description What each cache holds: saved store pages, search answers, LLM answers.
+         */
+        get: operations["cache_api_cache_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cache/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Clear Cache
+         * @description Delete one kind of cache, or `all`. Nothing about a run is lost: pages are
+         *     fetched again, search and LLM answers are asked, and paid for, again.
+         */
+        delete: operations["clear_cache_api_cache__kind__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/detection": {
         parameters: {
             query?: never;
@@ -266,7 +307,13 @@ export interface paths {
         get: operations["run_detail_api_runs__run_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Run
+         * @description Delete a run for good: its tables, exports and report. The ledger then
+         *     forgets its visits, so its stores count as not read (ADR 0013). A run that is
+         *     queued or running is refused: stop it first.
+         */
+        delete: operations["delete_run_api_runs__run_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -486,6 +533,26 @@ export interface components {
             /** Watched */
             watched: boolean;
         };
+        /** CacheKindOut */
+        CacheKindOut: {
+            /** Bytes */
+            bytes: number;
+            /** Files */
+            files: number;
+            /** Name */
+            name: string;
+        };
+        /**
+         * CacheOut
+         * @description What the caches hold. Deleting one is refused while a run or a search is under
+         *     way (`busy`): it would be reading and writing them.
+         */
+        CacheOut: {
+            /** Busy */
+            busy: boolean;
+            /** Kinds */
+            kinds: components["schemas"]["CacheKindOut"][];
+        };
         /** CostLineOut */
         CostLineOut: {
             /** Max Usd */
@@ -494,6 +561,11 @@ export interface components {
             name: string;
             /** Note */
             note: string;
+        };
+        /** DeletedOut */
+        DeletedOut: {
+            /** Run Id */
+            run_id: string;
         };
         /**
          * DetectionOut
@@ -1333,6 +1405,57 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    cache_api_cache_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CacheOut"];
+                };
+            };
+        };
+    };
+    clear_cache_api_cache__kind__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CacheOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     detection_view_api_detection_get: {
         parameters: {
             query?: never;
@@ -1721,6 +1844,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_run_api_runs__run_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeletedOut"];
                 };
             };
             /** @description Validation Error */

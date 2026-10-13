@@ -71,6 +71,16 @@ class RunManager:
         with self._lock:
             return self._runs.get(run_id)
 
+    def forget(self, run_id: str) -> None:
+        """Drop what is remembered about a run that was deleted."""
+        with self._lock:
+            self._runs.pop(run_id, None)
+
+    def busy(self) -> bool:
+        """Whether a run is queued or running."""
+        with self._lock:
+            return any(live.state in ("queued", "running") for live in self._runs.values())
+
     def states(self) -> dict[str, RunState]:
         with self._lock:
             return {run_id: live.state for run_id, live in self._runs.items()}
