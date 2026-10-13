@@ -229,7 +229,7 @@ describe("Scrape: find stores", () => {
     await waitFor(() => expect(find).toBeEnabled());
     await user.click(find);
 
-    expect(await screen.findByTestId("discovery")).toHaveTextContent("12 stores found");
+    expect(await screen.findByTestId("discovery")).toHaveTextContent("12 new stores found / target 30");
     expect(calls.find((c) => c.url === "/api/discover")?.body).toEqual({
       count: 30,
       region: "europe",

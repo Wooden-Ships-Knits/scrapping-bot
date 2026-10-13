@@ -245,7 +245,7 @@ class DiscoveryOut(BaseModel):
     state: DiscoveryState
     count: int  # stores asked for
     step: str  # the source being searched now; "" when none
-    found: int  # stores or sightings so far
+    found: int  # new stores with a website so far: what `count` is compared with
     stores_to_visit: int  # new stores with a website handed to the run
     read_before: int  # stores found that a run read recently: left out, not counted
     sources: list[DiscoverySourceOut]

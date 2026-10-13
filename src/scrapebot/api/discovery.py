@@ -113,8 +113,9 @@ class DiscoveryManager:
                 for r in result.sources
             ]
             job.cost_usd = result.cost_usd
-            job.step, job.found = "", len(result.stores)
             job.read_before = result.known
+            # Every new store with a website, before the count asked for cuts the list.
+            job.step, job.found = "", len(stores_to_visit(result.stores, None, known))
             chosen = stores_to_visit(result.stores, config.target_stores, known)
             job.stores_to_visit = len(chosen)
             if not chosen:

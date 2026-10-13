@@ -83,10 +83,11 @@ AGENT_MODELS = (
 )
 # A failure that may pass is tried once more after this wait, then the next model is used.
 RETRY_DELAY_SECONDS = 3.0
-# A rate limit is waited out, as long as the provider says, this many times per task:
-# search models have small per-minute token limits, and a search asks several times a
-# minute. Measured 2026-10-13: 45,000 tokens a minute, about two asks.
-RATE_LIMIT_WAITS = 2
+# A rate limit is waited out, once per entry and at least this long: search models have
+# small per-minute token limits, and a search asks several times a minute. Measured
+# 2026-10-13: 45,000 tokens a minute, about two asks; the provider's own "try again in
+# 2 s" was too short for a whole request, so later waits grow to most of a minute.
+RATE_LIMIT_WAITS = (5.0, 20.0, 45.0)
 # With no model left to take over, the agent stops after this many failed tasks in a row.
 MAX_FAILED_TASKS = 2
 # Gemini counts its thinking against max_tokens and, unless told otherwise, thinks as
@@ -349,8 +350,9 @@ class AgentSource:
         return True
 
     def _call(self, prompt: str) -> str | None:
-        """The answer of the model in use. A rate limit is waited out as long as the
-        provider asks; another failure that may pass is tried once more. After that, or
+        """The answer of the model in use. A rate limit is waited out, longer each time
+        and at least as long as the provider asks; another failure that may pass is
+        tried once more. After that, or
         at once when it cannot pass, the next model takes over. With none left the task
         is skipped, and the agent stops when that keeps happening."""
         retried, waits = False, 0
@@ -372,7 +374,8 @@ class AgentSource:
                 passing = is_transient(exc)
                 if is_rate_limit(exc):
                     wait = rate_limit_wait(exc)
-                    if wait is not None and waits < RATE_LIMIT_WAITS:
+                    if wait is not None and waits < len(RATE_LIMIT_WAITS):
+                        wait = max(wait, RATE_LIMIT_WAITS[waits])
                         waits += 1
                         self._note(f"{self.model}: rate limit reached; waited and asked again.")
                         log.info("ai_agent: rate limit, waiting %.0f s", wait)

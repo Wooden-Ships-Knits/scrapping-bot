@@ -225,7 +225,7 @@ export function DiscoveryCard({ discovery }: { discovery: Discovery }) {
         </h2>
         <span className="spacer" />
         <span className="small">
-          <strong>{plural(discovery.found, "store")} found</strong>
+          <strong>{plural(discovery.found, "new store")} found</strong>
           <span className="muted"> / target {formatNumber(discovery.count)}</span>
         </span>
       </div>

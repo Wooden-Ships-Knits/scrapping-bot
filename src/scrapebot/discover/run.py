@@ -91,8 +91,15 @@ def _secret(keys: Mapping[str, SecretStr], name: str) -> str:
     return value.get_secret_value() if value else ""
 
 
-# (step name, how many stores or sightings so far): for a live progress display.
+# (step name, how many new stores with a website so far): for a live progress display.
 Progress = Callable[[str, int], None]
+
+
+def new_so_far(candidates: list[Candidate], known: Collection[str]) -> int:
+    """Stores with a website seen so far that no run read before: what a target counts.
+    A live figure for the progress display; the merge decides the final one."""
+    sites = {store_website(c.website) for c in candidates if c.website}
+    return len(sites - set(known) - {""})
 
 
 def _run_source(
@@ -199,7 +206,7 @@ def run_discover(
             continue
         if name == "ai_agent":
             candidates += _run_agent(
-                config, keys, completion, report, progress, len(candidates), known
+                config, keys, completion, report, progress, new_so_far(candidates, known_set), known
             )
             continue
         key = _secret(keys, SOURCE_KEYS[name])
@@ -217,7 +224,7 @@ def run_discover(
         report.requests_sent, report.requests_cached = api.sent, api.cached
         report.cost_usd = request_cost(name, api.sent)
         if progress:
-            progress(name, len(candidates))
+            progress(name, new_so_far(candidates, known_set))
 
     stores = merge(candidates, config.countries, config.exclude_domains)
 

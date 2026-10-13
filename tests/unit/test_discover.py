@@ -451,7 +451,10 @@ def test_a_rate_limit_is_waited_out_for_as_long_as_the_provider_asks(tmp_path):
         cfg, keys(openai="sk-key-123456"), tmp_path / "cache", completion, sleep=waits.append
     )
     agent.run()
-    assert waits == [6.333, 6.333, 6.333], "the provider's own figure, and a second more"
+    assert waits == [6.333, 6.333, 20.0], (
+        "the provider's own figure and a second more; a second wait in one task is longer, "
+        "because that figure proved too short"
+    )
     assert [c.status for c in agent.calls] == ["error", "ok", "error", "error", "ok"]
     assert len(agent.found) == 2, "both areas were answered: no task was skipped"
     assert agent.notes == ["openai/gpt-5-search-api: rate limit reached; waited and asked again."]
@@ -519,8 +522,8 @@ def test_with_no_model_left_the_agent_stops_and_says_why(tmp_path):
     )
     with pytest.raises(ApiError, match="usage limit was reached"):
         agent.run()
-    assert seen.count("openai/gpt-5-search-api") == 6, (
-        "two tasks, each asked three times (two waits), not all four tasks"
+    assert seen.count("openai/gpt-5-search-api") == 8, (
+        "two tasks, each asked four times (three waits), not all four tasks"
     )
 
 

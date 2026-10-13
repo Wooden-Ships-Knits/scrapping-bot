@@ -152,6 +152,7 @@ def test_a_search_counts_only_new_stores_unless_asked_to_include_the_old(client)
 
     again, run = search()
     assert (again["state"], again["read_before"], again["stores_to_visit"]) == ("done", 2, 1)
+    assert again["found"] == 1, "what the target is compared with: new stores, not sightings"
     assert [s["domain"] for s in run["stores"]] == ["thirdshop.com"], "the one not read before"
     assert run["reused_stores"] == 0, "nothing old is loaded into a search for new stores"
     known = client.agent_calls[-1]["messages"][0]["content"]  # type: ignore[attr-defined]
