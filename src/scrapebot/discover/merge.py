@@ -34,7 +34,10 @@ DIRECTORY_DOMAINS = frozenset({
     "goo.gl", "reddit.com", "wikipedia.org", "beacons.ai", "linkin.bio", "taplink.cc",
     "shopmy.us", "ltk.app", "shop.app", "bit.ly", "chamberofcommerce.com", "zoominfo.com",
     "loc8nearme.com", "wanderlog.com", "birdeye.com", "alignable.com", "shopify.com",
+    "apple.com", "yahoo.com", "shoptiques.com",
 })  # fmt: skip
+# Government, military and school sites are never a store's (nps.gov, usa.gov: 2026-10-20).
+PUBLIC_SUFFIXES = (".gov", ".mil", ".edu", ".gc.ca")
 
 
 # A Maps listing name is cleaner than a page title or an agent's spelling.
@@ -132,6 +135,8 @@ def store_website(url: str, exclude: frozenset[str] = frozenset()) -> str:
         return ""
     status, _, domain = classify(url)
     if status != PROCESSED or domain in DIRECTORY_DOMAINS or domain in exclude:
+        return ""
+    if domain.endswith(PUBLIC_SUFFIXES):
         return ""
     return domain
 

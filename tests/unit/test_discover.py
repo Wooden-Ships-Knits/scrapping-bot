@@ -26,6 +26,7 @@ from scrapebot.discover.paid import ApiError, BudgetReached, PaidApi
 from scrapebot.discover.places import PlacesSource, to_candidate
 from scrapebot.discover.search import (
     WebsiteLookup,
+    is_article,
     looks_like,
     place_in,
     profile_name,
@@ -237,6 +238,8 @@ def test_only_a_store_s_own_site_counts_as_its_website():
     assert store_website("https://www.yelp.com/biz/x") == ""
     assert store_website("https://linktr.ee/x") == ""
     assert store_website("https://vogue.com/x", frozenset({"vogue.com"})) == ""
+    assert store_website("https://www.nps.gov/sacr") == ""
+    assert store_website("https://maps.apple.com/place?q=x") == ""
 
 
 # --- merging ---------------------------------------------------------------------
@@ -582,10 +585,68 @@ def test_a_cut_off_answer_is_noted_and_gemini_s_thinking_is_limited(tmp_path):
 
 def test_a_lookup_result_must_carry_the_store_s_name_or_handle():
     store = FoundStore(name="Cedar & Hyde", instagram="https://www.instagram.com/cedarhyde.co/")
-    assert looks_like(store, "https://cedarandhyde.com", "Home")
-    assert looks_like(store, "https://shop-ch.com", "Cedar & Hyde | Boulder boutique")
-    assert not looks_like(store, "https://randomshop.com", "Sweaters")
-    assert not looks_like(store, "https://www.yelp.com/biz/cedar-and-hyde", "Cedar & Hyde - Yelp")
+    assert looks_like(store, "https://cedarandhyde.com")
+    assert looks_like(store, "https://cedarhydeco.com"), "the Instagram handle"
+    assert not looks_like(store, "https://randomshop.com")
+    assert not looks_like(store, "https://www.yelp.com/biz/cedar-and-hyde")
+
+
+@pytest.mark.parametrize(
+    ("name", "url"),
+    [  # looked up on 2026-10-20; each page carried the store's name in its title
+        ("The Bella Boutique Spa", "https://maps.apple.com"),
+        ("Saint Croix", "https://www.nps.gov"),
+        ("Cashmere N Tee", "https://pasadenamag.com"),
+        ("Cloth & Steele", "https://local.yahoo.com"),
+        ("Bridge Boutique", "https://poncecitymarket.com"),
+        ("Tammy's Boutique", "https://shoptiques.com"),
+    ],
+)
+def test_a_page_about_the_store_is_not_its_website(name, url):
+    assert not looks_like(FoundStore(name=name), url)
+
+
+@pytest.mark.parametrize(
+    ("name", "url"),
+    [  # the store's own sites among the same lookups
+        ("STORM Clothing Boutique", "https://shopstorms.com"),
+        ("Wish Boutique", "https://stylebywish.com"),
+        ("Moon + Arrow", "https://moonandarrow.com"),
+        ("Earth Wind and Fire Boutique", "https://earthwindandfire.com"),
+    ],
+)
+def test_the_store_s_name_without_shop_words_finds_its_domain(name, url):
+    assert looks_like(FoundStore(name=name), url)
+
+
+@pytest.mark.parametrize(
+    ("url", "title"),
+    [  # web search answers, 2026-10-20
+        (
+            "https://www.whowhatwear.com/fashion/jumpers-sweaters/best-small-knitwear-brands",
+            "11 Small Knitwear Brands That Come Editor-Approved | Who What Wear",
+        ),
+        ("https://revenuebase.ai/companies/x", "Top 25 Boutique clothing stores based in Canada"),
+        ("https://bloomwholesale.com/blogs/news/suppliers", "Boutique Owners Love These"),
+        ("https://www.businessoffashion.com/articles/retail/x", "The Independent Boutiques"),
+        ("https://mygreencloset.com/x", "List of Canadian Clothing Brands (Slow Fashion)"),
+        ("https://www.sweetsauceblog.com/x", "Independent Online Boutiques To Shop for Fashion"),
+    ],
+)
+def test_lists_guides_and_blog_posts_are_not_stores(url, title):
+    assert is_article(url, title)
+
+
+@pytest.mark.parametrize(
+    ("url", "title"),
+    [
+        ("https://saintandsofia.com/collections/womens-knitwear", "Shop Women's Knitwear"),
+        ("https://whalerknits.com/collections/x", "100% Cotton Sweaters Made in USA"),
+        ("https://www.beginningboutique.com", "Beginning Boutique USA | The Best Dresses"),
+    ],
+)
+def test_store_pages_are_not_articles(url, title):
+    assert not is_article(url, title)
 
 
 def test_lookup_skips_directories_and_takes_the_matching_site(tmp_path):

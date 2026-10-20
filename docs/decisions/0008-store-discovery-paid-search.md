@@ -29,7 +29,10 @@ cares about knitwear.
     reviews, coordinates or summaries are requested or stored.
   - Tavily for web search, for Instagram and Facebook profiles (search results only,
     the profiles are never opened), and to look up the website of a store known only
-    by name or profile.
+    by name or profile. A looked-up result counts only when its domain carries the
+    store's name or handle (changed 2026-10-20: 17 of 46 lookups had taken a map,
+    magazine or government page whose title named the store), and web search leaves
+    out lists, guides and blog posts.
   - An LLM with web search, through LiteLLM's `web_search_options`
     ([ADR 0004](0004-llm-gateway-litellm-instructor.md)), not one SDK per provider.
 - **Every paid call is capped and cached.** Each source has a hard request cap; the
