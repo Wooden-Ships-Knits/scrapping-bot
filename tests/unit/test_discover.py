@@ -955,11 +955,22 @@ def test_a_region_request_becomes_a_capped_discovery():
     assert "Paris, France" in cfg.locations
     assert cfg.target_stores == 50
     assert cfg.ai_agent.max_runs == 8
-    assert cfg.ai_agent.budget_usd == 0.96
+    assert cfg.ai_agent.budget_usd == 0.64
     assert cfg.google_places.queries[:2] == ["sweater boutique", "knitwear store"]
     assert "ponchos boutique" in cfg.google_places.queries
     assert "sweaters and knitwear, ponchos" in cfg.web_search.queries[0]
     assert "Europe" in cfg.web_search.queries[0]
+
+
+def test_a_search_for_500_new_stores_may_ask_the_agent_often_enough():
+    """2026-10-20: 40 runs gave 331 new stores; a search for 500 needs about 96."""
+    from scrapebot.discover.regions import discover_config
+
+    cfg = discover_config(500, "united_states", ["knitwear"], [], "openai/x", new_only=True)
+    assert cfg.ai_agent.max_runs == 96
+    assert cfg.ai_agent.budget_usd == 7.68
+    biggest = discover_config(1000, "united_states", ["knitwear"], [], "openai/x", new_only=True)
+    assert biggest.ai_agent.max_runs == 189
 
 
 def test_the_agent_keeps_asking_for_new_stores_until_the_target(tmp_path):

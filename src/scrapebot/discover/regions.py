@@ -101,9 +101,12 @@ DEFAULT_REGION = "north_america"
 
 # Caps that scale with the number of stores asked for. An agent run names about 10-12
 # stores; measured 2026-10-07: 12 stores and US$0.08 for one gpt-5-search-api run.
+# Measured 2026-10-20 on 40 runs: 331 new stores (8.3 a run), US$2.50 (US$0.0625 a run).
+# The old cap of 40 runs stopped that search for 500 at 367 stores, with half its budget
+# unspent; 200 runs is enough for the most a search may ask for (1,000 new stores).
 STORES_PER_AGENT_RUN = 8
-MAX_AGENT_RUNS = 40
-AGENT_USD_PER_RUN = 0.12
+MAX_AGENT_RUNS = 200
+AGENT_USD_PER_RUN = 0.08
 # A search for new stores gets this many times the agent runs: part of every answer is
 # stores read before, which do not count.
 NEW_ONLY_RUNS = 1.5
