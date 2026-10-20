@@ -44,7 +44,10 @@ stores across the historical runs never had the LLM tried.
 - **Store type: rules first, the LLM for the unclear rest** (`extract/brands.py`,
   `final.judge_store`). Three or more outside brands, none above 90% of the branded
   products, is `multi_brand`. Vendors equal to the store's own name and placeholders
-  ("Default Vendor") do not count. Anything else is `unknown`; when the store sells
+  ("Default Vendor") do not count as brands. The outside brands must also carry at least
+  10% of the products that name a vendor, own name included (added 2026-10-20: the
+  validation sheet found lazyoaf.com, a single label with 7 of 2,000 products under
+  three collaborators, on the final list). Anything else is `unknown`; when the store sells
   knitwear, the LLM judges it from its about, brands and home pages, its vendors and
   some product names (`llm/prompts/store_type_v1.md`). An answer below 0.6
   confidence leaves the store `unknown`, and the report lists it for a person to

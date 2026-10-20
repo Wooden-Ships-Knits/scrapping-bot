@@ -4,11 +4,13 @@ A multi-brand store (a boutique that resells other labels) is a possible partner
 store that sells its own label, Nike or a small designer alike, is not. Feeds name a
 vendor for most products, so the rule reads them first:
 
-- Vendors that are the store's own name ("Bluenvy Boutique" on bluenvy.ca) say
-  nothing: boutiques often put their own name on every product, labels do too.
+- Vendors that are the store's own name ("Bluenvy Boutique" on bluenvy.ca) are not
+  outside brands: boutiques often put their own name on every product, labels do too.
 - Placeholders ("Default Vendor", "Gift Card") are ignored.
-- Three or more outside brands, none of them nearly all the catalogue, is a
-  multi-brand store. On the 2026-10-08 run this settled 176 of 267 readable stores.
+- Three or more outside brands, none of them nearly all the catalogue, and together
+  a real share of it, is a multi-brand store. On the 2026-10-08 run this settled 176
+  of 267 readable stores. A label with a few collaborations is not one: lazyoaf.com,
+  2026-10-13, had 1,993 of 2,000 products under its own name and 7 under three others.
 
 Anything else is `unknown` and goes to the LLM when one is set (pipeline): one outside
 brand can be a boutique's only label or a chain's sub-brand, and an own-name vendor can
@@ -27,6 +29,10 @@ MIN_OUTSIDE_BRANDS = 3
 # One outside brand above this share of the branded products makes the store a
 # single-brand shop that stocks a few extras, or a chain listing its sub-brands.
 MAX_TOP_BRAND_SHARE = 0.9
+# Outside brands must carry at least this share of the products that name a real vendor
+# (own name included). Measured 2026-10-20 on 249 stores the vendors called multi-brand:
+# 7 were below 9% (lazyoaf.com 0.4%, matchmadestores.com 1.3%), the next was at 18%.
+MIN_OUTSIDE_SHARE = 0.1
 BRANDS_KEPT = 10  # outside brands listed per store, most products first
 
 PLACEHOLDER_VENDORS = frozenset(
@@ -88,21 +94,32 @@ def brand_mix(domain: str, products: list[Product]) -> BrandMix:
         return BrandMix("unknown", reason="few products name a vendor")
     outside: Counter[str] = Counter()
     spelling: dict[str, Counter[str]] = {}
+    own = 0
     for vendor in named:
         key = _key(vendor)
-        if key in PLACEHOLDER_VENDORS or is_own_name(key, name):
+        if key in PLACEHOLDER_VENDORS:
+            continue
+        if is_own_name(key, name):
+            own += 1
             continue
         outside[key] += 1
         spelling.setdefault(key, Counter())[vendor] += 1
     brands = [spelling[k].most_common(1)[0][0] for k, _ in outside.most_common(BRANDS_KEPT)]
     if not outside:
         return BrandMix("unknown", reason="vendors are only the store's own name")
-    top_share = outside.most_common(1)[0][1] / sum(outside.values())
-    if len(outside) >= MIN_OUTSIDE_BRANDS and top_share < MAX_TOP_BRAND_SHARE:
+    outside_products = sum(outside.values())
+    top_share = outside.most_common(1)[0][1] / outside_products
+    outside_share = outside_products / (outside_products + own)
+    if (
+        len(outside) >= MIN_OUTSIDE_BRANDS
+        and top_share < MAX_TOP_BRAND_SHARE
+        and outside_share >= MIN_OUTSIDE_SHARE
+    ):
         return BrandMix("multi_brand", brands, len(outside))
-    reason = (
-        "one brand is nearly the whole catalogue"
-        if top_share >= MAX_TOP_BRAND_SHARE
-        else f"only {len(outside)} outside brand(s)"
-    )
+    if outside_share < MIN_OUTSIDE_SHARE:
+        reason = "the store's own name is on nearly every product"
+    elif top_share >= MAX_TOP_BRAND_SHARE:
+        reason = "one brand is nearly the whole catalogue"
+    else:
+        reason = f"only {len(outside)} outside brand(s)"
     return BrandMix("unknown", brands, len(outside), reason)
