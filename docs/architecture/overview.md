@@ -176,7 +176,9 @@ flowchart LR
 
 From the web app, `POST /api/discover` takes a store count, a region and the items
 (`discover/regions.py` turns them into countries, agent areas, Maps cities and request
-and cost caps that grow with the count). The agent then runs area after area, telling
+and cost caps that grow with the count: one agent run per 8 stores asked for, plus
+one, half as many again for a search for new stores, at most 200 runs, at an estimated
+US$0.08 a run). The agent then runs area after area, telling
 the model which stores it already has, until the count is reached, a round finds
 nothing new, or a cap is hit. The stores with a website (the ones most sources agree on
 first) become `to_visit.csv`, and a run starts on all of them; `GET /api/discover/{id}`

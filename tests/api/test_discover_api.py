@@ -163,7 +163,7 @@ def test_a_search_counts_only_new_stores_unless_asked_to_include_the_old(client)
         got = client.get("/api/discover/estimate", params={"count": 100, **params}).json()
         return next(line["max_usd"] for line in got["lines"] if line["name"] == "ai_agent")
 
-    assert (agent_cap(), agent_cap(rescrape=True)) == (2.52, 1.68), (
+    assert (agent_cap(), agent_cap(rescrape=True)) == (1.68, 1.12), (
         "a search for new stores may ask half as often again: part of each answer is old"
     )
 
@@ -252,10 +252,10 @@ def test_the_estimate_caps_every_paid_step_before_anything_is_spent(tmp_path):
         assert {line["name"]: line["max_usd"] for line in body["lines"]} == {
             "web_search": 0.096,  # 12 requests at US$0.008
             "social_search": 0.04,
-            "ai_agent": 0.96,  # the agent's cost cap
+            "ai_agent": 0.64,  # the agent's cost cap
             "resolve": 0.4,
         }, "no Google Maps key: not in the estimate; the LLM stage is off here"
-        assert body["max_usd"] == 1.496
+        assert body["max_usd"] == 1.176
         assert c.get("/api/discover/estimate", params={"count": 0}).status_code == 422
         bad = c.get("/api/discover/estimate", params={"count": 5, "region": "mars"})
         assert bad.json()["detail"]["code"] == "bad_region"
@@ -282,7 +282,7 @@ def test_the_estimate_says_when_the_agent_starts_on_a_free_tier(tmp_path):
         [agent] = c.get("/api/discover/estimate", params={"count": 20}).json()["lines"]
         assert agent == {
             "name": "ai_agent",
-            "max_usd": 0.48,
+            "max_usd": 0.32,
             "note": "nothing while Gemini's free tier lasts",
         }
 
