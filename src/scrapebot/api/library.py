@@ -39,6 +39,16 @@ DOWNLOADS: dict[str, tuple[str, str]] = {
     "duckdb": ("DuckDB (.duckdb)", "export/tables.duckdb"),
     "manifest": ("Manifest (.json)", "manifest.json"),
 }
+# key -> (label, file in the folder of the store search the run's links came from). The
+# search found more stores than the run visits: those read before and those without a
+# website are only here (everything is raw).
+DISCOVERY_DOWNLOADS: dict[str, tuple[str, str]] = {
+    "found_stores": (
+        "Store search: every store found, with those read before or without a website (.csv)",
+        "stores.csv",
+    ),
+    "found_report": ("Store search: sources and costs (.json)", "report.json"),
+}
 
 
 def run_root(runs_dir: Path, run_id: str) -> Path | None:
@@ -118,11 +128,20 @@ def downloads(root: Path) -> list[DownloadOut]:
             else:
                 filename = path.name
             out.append(DownloadOut(key=key, label=label, filename=filename))
+    found = discovery_of(root)
+    for key, (label, name) in DISCOVERY_DOWNLOADS.items():
+        if found and (found / name).is_file():
+            filename = f"{found.name}-{name}"
+            out.append(DownloadOut(key=key, label=label, filename=filename))
     return out
 
 
 def download_path(root: Path, key: str) -> Path | None:
     """The file to send for a download key; directories are zipped once and reused."""
+    if key in DISCOVERY_DOWNLOADS and is_finished(root):
+        found = discovery_of(root)
+        path = found / DISCOVERY_DOWNLOADS[key][1] if found else None
+        return path if path and path.is_file() else None
     if key not in DOWNLOADS or not is_finished(root):
         return None
     path = root / DOWNLOADS[key][1]
