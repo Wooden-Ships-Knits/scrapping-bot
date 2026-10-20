@@ -638,6 +638,8 @@ export interface components {
              * @default false
              */
             rescrape: boolean;
+            /** States */
+            states?: string[];
             /** Terms */
             terms?: string[];
             /** Writers */
@@ -661,6 +663,10 @@ export interface components {
             max_prompt_chars: number;
             /** Prompt Model */
             prompt_model: string;
+            /** Region States */
+            region_states: {
+                [key: string]: string[];
+            };
             /** Regions */
             regions: string[];
             /** Reuse Days */
@@ -669,6 +675,8 @@ export interface components {
             sources: {
                 [key: string]: boolean;
             };
+            /** States */
+            states: components["schemas"]["StateOut"][];
         };
         /** DiscoveryOut */
         DiscoveryOut: {
@@ -1231,6 +1239,15 @@ export interface components {
             /** With Website */
             with_website: number;
         };
+        /** StateOut */
+        StateOut: {
+            /** Code */
+            code: string;
+            /** Country */
+            country: string;
+            /** Name */
+            name: string;
+        };
         /** StoreOut */
         StoreOut: {
             /** Contact Count */
@@ -1516,6 +1533,7 @@ export interface operations {
                 region?: string;
                 place?: string;
                 rescrape?: boolean;
+                states?: string[] | null;
             };
             header?: never;
             path?: never;

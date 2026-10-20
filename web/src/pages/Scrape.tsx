@@ -31,6 +31,8 @@ import {
   OTHER,
   parseCount,
   parseTerms,
+  regionStates,
+  sentStates,
   type FindForm,
   type PromptNote,
 } from "./FindStores";
@@ -62,6 +64,7 @@ export function Scrape() {
     prompt: "",
     place: "",
     country: "",
+    states: [],
   });
   const [interpreting, setInterpreting] = useState(false);
   const [promptNote, setPromptNote] = useState<PromptNote | null>(null);
@@ -74,7 +77,12 @@ export function Scrape() {
       .discoverOptions()
       .then((o) => {
         setFindOptions(o);
-        setForm((f) => ({ ...f, region: o.default_region, items: o.default_items }));
+        setForm((f) => ({
+          ...f,
+          region: o.default_region,
+          items: o.default_items,
+          states: regionStates(o, o.default_region),
+        }));
         if (Object.values(o.sources).some(Boolean)) setMode("find");
       })
       .catch(() => setFindOptions(null));
@@ -82,6 +90,10 @@ export function Scrape() {
 
   // What the search can cost, asked again as the count or the region changes.
   const estimateCount = findOptions ? parseCount(form.count, findOptions.max_count) : null;
+  // Only a part of a region's states changes the estimate; all of them is the region.
+  const ticked = findOptions ? sentStates(findOptions, form) : [];
+  const partialStates =
+    findOptions && ticked.length < regionStates(findOptions, form.region).length ? ticked : [];
   useEffect(() => {
     if (mode !== "find" || estimateCount === null || !form.region) {
       setEstimate(null);
@@ -90,7 +102,7 @@ export function Scrape() {
     let cancelled = false;
     const timer = setTimeout(() => {
       api
-        .discoverEstimate(estimateCount, form.region, form.place, form.rescrape)
+        .discoverEstimate(estimateCount, form.region, form.place, form.rescrape, partialStates)
         .then((e) => !cancelled && setEstimate(e))
         .catch(() => !cancelled && setEstimate(null));
     }, PREVIEW_DELAY_MS);
@@ -98,7 +110,7 @@ export function Scrape() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [mode, estimateCount, form.region, form.place, form.rescrape]);
+  }, [mode, estimateCount, form.region, form.place, form.rescrape, partialStates.join(",")]);
 
   // Follow a discovery until its run starts, then open that run.
   const discoveryId = discovery?.discovery_id;
@@ -182,6 +194,10 @@ export function Scrape() {
     findCount !== null &&
     form.items.length > 0 &&
     (!form.items.includes(OTHER) || findTerms.length > 0) &&
+    // A named place is searched alone; a region with states needs one ticked.
+    (form.place !== "" ||
+      regionStates(findOptions, form.region).length === 0 ||
+      sentStates(findOptions, form).length > 0) &&
     writers.length > 0 &&
     !busy &&
     !discovering;
@@ -201,6 +217,7 @@ export function Scrape() {
         items: got.items.length ? got.items : f.items,
         terms: got.terms.length ? got.terms.join(", ") : f.terms,
         region: got.region || f.region,
+        states: got.region ? regionStates(findOptions, got.region) : f.states,
         place: got.region ? "" : got.place || f.place,
         country: got.region ? "" : got.place ? got.country : f.country,
       }));
@@ -232,6 +249,7 @@ export function Scrape() {
           rescrape: form.rescrape,
           place: form.place,
           country: form.country,
+          states: sentStates(findOptions, form),
         }),
       );
     } catch (e) {

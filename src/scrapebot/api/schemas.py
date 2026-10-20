@@ -230,6 +230,9 @@ class DiscoverIn(_In):
     # request in the operator's own words gives. `region` is then not used.
     place: str = Field(default="", max_length=60)
     country: str = ""
+    # States and provinces ticked in North America ("US-TN", "CA-ON"): the agent asks
+    # about each in turn, those earlier searches found least in first. Empty: the region.
+    states: list[str] = Field(default_factory=list)
 
 
 class InterpretIn(_In):
@@ -272,9 +275,17 @@ class DiscoveryOut(BaseModel):
     error: str
 
 
+class StateOut(BaseModel):
+    code: str  # ISO 3166-2: "US-TN", "CA-ON"
+    name: str
+    country: str
+
+
 class DiscoverOptionsOut(BaseModel):
     regions: list[str]
     default_region: str
+    states: list[StateOut]  # what can be ticked in the regions below
+    region_states: dict[str, list[str]]  # region -> its state codes; others have none
     items: list[str]
     default_items: list[str]
     max_count: int

@@ -195,7 +195,26 @@ def test_other_needs_its_words(client):
     assert ok.status_code == 202
 
 
+def test_options_offer_the_states_and_provinces_of_north_america(client):
+    body = client.get("/api/discover/options").json()
+    codes = {s["code"]: s for s in body["states"]}
+    assert codes["US-TN"] == {"code": "US-TN", "name": "Tennessee", "country": "US"}
+    assert len(body["region_states"]["north_america"]) == 64
+    assert len(body["region_states"]["united_states"]) == 51
+    assert "europe" not in body["region_states"], "other regions are searched as before"
+
+
+def test_a_search_in_ticked_states_asks_the_agent_about_each(client):
+    found = wait_for_discovery(
+        client, discover(client, states=["US-TN", "US-KY"]).json()["discovery_id"]
+    )
+    assert found["state"] == "done", found["error"]
+    prompts = [c["messages"][0]["content"] for c in client.agent_calls]  # type: ignore[attr-defined]
+    assert "Stores in Tennessee, USA." in prompts[0], "one state per question, in the order ticked"
+
+
 def test_an_unknown_region_or_item_is_refused_before_paying(client):
+    assert discover(client, states=["US-XX"]).json()["detail"]["code"] == "bad_state"
     assert discover(client, region="mars").json()["detail"]["code"] == "bad_region"
     assert discover(client, items=["hats"]).json()["detail"]["code"] == "bad_settings"
     assert client.agent_calls == []  # type: ignore[attr-defined]

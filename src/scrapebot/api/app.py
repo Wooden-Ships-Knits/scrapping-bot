@@ -21,7 +21,17 @@ from ..config import LLM_USD_PER_STORE, FocusConfig, InputConfig, RunConfig
 from ..discover.agent import Completion, agent_models, pick_agent_model
 from ..discover.costs import estimate
 from ..discover.paid import Transport
-from ..discover.regions import DEFAULT_REGION, REGIONS, discover_config
+from ..discover.regions import (
+    DEFAULT_REGION,
+    REGION_COUNTRIES,
+    REGIONS,
+    STATES,
+    Region,
+    discover_config,
+    found_per_state,
+    states_of,
+    states_region,
+)
 from ..discover.request import (
     MAX_PROMPT_CHARS,
     OUT_OF_SCOPE,
@@ -80,6 +90,7 @@ from .schemas import (
     RunOut,
     SkippedLink,
     SourceIn,
+    StateOut,
     UploadOut,
 )
 
@@ -390,6 +401,13 @@ def create_app(
         model = settings.base.llm.model
         return model if is_local(model) or key_for(model, keys) else ""
 
+    def picked_states(codes: list[str]) -> Region | None:
+        """The ticked states as one region, or None when none were ticked."""
+        unknown = [c for c in codes if c not in STATES]
+        if unknown:
+            raise ApiError(422, "bad_state", f"State {unknown[0]} is not known.")
+        return states_region(codes, found_per_state(settings.discover_dir)) if codes else None
+
     @app.get("/api/discover/options")
     def discover_options() -> DiscoverOptionsOut:
         """What the interface offers for finding stores, and which sources have a key.
@@ -398,6 +416,8 @@ def create_app(
         return DiscoverOptionsOut(
             regions=list(REGIONS),
             default_region=DEFAULT_REGION,
+            states=[StateOut(code=c, name=s.name, country=s.country) for c, s in STATES.items()],
+            region_states={r: states_of(r) for r in REGION_COUNTRIES},
             items=[*FOCUS_ITEMS, OTHER],
             default_items=list(DEFAULT_ITEMS),
             max_count=MAX_DISCOVER_COUNT,
@@ -449,6 +469,7 @@ def create_app(
         region: str = DEFAULT_REGION,
         place: Annotated[str, Query(max_length=60)] = "",
         rescrape: bool = False,
+        states: Annotated[list[str] | None, Query()] = None,
     ) -> DiscoverEstimateOut:
         """What finding `count` stores and reading them can cost at most, before any of
         it is spent: each source's cap at list price, plus the run's LLM stage."""
@@ -463,7 +484,8 @@ def create_app(
             [],
             pick_agent_model(keys),
             agent_fallbacks=models[1:],
-            place=place_region(place, "US") if place else None,  # the country costs nothing
+            # The country of a place costs nothing.
+            place=place_region(place, "US") if place else picked_states(states or []),
             new_only=bool(left_out(rescrape, keys)),
         )
         lines = [CostLineOut(**line.model_dump()) for line in estimate(config, keys)]
@@ -506,7 +528,7 @@ def create_app(
                 focus.terms,
                 pick_agent_model(keys),
                 agent_fallbacks=agent_models(keys)[1:],
-                place=place_region(place, country) if place else None,
+                place=place_region(place, country) if place else picked_states(body.states),
                 new_only=bool(known),
             ).model_copy(
                 update={"out_dir": settings.discover_dir, "cache_dir": settings.discover_cache_dir}

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -143,6 +143,12 @@ describe("Scrape", () => {
 const FIND_OPTIONS = {
   regions: ["north_america", "europe"],
   default_region: "north_america",
+  states: [
+    { code: "US-TN", name: "Tennessee", country: "US" },
+    { code: "US-KY", name: "Kentucky", country: "US" },
+    { code: "CA-ON", name: "Ontario", country: "CA" },
+  ],
+  region_states: { north_america: ["US-TN", "US-KY", "CA-ON"] } as Record<string, string[]>,
   items: ["knitwear", "cashmere_wool", "fall_winter", "spring_summer", "other"],
   default_items: ["knitwear"],
   max_count: 500,
@@ -239,8 +245,39 @@ describe("Scrape: find stores", () => {
       rescrape: false,
       place: "",
       country: "",
+      states: [],
     });
     await waitFor(() => expect(window.location.hash).toBe("#/runs/R9"), { timeout: 4000 });
+  });
+
+  it("searches the ticked states and provinces of North America", async () => {
+    mockFind();
+    const user = userEvent.setup();
+    render(<Scrape />);
+    const find = await screen.findByRole("button", { name: "Find stores & start scraping" });
+    const states = screen.getByTestId("find-states");
+    expect(states).toHaveTextContent("States and provinces (3 of 3)");
+
+    await user.click(within(screen.getByRole("group", { name: "Canada" })).getByRole("button", { name: "None" }));
+    await user.click(screen.getByRole("checkbox", { name: "Kentucky" }));
+    expect(states).toHaveTextContent("States and provinces (1 of 3)");
+    await waitFor(() =>
+      expect(calls.some((c) => c.url === "/api/discover/estimate?count=20&region=north_america&states=US-TN")).toBe(
+        true,
+      ),
+    );
+
+    await user.click(screen.getByRole("checkbox", { name: "Tennessee" }));
+    expect(find).toBeDisabled();
+    await user.click(within(screen.getByRole("group", { name: "United States" })).getByRole("button", { name: "All" }));
+    await waitFor(() => expect(find).toBeEnabled());
+    await user.click(find);
+    await waitFor(() =>
+      expect(calls.find((c) => c.url === "/api/discover")?.body).toMatchObject({
+        region: "north_america",
+        states: ["US-TN", "US-KY"],
+      }),
+    );
   });
 
   it("names the model that takes over, and shows the agent's notes", async () => {
