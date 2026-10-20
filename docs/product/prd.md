@@ -285,7 +285,7 @@ The business focuses only on knitwear, so discovery and tagging aim at it.
 | DS-02 | Hits from all sources merge into one row per store, by website domain, social profile, or name + postcode/city | Must | The same store from three sources becomes one row |
 | DS-03 | The result is a links file (`stores.csv`) that `scrapebot run` can use directly. Store details travel as input metadata | Must | `scrapebot run stores.csv` with no extra options |
 | DS-04 | Every paid source has a request limit, the LLM agent has a cost limit, and successful answers are cached without the key | Must | Repeating discovery with the same configuration uses no paid requests |
-| DS-05 | Stores known only by name or profile get a website lookup (one search per store) | Must | Column `website_source` = `lookup` |
+| DS-05 | Stores known only by name or profile get a website lookup (one search per store); a result counts only when its domain carries the store's name or handle | Must | Column `website_source` = `lookup` |
 | DS-06 | Discovery never opens store websites and never judges stores. Judging uses the run's data | Must | No requests to store websites during `discover` |
 | DS-07 | Every product gets an `is_knitwear` flag and every store a `knit_count`. No product is dropped | Must | Non-knitwear products stay in the `products` table |
 | DS-08 | Store discovery from the web interface: the operator types how many stores, picks a region or continent and ticks the items (knitwear, cashmere/wool, fall/winter, spring/summer, or their own words); one click finds the stores and scrapes all of them | Should (built) | The operator finds and scrapes stores without a terminal |

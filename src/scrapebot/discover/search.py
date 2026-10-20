@@ -15,7 +15,9 @@ opened: both forbid automated collection (ADR 0008).
 import logging
 import re
 from typing import Any
+from urllib.parse import urlsplit
 
+from ..extract.brands import STORE_WORDS
 from . import geo
 from .config import DiscoverConfig
 from .merge import Candidate, FoundStore, name_key, origin_of, social_profile, store_website
@@ -36,6 +38,18 @@ _DOMAIN_IN_TEXT = re.compile(
     re.I,
 )
 _PLACE_IN_TEXT = re.compile(r"\b([A-Z][A-Za-z.'’-]+(?: [A-Z][A-Za-z.'’-]+){0,2}),\s*([A-Z]{2})\b")
+# A page about stores, not a store: a list, a guide, a magazine or blog post. Seen in web
+# search answers on 2026-10-20: "11 Small Knitwear Brands That Come Editor-Approved",
+# "Top 25 Boutique clothing stores based in Canada", ".../blogs/news/...".
+_ARTICLE_PATH = re.compile(
+    r"/(blogs?|articles?|news|magazine|stories|editorial)(/|$)|/\d{4}/\d{2}/", re.I
+)
+_ARTICLE_TITLE = re.compile(
+    r"\b(top|best)\s+\d+\b"
+    r"|\b\d+\s+(?:[\w'-]+\s+){0,3}(brands|boutiques|stores|shops|suppliers|places)\b"
+    r"|\blist of\b|\bwhere to\b|\bto shop for\b|\bguide\b|\bbrand edit\b",
+    re.I,
+)
 _PROFILE_TITLE_NOISE = re.compile(
     r"\s*[•·|\-–—]\s*(instagram|facebook|home|about|photos?|videos?|reels?|log ?in|posts?)\b.*$",
     re.I,
@@ -83,6 +97,11 @@ def profile_name(title: str, handle: str) -> str:
     return text
 
 
+def is_article(url: str, title: str) -> bool:
+    """Whether a search result is a page about stores rather than a store's own site."""
+    return bool(_ARTICLE_PATH.search(urlsplit(url).path) or _ARTICLE_TITLE.search(title))
+
+
 def website_in(text: str) -> str:
     """The store's own domain if a profile bio shows one."""
     for match in _DOMAIN_IN_TEXT.finditer(text):
@@ -123,7 +142,7 @@ class WebSearchSource:
             for query in self.queries():
                 for item in tavily_search(self.api, self.opts.base_url, self.key, query, country):
                     site = store_website(item["url"], exclude)
-                    if not site or site in seen:
+                    if not site or site in seen or is_article(item["url"], item["title"]):
                         continue
                     seen.add(site)
                     self.found.append(
@@ -185,22 +204,31 @@ class SocialSearchSource:
                 )
 
 
-def looks_like(store: FoundStore, url: str, title: str) -> bool:
-    """Does this search result belong to the store? Its domain or title has to carry
-    the store's name or social handle."""
+def name_forms(name: str) -> set[str]:
+    """The keys a store's own domain may carry: 'STORM Clothing Boutique' ->
+    {'stormclothingboutique', 'storm'}; 'Moon + Arrow' -> {'moonandarrow', 'moonarrow'}."""
+    text = name.replace("+", " and ")
+    words = [geo.key(w) for w in text.split()]
+    return {name_key(text), "".join(w for w in words if w and w not in STORE_WORDS)}
+
+
+def looks_like(store: FoundStore, url: str) -> bool:
+    """Is this search result the store's own site? Its domain has to carry the store's
+    name, with or without words like "boutique", or its social handle. A page title is
+    not enough: maps, news, magazine and government pages about a store carry its name
+    too. On 2026-10-20, 20 of 46 looked-up websites matched by title only, and all but
+    three were such pages (maps.apple.com, nps.gov, pasadenamag.com)."""
     site = store_website(url)
     if not site:
         return False
     domain = geo.key(site.split(".")[0])
-    names = {name_key(store.name)}
+    names = name_forms(store.name)
     for value in (store.instagram, store.facebook):
         profile = social_profile(value)
         if profile and not profile[1].startswith("id:"):
             names.add(geo.key(profile[1]))
-    title_key = geo.key(_TITLE_SPLIT.split(title)[0]) + "|" + geo.key(title)
     return any(
-        len(name) >= 4
-        and (name in domain or (len(domain) >= 5 and domain in name) or name in title_key)
+        len(name) >= 4 and (name in domain or (len(domain) >= 5 and domain in name))
         for name in names
     )
 
@@ -220,8 +248,6 @@ class WebsiteLookup:
         country = loc.country if loc.country in self.config.countries else self.config.countries[0]
         base = self.config.web_search.base_url
         for item in tavily_search(self.api, base, self.key, query, country, max_results=10):
-            if store_website(item["url"], self.exclude) and looks_like(
-                store, item["url"], item["title"]
-            ):
+            if store_website(item["url"], self.exclude) and looks_like(store, item["url"]):
                 return origin_of(item["url"])
         return ""
