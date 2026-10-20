@@ -3,6 +3,7 @@ import { AlertTriangle, Search } from "lucide-react";
 import type { DiscoverEstimate, DiscoverOptions, Discovery } from "../api/client";
 import {
   costLine,
+  countryLabel,
   discoverySourceLabel,
   discoveryState,
   formatNumber,
@@ -24,6 +25,9 @@ export type FindForm = {
   prompt: string; // the search in the operator's own words; it only fills in this form
   place: string; // one named place ("Las Vegas, NV") instead of a region; "" uses `region`
   country: string; // the place's country code
+  // States and provinces ticked in a North American region ("US-TN"); the agent asks about
+  // each in turn. Other regions have none.
+  states: string[];
 };
 
 /** What reading a described search gave: the settings it filled in, or why it was refused. */
@@ -34,6 +38,16 @@ export const OTHER = "other";
 export function parseCount(text: string, max: number): number | null {
   const n = Number(text.trim());
   return Number.isInteger(n) && n >= 1 && n <= max ? n : null;
+}
+
+/** The states and provinces a region can be narrowed to; none outside North America. */
+export function regionStates(options: DiscoverOptions, region: string): string[] {
+  return options.region_states[region] ?? [];
+}
+
+/** What a search sends: the ticked states, unless a single place was named. */
+export function sentStates(options: DiscoverOptions, form: FindForm): string[] {
+  return form.place ? [] : form.states.filter((s) => regionStates(options, form.region).includes(s));
 }
 
 export function parseTerms(text: string): string[] {
@@ -67,6 +81,12 @@ export function FindStoresFields({
       ...form,
       items: form.items.includes(item) ? form.items.filter((i) => i !== item) : [...form.items, item],
     });
+  const codes = form.place ? [] : regionStates(options, form.region);
+  const stateBy = new Map(options.states.map((st) => [st.code, st]));
+  const countries = [...new Set(codes.map((c) => stateBy.get(c)?.country ?? ""))];
+  const setStates = (states: string[]) => onChange({ ...form, states: codes.filter((c) => states.includes(c)) });
+  const toggleState = (code: string) =>
+    setStates(form.states.includes(code) ? form.states.filter((c) => c !== code) : [...form.states, code]);
   const active = Object.entries(options.sources).filter(([, on]) => on);
   // "gemini/… then openai/…": the second takes over when the first fails.
   const agentModels = [options.agent_model, ...options.agent_fallbacks].join(", then ");
@@ -138,7 +158,12 @@ export function FindStoresFields({
       ) : (
         <label className="find-field">
           <span>Region</span>
-          <select value={form.region} onChange={(e) => onChange({ ...form, region: e.target.value })}>
+          <select
+            value={form.region}
+            onChange={(e) =>
+              onChange({ ...form, region: e.target.value, states: regionStates(options, e.target.value) })
+            }
+          >
             {options.regions.map((r) => (
               <option key={r} value={r}>
                 {regionLabel(r)}
@@ -167,6 +192,45 @@ export function FindStoresFields({
           />
         )}
       </fieldset>
+
+      {codes.length > 0 && (
+        <fieldset className="find-field find-states" data-testid="find-states">
+          <legend>
+            States and provinces ({formatNumber(sentStates(options, form).length)} of {formatNumber(codes.length)})
+          </legend>
+          {countries.map((country) => {
+            const own = codes.filter((c) => stateBy.get(c)?.country === country);
+            return (
+              <div key={country} className="find-state-group" role="group" aria-label={countryLabel(country)}>
+                <div className="find-state-head">
+                  <strong>{countryLabel(country)}</strong>
+                  <button type="button" className="link-button" onClick={() => setStates([...form.states, ...own])}>
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    className="link-button"
+                    onClick={() => setStates(form.states.filter((c) => !own.includes(c)))}
+                  >
+                    None
+                  </button>
+                </div>
+                <div className="find-checks find-state-checks">
+                  {own.map((code) => (
+                    <label key={code} className="menu-check">
+                      <input type="checkbox" checked={form.states.includes(code)} onChange={() => toggleState(code)} />
+                      {stateBy.get(code)?.name ?? code}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          <small className="muted">
+            The AI agent asks about each ticked state in turn, those earlier searches found the fewest stores in first.
+          </small>
+        </fieldset>
+      )}
 
       <p className="muted small find-sources" data-testid="find-sources">
         Active sources:{" "}

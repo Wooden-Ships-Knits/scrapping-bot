@@ -39,7 +39,10 @@ from .search import SocialSearchSource, WebSearchSource, WebsiteLookup
 
 log = logging.getLogger(__name__)
 
-SOURCE_NAMES = ("google_places", "web_search", "social_search", "ai_agent")
+# The agent first: on 2026-10-20, 68% of the stores it found made the final list, against
+# 48% from Instagram and 29% from web search. With a count, the others then only make up
+# what the agent did not find.
+SOURCE_NAMES = ("ai_agent", "google_places", "web_search", "social_search")
 STEP_NAMES = (*SOURCE_NAMES, "resolve")  # what `--only` accepts
 # Which key each source needs, by the names `keys.load_keys` gives them.
 SOURCE_KEYS = {"google_places": "google_places", "web_search": "tavily", "social_search": "tavily"}
@@ -47,7 +50,7 @@ SOURCE_KEYS = {"google_places": "google_places", "web_search": "tavily", "social
 
 class SourceReport(BaseModel):
     name: str
-    status: str = "ok"  # ok | disabled | no_api_key | budget_reached | error
+    status: str = "ok"  # ok | disabled | no_api_key | budget_reached | not_needed | error
     candidates: int = 0
     requests_sent: int = 0
     requests_cached: int = 0
@@ -203,6 +206,11 @@ def run_discover(
         reports.append(report)
         if (only and name not in only) or not getattr(config, name).enabled:
             report.status = "disabled"
+            continue
+        target = config.target_stores
+        if name != "ai_agent" and target and new_so_far(candidates, known_set) >= target:
+            report.status = "not_needed"
+            report.notes = [f"the stores asked for ({target}) were already found"]
             continue
         if name == "ai_agent":
             candidates += _run_agent(

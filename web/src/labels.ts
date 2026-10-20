@@ -105,11 +105,17 @@ const DISCOVERY_STATE: Record<string, string> = {
   failed: "Failed",
 };
 
+const COUNTRY: Record<string, string> = {
+  US: "United States",
+  CA: "Canada",
+};
+
 const SOURCE_STATUS: Record<string, string> = {
   ok: "Succeeded",
   disabled: "Not used",
   no_api_key: "No API key",
   budget_reached: "Limit reached",
+  not_needed: "Not needed: the AI agent found enough",
   error: "Failed",
 };
 
@@ -224,6 +230,7 @@ export const runState = pick(RUN_STATE);
 export const sourceLabel = pick(SOURCE);
 export const writerLabel = pick(WRITER);
 export const regionLabel = pick(REGION);
+export const countryLabel = pick(COUNTRY);
 export const itemLabel = pick(ITEM);
 export const discoverySourceLabel = pick(DISCOVERY_SOURCE);
 export const costLine = pick(COST_LINE);

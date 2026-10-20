@@ -681,9 +681,11 @@ def test_a_discovery_writes_a_links_file_scrapebot_run_reads(tmp_path):
     assert TAVILY_KEY not in text
     report = json.loads(got.report_path.read_text())
     assert report["stores_with_website"] == 3
-    assert report["sources"][0]["requests_sent"] == 1
-    assert report["sources"][0]["cost_usd"] == 0.035, "one Google Maps request at list price"
-    sent = sum(s["requests_sent"] for s in report["sources"][1:3])
+    by_source = {s["name"]: s for s in report["sources"]}
+    assert report["sources"][0]["name"] == "ai_agent", "the agent goes first"
+    assert by_source["google_places"]["requests_sent"] == 1
+    assert by_source["google_places"]["cost_usd"] == 0.035, "one Google Maps request"
+    sent = by_source["web_search"]["requests_sent"] + by_source["social_search"]["requests_sent"]
     sent += report["website_lookup"]["requests_sent"]
     assert report["cost_usd"] == got.cost_usd == round(0.035 + sent * 0.008, 6)
 
@@ -1005,3 +1007,73 @@ def test_stores_to_visit_prefer_websites_and_agreement():
     c = FoundStore(name="C", sources=["social_search"])
     assert [s.name for s in stores_to_visit([a, b, c], 1)] == ["B"]
     assert [s.name for s in stores_to_visit([a, b, c], None)] == ["B", "A"]
+
+
+# --- states and the agent first ----------------------------------------------------
+
+
+def test_ticked_states_become_one_agent_task_each_least_found_first():
+    from scrapebot.discover.regions import states_of, states_region
+
+    region = states_region(["US-NY", "US-TN", "US-KY"], {"US-NY": 19, "US-KY": 2})
+    assert region.areas == ("Tennessee, USA", "Kentucky, USA", "New York, USA")
+    assert region.name == "Tennessee and Kentucky and New York"
+    assert region.cities[:3] == ("Nashville, TN", "Louisville, KY", "New York, NY"), (
+        "every state's main city before any second one"
+    )
+    everywhere = states_region(states_of("north_america"))
+    assert (everywhere.name, everywhere.countries) == ("the United States and Canada", ("US", "CA"))
+    assert len(everywhere.areas) == 64, "50 states, DC and 13 provinces and territories"
+    assert "Ontario, Canada" in everywhere.areas
+
+
+def test_stores_found_per_state_come_from_earlier_searches(tmp_path):
+    from scrapebot.discover.regions import found_per_state
+
+    (tmp_path / "20261020T024614Z").mkdir()
+    (tmp_path / "20261020T024614Z" / "stores.csv").write_text(
+        "website,name,state,country\nhttps://a.com,A,TN,US\nhttps://b.com,B,TN,US\n"
+        "https://c.com,C,ON,CA\nhttps://d.com,D,,US\n"
+    )
+    assert found_per_state(tmp_path) == {"US-TN": 2, "CA-ON": 1}
+    assert found_per_state(tmp_path / "none") == {}
+
+
+def test_the_agent_goes_first_and_the_others_only_make_up_the_count(tmp_path):
+    answer = json.dumps([{"name": f"S{i}", "website": f"https://s{i}.com"} for i in range(3)])
+    completion = functools.partial(litellm.completion, mock_response=answer)
+    fake = search_routes()
+    cfg = config(
+        tmp_path,
+        countries=["US"],
+        target_stores=2,
+        ai_agent={"model": "gemini/gemini-2.5-flash", "areas": ["Colorado"], "max_runs": 5},
+    )
+    got = run_discover(
+        cfg,
+        keys(google_places=GOOGLE_KEY, tavily=TAVILY_KEY, gemini="gm-key-123456"),
+        transport=fake,
+        completion=completion,
+    )
+    status = {r.name: r.status for r in got.sources}
+    assert status == {
+        "ai_agent": "ok",
+        "google_places": "not_needed",
+        "web_search": "not_needed",
+        "social_search": "not_needed",
+    }
+    assert fake.calls == [], "nothing paid for once the agent found the count"
+
+    short = config(
+        tmp_path,
+        countries=["US"],
+        target_stores=10,
+        ai_agent={"model": "gemini/gemini-2.5-flash", "areas": ["Colorado"], "max_runs": 1},
+    )
+    got = run_discover(
+        short,
+        keys(google_places=GOOGLE_KEY, tavily=TAVILY_KEY, gemini="gm-key-123456"),
+        transport=search_routes(),
+        completion=completion,
+    )
+    assert {r.name: r.status for r in got.sources}["google_places"] == "ok", "still short"

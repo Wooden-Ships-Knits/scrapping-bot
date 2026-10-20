@@ -45,6 +45,15 @@ cares about knitwear.
   refused key, a busy server), the next of `ai_agent.fallbacks` takes over for the rest
   of the search and the report says so. The interface puts Gemini first, because its
   free tier costs nothing, and OpenAI second; the cost cap covers both.
+- **The agent first, by state (added 2026-10-20).** The agent runs before the other
+  sources, and with a count they only make up what it did not find (status
+  `not_needed` otherwise). On the 2026-10-20 search, 68% of the agent's stores made the
+  final list, against 48% from Instagram and 29% from web search. In North America the
+  operator ticks states and provinces instead of one region: the agent asks about each
+  in turn ("Stores in Tennessee, USA."), the ones earlier searches found fewest stores
+  in first (counted from their `stores.csv`), so repeated searches spread over the
+  country. The 11 broad areas it asked about before left 13 states with no store on
+  the final list.
 - **Discovery never opens a store's website.** Whether a store sells knitwear, which
   brands it carries and whether it is multi-brand are read from the data a run
   collects. The finder's labelling (`classify`, its AI second opinion), its scraper and

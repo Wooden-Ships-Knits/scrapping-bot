@@ -174,7 +174,9 @@ flowchart LR
 | Quality | `analysis/discovery.py` | The scorecard of a discovery: known stockists found (the operator's list is ground truth; matched by website, then by name where the state agrees), stores found by two or more sources, and, from the run that visited them, stores read, on the final list, and with no website at that address. `scrapebot score`, `GET /api/runs/{id}/quality`; reads files only |
 | Cost | `discover/costs.py` | List price per search request; `estimate()` gives the most a discovery can cost (request caps, the agent's cost cap) for `GET /api/discover/estimate`; the report costs the requests actually sent. Estimates, never bills |
 
-From the web app, `POST /api/discover` takes a store count, a region and the items
+From the web app, `POST /api/discover` takes a store count, a region (or, in North
+America, the ticked `states`: `discover/regions.py` `states_region` makes one agent task
+per state, least found first by `found_per_state`) and the items
 (`discover/regions.py` turns them into countries, agent areas, Maps cities and request
 and cost caps that grow with the count: one agent run per 8 stores asked for, plus
 one, half as many again for a search for new stores, at most 200 runs, at an estimated
@@ -182,7 +184,9 @@ US$0.08 a run). The agent then runs area after area, telling
 the model which stores it already has, until the count is reached, a round finds
 nothing new, or a cap is hit. The stores with a website (the ones most sources agree on
 first) become `to_visit.csv`, and a run starts on all of them; `GET /api/discover/{id}`
-reports progress until then. One discovery runs at a time, in its own thread.
+reports progress until then. One discovery runs at a time, in its own thread. The agent
+searches first, then Google Places, web and social search; with a count, those three
+run only while the agent's stores fall short (`not_needed` otherwise).
 
 A search is for new stores: `POST /api/discover` asks the ledger (`ledger.settled`) for
 the stores a run visited in the last `fetch.reuse_days` days and passes their domains
