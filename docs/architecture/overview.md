@@ -273,11 +273,14 @@ parallel while each keeps its own delay.
 
 ### 4.5 Platform feeds — Partly built
 
-Feeds return products directly; product pages are not fetched one by one.
+Feeds return products directly; product pages are not fetched one by one. A feed is
+read to its end: the whole catalogue is kept (everything is raw). 25,000 products or
+250 pages per feed is only a guard against a feed that never ends; the old 2,000 cut
+29 of 367 stores on 2026-10-20.
 
 | Feed | Endpoint | Status |
 |---|---|---|
-| Shopify | `/products.json`, 250 per page, up to 20 pages | Built |
+| Shopify | `/products.json`, 250 per page, until a short page | Built |
 | Big Cartel | `/products.json`, one unpaged list; currency from `bigcartel.account.currency` | Built |
 | WooCommerce Store API | `/wp-json/wc/store/v1/products` (prices in minor units, stored raw) | Built |
 | Squarespace | `?format=json` | Built |

@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from scrapebot.acquire import acquire
+from scrapebot.acquire import acquire, feeds
 from scrapebot.acquire.discovery import link_role, rank_links, sitemap_urls
 from scrapebot.acquire.feeds import shopify_feed as shopify_products
 from scrapebot.models import Target
@@ -33,13 +33,24 @@ def test_shopify_products_paginates_until_empty():
     assert products[0].title == "Item 0"
 
 
-def test_shopify_products_stops_at_page_cap():
+def test_shopify_products_reads_a_catalogue_past_2000():
+    """Everything is raw: 29 of 367 stores were cut at 2,000 products on 2026-10-20."""
     responses = {
         f"https://x.com/products.json?limit=250&page={p}": (200, feed_page(250, 250 * (p - 1)))
         for p in range(1, 12)
     }
+    responses["https://x.com/products.json?limit=250&page=12"] = (200, feed_page(0, 2750))
     products = shopify_products("https://x.com", FakeFetcher(responses))
-    assert len(products) == 2000, "2,000 products is the cap for every feed"
+    assert len(products) == 2750
+
+
+def test_a_feed_that_never_ends_stops_at_the_ceiling(monkeypatch):
+    monkeypatch.setattr(feeds, "MAX_FEED_PRODUCTS", 500)
+    responses = {
+        f"https://x.com/products.json?limit=250&page={p}": (200, feed_page(250, 250 * (p - 1)))
+        for p in range(1, 12)
+    }
+    assert len(shopify_products("https://x.com", FakeFetcher(responses))) == 500
 
 
 def test_shopify_products_returns_empty_for_non_shopify():
