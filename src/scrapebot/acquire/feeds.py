@@ -14,7 +14,9 @@ from ..extract.pages import internal_links
 from ..fetch import Fetcher
 from ..models import Product
 
-MAX_FEED_PRODUCTS = 2000
+# A whole catalogue is read (everything is raw). The ceiling only guards against a feed
+# that never ends: 2,000 cut 29 of 367 stores on 2026-10-20 (lazyoaf.com, adornboutique.ca).
+MAX_FEED_PRODUCTS = 25_000
 SHOPIFY_PAGE_SIZE = 250
 WOO_PAGE_SIZE = 100
 LIGHTSPEED_PAGE_SIZE = 100
@@ -27,7 +29,7 @@ MAGENTO_QUERY = (
     "categories{name} description{html} "
     "price_range{minimum_price{final_price{value currency}}}}}}"
 )
-MAX_FEED_PAGES = 20
+MAX_FEED_PAGES = 250  # 25,000 products at 100 a page
 SQUARESPACE_COLLECTIONS = ("/shop", "/store", "/shop-all")
 MAX_SQUARESPACE_COLLECTIONS = 4
 
