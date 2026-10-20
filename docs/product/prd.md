@@ -290,6 +290,7 @@ The business focuses only on knitwear, so discovery and tagging aim at it.
 | DS-07 | Every product gets an `is_knitwear` flag and every store a `knit_count`. No product is dropped | Must | Non-knitwear products stay in the `products` table |
 | DS-08 | Store discovery from the web interface: the operator types how many stores, picks a region or continent and ticks the items (knitwear, cashmere/wool, fall/winter, spring/summer, or their own words); one click finds the stores and scrapes all of them | Should (built) | The operator finds and scrapes stores without a terminal |
 | DS-09 | The items ticked are recorded per product (`matched_items`) and counted per store (`focus_count`); nothing is dropped | Should (built) | A product's matched items are visible in every export |
+| DS-10 | A run on found stores offers the search's whole store list for download, with the stores read before and those without a website, and the search report | Should (built) | Downloads "Store search: every store found" and "Store search: sources and costs" |
 
 ### 7.10 Final list
 

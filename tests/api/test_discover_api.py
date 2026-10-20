@@ -1,6 +1,8 @@
 """Finding stores from the web API, offline: the agent is a LiteLLM mock response and
 the stores are a FakeFetcher. One request finds stores, then starts a run on all of them."""
 
+import csv
+import io
 import json
 import time
 
@@ -392,6 +394,24 @@ def test_a_run_on_found_stores_gets_a_quality_scorecard(client, tmp_path):
         0,
     )
     assert card["cost_usd"] == found["cost_usd"]
+
+
+def test_a_run_on_found_stores_offers_every_store_the_search_found(client):
+    """The run visits the stores asked for; the search's own list holds every store it
+    found, those without a website too (everything is raw)."""
+    found = wait_for_discovery(client, discover(client, count=1).json()["discovery_id"])
+    run = wait_until_finished(client, found["run_id"])
+    assert run["links_in"] == 1
+    keys = {d["key"]: d["filename"] for d in run["downloads"]}
+    folder = run["config"]["input"]["source"].split("/")[-2]  # the search's folder
+    assert keys["found_stores"] == f"{folder}-stores.csv"
+    assert keys["found_report"] == f"{folder}-report.json"
+
+    got = client.get(f"/api/runs/{run['run_id']}/download/found_stores")
+    assert got.status_code == 200
+    rows = list(csv.DictReader(io.StringIO(got.text)))
+    assert len(rows) == 4, "every store found, not only the one visited"
+    assert any(not r["website"] for r in rows), "stores without a website are kept"
 
 
 def test_a_run_from_pasted_links_has_no_scorecard(client):
