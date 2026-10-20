@@ -19,10 +19,43 @@ def test_the_stores_own_name_is_not_an_outside_brand():
     """bluenvy.ca, 2026-10-08: 1,631 products under its own name, 41 other brands."""
     mix = brand_mix(
         "bluenvy.ca",
-        products("Bluenvy Boutique", each=50) + products("Guess", "FDJ", "Gentle Fawn"),
+        products("Bluenvy Boutique", each=50) + products("Guess", "FDJ", "Gentle Fawn", each=5),
     )
     assert mix.store_type == "multi_brand"
     assert "Bluenvy Boutique" not in mix.brands
+
+
+def test_a_label_with_a_few_collaborations_is_unclear():
+    """lazyoaf.com, 2026-10-13: three outside brands on 7 of 2,000 products. The
+    validation sheet found a single label; the vendors alone had called it multi-brand."""
+    items = (
+        products("Lazy Oaf", each=1993)
+        + products("G.E.M.", each=4)
+        + products("Stone", each=2)
+        + products("Creightons")
+    )
+    mix = brand_mix("lazyoaf.com", items)
+    assert (mix.store_type, mix.reason) == (
+        "unknown",
+        "the store's own name is on nearly every product",
+    )
+    assert mix.brand_count == 3, "the brands are still listed for the LLM and the export"
+
+
+def test_a_boutique_that_tags_its_own_name_goes_to_the_llm():
+    """matchmadestores.com, 2026-10-13: 302 of 306 products under its own name. It may be
+    a boutique that relabels everything, so the rule does not call it own-brand."""
+    items = (
+        products("Match Made Stores", each=302)
+        + products("ASTR the Label", each=2)
+        + products("RAISONNEL", "BLANKNYC")
+    )
+    assert brand_mix("matchmadestores.com", items).store_type == "unknown"
+
+
+def test_outside_brands_at_the_minimum_share_are_enough():
+    items = products("Rose Boutique", each=27) + products("A", "B", "C")
+    assert brand_mix("roseboutique.com", items).store_type == "multi_brand"
 
 
 def test_only_the_own_name_is_unclear():

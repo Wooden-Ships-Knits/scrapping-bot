@@ -472,7 +472,8 @@ least one product whose `knit_kind` is set.
   and descriptions are not read: they took tees and trousers into the broad flag.
 - **Store type** (`extract/brands.py`, then `final.judge_store` while the store is
   visited): three or more outside brands among the product vendors, none above 90%,
-  is `multi_brand`; the store's own name and placeholders do not count. Otherwise
+  and together on at least 10% of the products with a vendor, is `multi_brand`; the
+  store's own name and placeholders are not brands. Otherwise
   `unknown`, and a knitwear store goes to the LLM (`llm/prompts/store_type_v1.md`:
   about, brands and home pages, vendors, product names). Below 0.6 confidence it
   stays `unknown`.

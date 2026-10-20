@@ -187,7 +187,8 @@ one that yields products:
    run goes on and the report says the LLM was not used.
 
 Then the **final list**: a store qualifies when it resells other brands (three or
-more outside brands among its product vendors, or the LLM's judgement when the
+more outside brands among its product vendors, on at least 10% of its products, or
+the LLM's judgement when the
 vendors are unclear) and sells knitwear by a strict, title-based rule.
 
 Stage 4 is built only if a probe of the non-Shopify sites shows enough stores need
