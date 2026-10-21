@@ -157,6 +157,17 @@ export function RunDetail({
             Links in <strong>{formatNumber(run.links_in)}</strong> = processed <strong>{formatNumber(run.processed)}</strong> +
             skipped <strong>{formatNumber(run.skipped)}</strong> {balanced ? "✓ balanced" : "✗ not balanced"}
           </p>
+          {(run.skipped_by_reason.over_limit ?? 0) > 0 && (
+            <div className="notice warn" role="status" data-testid="limited">
+              <strong>
+                Only the first {plural(run.limit ?? run.stores_total, "store")} of this list were visited, on purpose.
+              </strong>{" "}
+              This run was started from the command line with a limit (<code>--limit {run.limit}</code>), so the other{" "}
+              {plural(run.skipped_by_reason.over_limit ?? 0, "link")} were left out: nothing went wrong with them. Runs
+              started from this interface have no limit and process every link. To read the rest, start a run on the same
+              list without the limit.
+            </div>
+          )}
           {Object.keys(run.skipped_by_reason).length > 0 && (
             <ul className="chips" aria-label="Skipped links">
               {Object.entries(run.skipped_by_reason).map(([reason, n]) => (

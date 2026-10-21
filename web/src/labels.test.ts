@@ -18,7 +18,7 @@ import {
 describe("labels", () => {
   it("translates known codes and passes unknown ones through", () => {
     expect(storeStatus("no_products")).toBe("No catalogue");
-    expect(skipReason("over_limit")).toBe("Over the store limit");
+    expect(skipReason("over_limit")).toBe("Left out by the run's limit");
     expect(storeStatus("something_new")).toBe("something_new");
     expect(sourceLabel("bigcartel_feed")).toBe("Big Cartel feed");
     expect(sourceLabel("render")).toBe("Browser (Camoufox)");
